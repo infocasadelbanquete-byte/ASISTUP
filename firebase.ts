@@ -10,9 +10,8 @@ import {
   updateDoc, 
   deleteDoc 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import LZString from "https://esm.sh/lz-string@1.5.0";
+import LZString from "lz-string";
 
-// Configuración de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBMcYKMy9zPBeVZMUYtJsjMCVXQP7K7lx4",
   authDomain: "asist-up-6ccd1.firebaseapp.com",
@@ -25,29 +24,22 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-/**
- * Comprime un objeto JS a una cadena Base64
- */
 export const compressData = (data: any): string => {
   try {
-    const jsonString = JSON.stringify(data);
-    return LZString.compressToEncodedURIComponent(jsonString);
+    return LZString.compressToEncodedURIComponent(JSON.stringify(data));
   } catch (e) {
     console.error("Error al comprimir:", e);
     return "";
   }
 };
 
-/**
- * Descomprime una cadena Base64 a un objeto JS
- */
 export const decompressData = (compressed: string): any => {
   try {
     if (!compressed) return null;
     const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
     return decompressed ? JSON.parse(decompressed) : null;
   } catch (e) {
-    console.error("Error al descomprimir datos:", e);
+    console.error("Error al descomprimir:", e);
     return null;
   }
 };
