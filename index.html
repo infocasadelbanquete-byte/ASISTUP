@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="https://cdn-icons-png.flaticon.com/512/1063/1063376.png">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1063/1063376.png">
-    <title>ASIST UP - Gestión de Talento Humano</title>
+    <title>ASIST UP - HR System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -16,8 +16,8 @@
         .gradient-blue { background: radial-gradient(circle at top left, #1e293b 0%, #0f172a 100%); }
         @media print { .no-print { display: none !important; } body { background: white; } @page { size: A4 landscape; margin: 0; } }
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        #initial-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0f172a; z-index: 9999; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        #initial-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0f172a; z-index: 9999; transition: opacity 0.5s ease; }
     </style>
 <script type="importmap">
 {
@@ -36,7 +36,7 @@
     <div id="initial-loader">
       <div class="flex flex-col items-center gap-4">
         <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-white font-black text-[9px] uppercase tracking-[0.4em]">Iniciando ASIST UP...</p>
+        <p class="text-white font-black text-[9px] uppercase tracking-[0.4em]">Sincronizando ASIST UP...</p>
       </div>
     </div>
     <div id="root"></div>
@@ -49,6 +49,11 @@
           setTimeout(() => loader.remove(), 500);
         }
       });
+      // Capturar errores globales para evitar pantalla blanca silenciosa
+      window.onerror = function(msg, url, line, col, error) {
+        console.error("Global Error: ", msg, " at ", url, ":", line);
+        return false;
+      };
     </script>
 </body>
 </html>
