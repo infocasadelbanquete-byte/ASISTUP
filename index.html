@@ -25,20 +25,11 @@
             justify-content: center; 
             background: #0f172a; 
             z-index: 9999; 
-            transition: opacity 0.8s ease;
+            transition: opacity 0.5s ease;
         }
         #initial-loader.hidden {
             opacity: 0;
             pointer-events: none;
-        }
-        .shimmer {
-            background: linear-gradient(90deg, #1e293b 0%, #334155 50%, #1e293b 100%);
-            background-size: 200% 100%;
-            animation: shimmer 2s infinite;
-        }
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
         }
     </style>
     <script>
@@ -61,27 +52,14 @@
 <body>
     <div id="initial-loader">
         <div class="relative mb-8">
-            <div class="w-24 h-24 border-4 border-blue-500/20 rounded-3xl"></div>
-            <div class="w-24 h-24 border-4 border-blue-500 border-t-transparent rounded-3xl animate-spin absolute top-0 left-0"></div>
-            <div class="absolute inset-0 flex items-center justify-center">
-                <svg viewBox="0 0 100 100" class="w-10 h-10 fill-none stroke-blue-500" strokeWidth="10"><path d="M20 70L50 40L80 10" /></svg>
-            </div>
+            <div class="w-20 h-20 border-4 border-blue-500/20 rounded-full"></div>
+            <div class="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
         </div>
-        <h2 class="text-white font-black text-3xl tracking-tighter uppercase italic">ASIST UP</h2>
-        <p id="loader-status" class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em] mt-4 animate-pulse">Sincronizando Base de Datos...</p>
-        <div id="error-display" class="hidden mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-mono max-w-xs text-center"></div>
+        <h2 class="text-white font-black text-2xl tracking-tighter uppercase italic">ASIST UP</h2>
+        <p id="loader-status" class="text-blue-400 font-bold text-[9px] uppercase tracking-[0.4em] mt-4 animate-pulse">Iniciando Protección de Datos...</p>
+        <div id="error-display" class="hidden mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-mono max-w-xs text-center"></div>
     </div>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
-    <script>
-        window.addEventListener('error', (e) => {
-            const display = document.getElementById('error-display');
-            if (display) {
-                display.innerText = "DIAGNÓSTICO: " + (e.error?.message || e.message || "Error de red");
-                display.classList.remove('hidden');
-            }
-            console.error('ASIST UP ERROR:', e);
-        });
-    </script>
 </body>
 </html>

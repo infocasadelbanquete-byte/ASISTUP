@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
@@ -33,17 +33,26 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
+    // Timeout de Rescate: Si Firebase falla o tarda, desbloqueamos la App a los 6 segundos
+    const rescueTimer = setTimeout(() => {
+      console.warn("ASIST UP: Iniciando en modo offline/tolerante por lentitud de red.");
+      setIsLoadingData(false);
+    }, 6000);
+
     const unsubscribes: (() => void)[] = [];
 
     try {
+      if (!db) throw new Error("Base de datos no inicializada");
+
       const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           setCompany(data.payload ? decompressData(data.payload) : data as any);
         }
         setIsLoadingData(false);
+        clearTimeout(rescueTimer);
       }, (err) => {
-        console.warn("Firestore error:", err);
+        console.error("Error sincronizando empresa:", err);
         setIsLoadingData(false);
       });
       unsubscribes.push(unsubCompany);
@@ -72,11 +81,15 @@ const App: React.FC = () => {
       });
       unsubscribes.push(unsubPayments);
     } catch (e) {
-      console.error("Error setting up listeners:", e);
+      console.error("Fallo crítico de Firebase:", e);
       setIsLoadingData(false);
+      clearTimeout(rescueTimer);
     }
 
-    return () => unsubscribes.forEach(unsub => unsub());
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+      clearTimeout(rescueTimer);
+    };
   }, []);
 
   const handleAdminLogin = () => {
@@ -94,6 +107,8 @@ const App: React.FC = () => {
     setAdminPassInput('');
   };
 
+  if (isLoadingData) return null;
+
   if (view === 'selection') {
     return (
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
@@ -107,18 +122,8 @@ const App: React.FC = () => {
           <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión de Talento Humano</p>
           
           <div className="space-y-4">
-            <button 
-              onClick={() => setView('attendance')} 
-              className="w-full py-6 bg-blue-700 text-white font-black rounded-3xl shadow-xl hover:bg-blue-800 transition-all uppercase text-xs tracking-widest active:scale-95"
-            >
-              Control de Asistencia
-            </button>
-            <button 
-              onClick={() => setIsAdminLoginModalOpen(true)} 
-              className="w-full py-4 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest"
-            >
-              Acceso Administrativo
-            </button>
+            <button onClick={() => setView('attendance')} className="w-full py-6 bg-blue-700 text-white font-black rounded-3xl shadow-xl hover:bg-blue-800 transition-all uppercase text-xs tracking-widest active:scale-95">Control de Asistencia</button>
+            <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-4 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Acceso Administrativo</button>
           </div>
         </div>
 
@@ -134,12 +139,7 @@ const App: React.FC = () => {
               placeholder="••••••"
               autoFocus
             />
-            <button 
-              onClick={handleAdminLogin} 
-              className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-blue-800 transition-all"
-            >
-              Entrar al Sistema
-            </button>
+            <button onClick={handleAdminLogin} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-lg hover:bg-blue-800 transition-all">Entrar al Sistema</button>
           </div>
         </Modal>
       </div>
@@ -147,45 +147,20 @@ const App: React.FC = () => {
   }
 
   if (view === 'attendance') {
-    return (
-      <AttendanceSystem 
-        employees={employees} 
-        onBack={() => setView('selection')}
-        onRegister={async (r) => {
-          await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp });
-        }}
-        onUpdateEmployees={async (emps) => {
-          for (const e of emps) {
-            await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
-          }
-        }}
-      />
-    );
+    return <AttendanceSystem employees={employees} onBack={() => setView('selection')} onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }); }} onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }} />;
   }
 
   return (
     <AdminDashboard 
       role={currentUserRole!} 
-      onLogout={() => {
-        setCurrentUserRole(null);
-        setView('selection');
-      }} 
+      onLogout={() => { setCurrentUserRole(null); setView('selection'); }} 
       company={company}
       onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
       employees={employees}
-      onUpdateEmployees={async (emps) => {
-        for (const e of emps) {
-          await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
-        }
-      }}
+      onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
       attendance={attendance}
       payments={payments}
-      onUpdatePayments={async (pys) => {
-        for (const p of pys) {
-          if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) });
-          else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) });
-        }
-      }}
+      onUpdatePayments={async (pys) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
       settings={settings}
       onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
     />

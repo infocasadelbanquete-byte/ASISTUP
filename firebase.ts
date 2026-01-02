@@ -20,11 +20,11 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
-// Inicialización de la aplicación
+// Inicialización de la App
 const app = initializeApp(firebaseConfig);
 
-// Obtención de la instancia de Firestore vinculada a la App
-export const db = getFirestore(app);
+// Inicialización de Firestore vinculada a la App
+const db = getFirestore(app);
 
 const safeStringify = (obj: any) => {
   const cache = new Set();
@@ -58,4 +58,4 @@ export const decompressData = (compressed: string): any => {
   }
 };
 
-export { collection, doc, onSnapshot, setDoc, addDoc, updateDoc, deleteDoc };
+export { db, collection, doc, onSnapshot, setDoc, addDoc, updateDoc, deleteDoc };
