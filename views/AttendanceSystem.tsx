@@ -1,9 +1,7 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Employee, AttendanceRecord } from '../types.ts';
 import Clock from '../components/Clock.tsx';
-import Modal from '../components/Modal.tsx';
-import { APP_NAME, MOTIVATIONAL_MESSAGES_START, MOTIVATIONAL_MESSAGES_END } from '../constants.tsx';
+import { APP_NAME, MOTIVATIONAL_MESSAGES_START, MOTIVATIONAL_MESSAGES_END, ECUADOR_HOLIDAYS } from '../constants.tsx';
 
 interface AttendanceSystemProps {
   employees: Employee[];
@@ -17,6 +15,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
   const [status, setStatus] = useState<'idle' | 'confirm' | 'success' | 'error'>('idle');
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
   const [motivationalMsg, setMotivationalMsg] = useState('');
+
+  const today = new Date();
+  const currentHoliday = ECUADOR_HOLIDAYS.find(h => h.month === today.getMonth() && h.day === today.getDate());
 
   const handleMark = (type: 'in' | 'out') => {
     if (!currentEmp) return;
@@ -35,7 +36,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
     setStatus('success');
     setPin('');
 
-    // Bloqueo de 5 segundos
+    // Bloqueo estricto de 5 segundos tras marcaje
     setTimeout(() => {
       setStatus('idle');
       setCurrentEmp(null);
@@ -55,7 +56,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
     }
   }, [pin, employees, status]);
 
-  // Teclado Físico
+  // Soporte para Teclado Físico habilitado permanentemente
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (status !== 'idle') return;
@@ -68,21 +69,31 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
 
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-8">
-      <div className="w-full max-w-4xl bg-white/95 backdrop-blur-3xl rounded-[4rem] shadow-2xl p-16 flex flex-col items-center fade-in">
-        <h1 className="text-4xl font-black text-slate-900 mb-8 tracking-tighter uppercase">{APP_NAME}</h1>
-        <div className="mb-12"><Clock /></div>
+      <div className="w-full max-w-4xl bg-white/95 backdrop-blur-3xl rounded-[4rem] shadow-2xl p-16 flex flex-col items-center fade-in relative overflow-hidden">
+        
+        {/* Notificación de Cumpleaños o Festivos en el sistema de asistencia */}
+        {currentHoliday && (
+          <div className="absolute top-0 w-full bg-emerald-600 text-white py-2 text-center text-[10px] font-black uppercase tracking-[0.4em]">
+            ¡Hoy celebramos: {currentHoliday.name}!
+          </div>
+        )}
+
+        <h1 className="text-5xl font-black text-slate-900 mb-8 tracking-tighter uppercase italic">{APP_NAME}</h1>
+        <div className="mb-14"><Clock /></div>
 
         {status === 'idle' && (
           <div className="w-full max-w-md text-center">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-10">Ingrese su PIN de 6 dígitos</p>
-            <div className="flex gap-4 justify-center mb-12">
+            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em] mb-12">DIGITE SU CÓDIGO DE IDENTIDAD</p>
+            <div className="flex gap-4 justify-center mb-16">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className={`w-12 h-16 border-b-4 flex items-center justify-center text-4xl font-black transition-all ${pin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
+                <div key={i} className={`w-14 h-20 border-b-8 flex items-center justify-center text-5xl font-black transition-all duration-300 ${pin.length > i ? 'border-blue-600 text-slate-900 scale-110' : 'border-slate-100'}`}>
                   {pin[i] ? '•' : ''}
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            
+            {/* Teclado Visual Aesthetic */}
+            <div className="grid grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
                 <button 
                   key={btn}
@@ -91,7 +102,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
                     else if (btn === '←') setPin(p => p.slice(0, -1));
                     else if (pin.length < 6) setPin(p => p + btn);
                   }}
-                  className="h-20 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-2xl text-2xl font-black transition-all active:scale-90"
+                  className="h-20 bg-slate-50 hover:bg-blue-600 hover:text-white rounded-[1.5rem] text-3xl font-black transition-all active:scale-90 shadow-sm hover:shadow-xl"
                 >
                   {btn}
                 </button>
@@ -101,34 +112,46 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
         )}
 
         {status === 'confirm' && currentEmp && (
-          <div className="text-center animate-in zoom-in duration-300">
-            <h2 className="text-4xl font-black text-slate-900 mb-2 uppercase">{currentEmp.name}</h2>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-12">Confirmación de Marcado</p>
-            <div className="grid grid-cols-2 gap-8 w-full max-w-lg mx-auto">
-              <button onClick={() => handleMark('in')} className="py-12 bg-emerald-600 text-white rounded-[2rem] font-black text-2xl uppercase shadow-xl hover:bg-emerald-700 transition-all active:scale-95">Ingreso</button>
-              <button onClick={() => handleMark('out')} className="py-12 bg-blue-700 text-white rounded-[2rem] font-black text-2xl uppercase shadow-xl hover:bg-blue-800 transition-all active:scale-95">Salida</button>
+          <div className="text-center animate-in zoom-in duration-300 w-full max-w-lg">
+            <div className="mb-8">
+               <div className="w-24 h-24 bg-blue-100 rounded-3xl mx-auto flex items-center justify-center text-4xl font-black text-blue-600 uppercase">
+                 {currentEmp.name[0]}
+               </div>
+            </div>
+            <h2 className="text-4xl font-black text-slate-900 mb-2 uppercase tracking-tighter leading-tight">{currentEmp.name}</h2>
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-14 italic">Verificación biométrica por PIN completada</p>
+            <div className="grid grid-cols-2 gap-8">
+              <button onClick={() => handleMark('in')} className="py-14 bg-emerald-600 text-white rounded-[2.5rem] font-black text-3xl uppercase shadow-2xl hover:bg-emerald-700 transition-all active:scale-95 group relative overflow-hidden">
+                <span className="relative z-10">Ingreso</span>
+                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+              </button>
+              <button onClick={() => handleMark('out')} className="py-14 bg-blue-700 text-white rounded-[2.5rem] font-black text-3xl uppercase shadow-2xl hover:bg-blue-800 transition-all active:scale-95 group relative overflow-hidden">
+                <span className="relative z-10">Salida</span>
+                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+              </button>
             </div>
           </div>
         )}
 
         {status === 'success' && (
           <div className="text-center animate-in zoom-in">
-            <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-5xl mx-auto mb-8 shadow-inner">✓</div>
-            <h2 className="text-3xl font-black text-slate-900 mb-6 italic">"{motivationalMsg}"</h2>
-            <p className="text-emerald-600 font-black uppercase tracking-widest">Marcado Registrado con Éxito</p>
-            <p className="text-slate-400 text-[9px] mt-8 uppercase font-bold animate-pulse">Sistema bloqueado por sincronización...</p>
+            <div className="w-32 h-32 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-6xl mx-auto mb-10 shadow-inner">✓</div>
+            <h2 className="text-4xl font-black text-slate-900 mb-6 italic tracking-tight">"{motivationalMsg}"</h2>
+            <p className="text-emerald-600 font-black uppercase tracking-[0.3em] text-sm">Marcaje Registrado Correctamente</p>
+            <p className="text-slate-300 text-[10px] mt-12 uppercase font-black animate-pulse">El sistema se reiniciará para el próximo empleado...</p>
           </div>
         )}
 
         {status === 'error' && (
           <div className="text-center text-red-600 animate-bounce">
-            <h2 className="text-2xl font-black uppercase">PIN INCORRECTO</h2>
-            <p className="font-bold text-xs">Intente nuevamente</p>
+            <div className="text-8xl mb-4">✕</div>
+            <h2 className="text-3xl font-black uppercase tracking-tighter">ACCESO DENEGADO</h2>
+            <p className="font-black text-xs uppercase tracking-widest mt-2">PIN incorrecto o empleado inactivo</p>
           </div>
         )}
       </div>
 
-      <button onClick={onBack} className="mt-8 text-white/40 hover:text-white font-black text-[10px] uppercase tracking-[0.4em] transition-all">Regresar al Inicio</button>
+      <button onClick={onBack} className="mt-12 text-white/40 hover:text-white font-black text-[11px] uppercase tracking-[0.5em] transition-all">Administración ASIST UP</button>
     </div>
   );
 };

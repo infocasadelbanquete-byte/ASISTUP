@@ -23,7 +23,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-// Helper to stringify objects with circular references safely
 const safeStringify = (obj: any) => {
   const cache = new Set();
   return JSON.stringify(obj, (key, value) => {
@@ -40,7 +39,7 @@ export const compressData = (data: any): string => {
     if (!data) return "";
     return LZString.compressToEncodedURIComponent(safeStringify(data));
   } catch (e) {
-    console.error("Error al comprimir:", e);
+    console.error("Compresión fallida:", e);
     return "";
   }
 };
@@ -51,7 +50,7 @@ export const decompressData = (compressed: string): any => {
     const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
     return decompressed ? JSON.parse(decompressed) : null;
   } catch (e) {
-    console.error("Error al descomprimir:", e);
+    console.error("Descompresión fallida:", e);
     return null;
   }
 };
