@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { CompanyConfig, Role } from '../../types';
-import Modal from '../../components/Modal';
+import { CompanyConfig, Role } from '../../types.ts';
+import Modal from '../../components/Modal.tsx';
 
 interface CompanyModuleProps {
   company: CompanyConfig | null;
@@ -31,13 +31,11 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
     e.preventDefault();
     if (!isEditable) return;
     
-    // Validate RUC: 13 digits and ends in 001
     if (!/^\d{13}$/.test(formData.ruc) || !formData.ruc.endsWith('001')) {
       alert('ERROR: El RUC debe tener estrictamente 13 dígitos numéricos y terminar en "001".');
       return;
     }
     
-    // Validate Phone: Fixed 9 or Cell 10
     const phoneLen = formData.phone.length;
     if (phoneLen !== 9 && phoneLen !== 10) {
       alert('ERROR: El teléfono fijo debe tener 9 dígitos y el celular 10 dígitos.');
@@ -166,12 +164,11 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
         }
       >
         <div className="space-y-4">
-           <p className="text-sm text-gray-600 font-medium">¿Desea actualizar la información institucional de la empresa?</p>
-           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-              <p className="text-blue-900 font-black text-sm uppercase mb-1">{formData.name}</p>
-              <p className="text-xs text-blue-700 font-bold">RUC: {formData.ruc}</p>
+           <div className="flex items-center gap-3 text-blue-600 mb-2">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <p className="font-bold uppercase text-xs">Advertencia de Modificación</p>
            </div>
-           <p className="text-[10px] text-slate-400 font-bold italic uppercase">Estos datos aparecerán en todos los roles de pago y reportes del sistema.</p>
+           <p className="text-sm text-gray-600 font-medium">¿Desea actualizar la información institucional de la empresa? Estos cambios afectarán los encabezados de todos los documentos oficiales.</p>
         </div>
       </Modal>
     </div>

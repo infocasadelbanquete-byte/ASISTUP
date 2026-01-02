@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Role } from '../types';
+import { Role } from '../types.ts';
 
 interface SidebarProps {
   role: Role;
