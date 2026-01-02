@@ -1,0 +1,17 @@
+
+{
+  "short_name": "ASISTUP",
+  "name": "ASIST UP - HR Enterprise Suite",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1063/1063376.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#f8fafc"
+}
