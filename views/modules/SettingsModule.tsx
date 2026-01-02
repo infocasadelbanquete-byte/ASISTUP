@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { GlobalSettings, Role, DaySchedule, WorkShift } from '../../types';
-import Modal from '../../components/Modal';
+import React, { useState, useEffect } from 'react';
+import { GlobalSettings, Role, DaySchedule, WorkShift } from '../../types.ts';
+import Modal from '../../components/Modal.tsx';
 
 interface SettingsModuleProps {
   settings: GlobalSettings;
@@ -12,6 +12,22 @@ interface SettingsModuleProps {
 const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role }) => {
   const [localSettings, setLocalSettings] = useState<GlobalSettings>(settings);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [canInstall, setCanInstall] = useState(false);
+
+  useEffect(() => {
+    if (window.deferredPrompt) setCanInstall(true);
+  }, []);
+
+  const handleInstallApp = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (!promptEvent) return;
+    promptEvent.prompt();
+    const { outcome } = await promptEvent.userChoice;
+    if (outcome === 'accepted') {
+      (window as any).deferredPrompt = null;
+      setCanInstall(false);
+    }
+  };
 
   const handleBackup = () => {
     const data = {
@@ -90,10 +106,20 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
+      {canInstall && (
+        <div className="bg-emerald-600 p-6 rounded-[2rem] text-white flex justify-between items-center shadow-xl animate-bounce-slow">
+          <div>
+            <h4 className="font-black uppercase text-sm tracking-tight">Instalar en Escritorio</h4>
+            <p className="text-xs opacity-90">Acceda a ASIST UP más rápido desde su computador.</p>
+          </div>
+          <button onClick={handleInstallApp} className="px-6 py-3 bg-white text-emerald-700 font-black rounded-xl text-[10px] uppercase tracking-widest">Instalar Ahora</button>
+        </div>
+      )}
+
       <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-gray-100">
         <div className="flex items-center gap-4 mb-8">
            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center">
-             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
+             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
            </div>
            <div>
              <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Parámetros Laborales Nacionales</h3>
@@ -149,21 +175,14 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
             </div>
           </div>
         </div>
-
-        <div className="mt-8 p-4 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 text-[10px] font-bold italic flex items-center gap-3">
-          <span>💡</span>
-          Recuerde: Si un empleado no marca dentro de estos rangos, el sistema lo registrará fuera de horario comercial. El medio día libre semanal es un derecho irrenunciable.
-        </div>
       </div>
 
       <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-10 rounded-[2.5rem] shadow-2xl text-white relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-           <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center text-4xl shadow-inner border border-white/20">
-             🛡️
-           </div>
+           <div className="w-20 h-20 bg-white/20 backdrop-blur-xl rounded-3xl flex items-center justify-center text-4xl shadow-inner border border-white/20">🛡️</div>
            <div className="flex-1 text-center md:text-left">
              <h3 className="text-2xl font-black uppercase tracking-tight mb-2">Optimización de Memoria en Nube</h3>
-             <p className="text-blue-100 font-medium mb-6">El motor de compresión <b>LZ-UP</b> está activo. Sus datos ocupan un 75% menos de espacio en Firebase.</p>
+             <p className="text-blue-100 font-medium mb-6">El motor de compresión <b>LZ-UP</b> está activo.</p>
              <button onClick={handleBackup} className="px-8 py-4 bg-white text-blue-900 font-black rounded-2xl shadow-lg hover:scale-105 transition-all text-xs uppercase tracking-widest">
                Realizar Respaldo Local (JSON)
              </button>
@@ -193,19 +212,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
         }
       >
         <div className="space-y-4">
-          <div className="flex items-center gap-4 text-amber-600">
-            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <p className="text-lg font-black uppercase tracking-tighter">Advertencia de Modificación Crítica</p>
-          </div>
           <p className="text-sm text-gray-600 font-medium leading-relaxed">
-            Está a punto de actualizar el <span className="font-black text-blue-900 underline">Sueldo Básico Unificado</span>, las tasas de aporte o los horarios comerciales. 
-            Este cambio afectará inmediatamente los cálculos de nómina y los registros de asistencia en tiempo real. 
-            ¿Está seguro de que desea proceder con la actualización de estos parámetros nacionales?
+            ¿Está seguro de que desea modificar los parámetros laborales nacionales? Estos cambios afectan el cálculo de nómina en tiempo real.
           </p>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Impacto estimado:</p>
-             <p className="text-[11px] font-bold text-gray-700 italic">Recalculación de provisiones de 13ro, 14to y Fondos de Reserva en todos los roles vigentes.</p>
-          </div>
         </div>
       </Modal>
     </div>

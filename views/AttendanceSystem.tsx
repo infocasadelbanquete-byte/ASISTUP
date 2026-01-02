@@ -65,6 +65,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
     }
   }, [pin, handlePinSubmit, isBlocked, currentEmployee]);
 
+  // Soporte de Teclado Físico
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isBlocked) return;
@@ -72,11 +73,16 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, onRegist
         if (pin.length < 6) setPin(prev => prev + e.key);
       } else if (e.key === 'Backspace') {
         setPin(prev => prev.slice(0, -1));
+      } else if (e.key === 'Escape') {
+        setCurrentEmployee(null);
+        setPin('');
+      } else if (e.key === 'Enter' && currentEmployee) {
+         handleMark('in'); // Por defecto marcar ingreso con enter si ya se validó el pin
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pin, isBlocked]);
+  }, [pin, isBlocked, currentEmployee, handleMark]);
 
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-8">
