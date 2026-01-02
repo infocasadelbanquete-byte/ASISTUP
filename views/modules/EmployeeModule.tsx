@@ -25,12 +25,14 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   });
 
   const handleSave = () => {
-    if (formData.pin?.length !== 6) return alert("El PIN debe ser de 6 dígitos.");
-    if (formData.phone?.length !== 10) return alert("El celular debe tener 10 dígitos.");
+    if (formData.pin?.length !== 6) return alert("ERROR: El PIN debe ser de 6 dígitos estrictamente.");
+    if (formData.phone?.length !== 10) return alert("ERROR: El celular debe tener 10 dígitos.");
+    if (!formData.name || !formData.identification) return alert("ERROR: Los campos de nombre e identificación son obligatorios.");
     
     const newEmployee = { ...formData, id: Math.random().toString(36).substr(2, 9) } as Employee;
     onUpdate([...employees, newEmployee]);
     setIsRegisterModalOpen(false);
+    alert("Empleado registrado con éxito.");
   };
 
   const handleTerminate = (reason: string, details: string) => {
@@ -43,6 +45,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     onUpdate(updated);
     setIsTerminationModalOpen(false);
     setSelectedEmployee(null);
+    alert("Empleado desvinculado. Su acceso ha sido bloqueado.");
   };
 
   const filteredEmployees = employees.filter(e => 
@@ -54,40 +57,40 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     <div className="space-y-8 fade-in">
       <div className="flex justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tighter">GESTIÓN DE TALENTO HUMANO</h2>
-          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Control integral de personal activo y pasivo</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Talento Humano</h2>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Nómina activa y registros históricos</p>
         </div>
         <button 
           onClick={() => setIsRegisterModalOpen(true)}
-          className="px-8 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest"
+          className="px-8 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition-all uppercase text-[10px] tracking-widest"
         >
-          Registrar Nuevo Empleado
+          Nuevo Empleado
         </button>
       </div>
 
       <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-50 bg-slate-50/30">
+        <div className="p-6 bg-slate-50/50">
           <input 
             type="text" 
-            placeholder="Buscar por nombre o identificación..." 
-            className="w-full bg-white border border-slate-200 rounded-xl px-6 py-3 text-sm focus:border-blue-500 outline-none"
+            placeholder="Filtrar por nombre o CI..." 
+            className="w-full bg-white border border-slate-200 rounded-xl px-6 py-3 text-sm focus:border-blue-500 outline-none font-medium"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <tr>
                 <th className="px-8 py-4">Empleado</th>
-                <th className="px-8 py-4">ID / PIN</th>
-                <th className="px-8 py-4">Rol / Estado</th>
-                <th className="px-8 py-4 text-right">Acciones</th>
+                <th className="px-8 py-4">Identificación / PIN</th>
+                <th className="px-8 py-4">Estado</th>
+                <th className="px-8 py-4 text-right">Ficha</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredEmployees.map(emp => (
-                <tr key={emp.id} className="hover:bg-blue-50/30 transition-colors group">
+                <tr key={emp.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-black text-slate-400 uppercase">
@@ -95,18 +98,17 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                       </div>
                       <div>
                         <p className="font-bold text-slate-900">{emp.name}</p>
-                        <p className="text-[10px] text-slate-400 font-medium">{emp.email}</p>
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">{emp.role}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-8 py-5 font-mono text-xs">
-                    <p>{emp.identification}</p>
-                    <p className="text-blue-500 font-bold">PIN: {emp.pin}</p>
+                    <p className="font-bold">{emp.identification}</p>
+                    <p className="text-blue-500 font-black">PIN: {emp.pin}</p>
                   </td>
                   <td className="px-8 py-5">
-                    <span className="text-[10px] font-black uppercase tracking-widest block">{emp.role}</span>
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                      {emp.status}
+                    <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                      {emp.status === 'active' ? 'ACTIVO' : 'DE BAJA'}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right">
@@ -114,138 +116,128 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                       onClick={() => setSelectedEmployee(emp)}
                       className="text-blue-600 font-black text-[10px] uppercase tracking-widest hover:underline"
                     >
-                      Ver Ficha Laboral
+                      Abrir Expediente
                     </button>
                   </td>
                 </tr>
               ))}
+              {filteredEmployees.length === 0 && (
+                <tr><td colSpan={4} className="p-20 text-center text-slate-400 font-black text-xs uppercase italic">No se encontraron registros de empleados</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal Registro */}
-      <Modal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} title="Registro de Nuevo Empleado">
-        <div className="space-y-8">
-          <section>
-            <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] mb-4 border-b pb-2">Datos Personales</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2"><label className="text-[9px] font-bold uppercase">Nombre Completo</label><input className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, name: e.target.value})} /></div>
-              <div><label className="text-[9px] font-bold uppercase">Cédula / ID</label><input className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, identification: e.target.value})} /></div>
-              <div><label className="text-[9px] font-bold uppercase">Fecha Nacimiento</label><input type="date" className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, birthDate: e.target.value})} /></div>
-              <div><label className="text-[9px] font-bold uppercase">Celular (10 dígitos)</label><input maxLength={10} className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-              <div><label className="text-[9px] font-bold uppercase">PIN Asistencia (6 dígitos)</label><input maxLength={6} className="w-full border p-2 rounded-lg font-mono" onChange={e => setFormData({...formData, pin: e.target.value})} /></div>
-            </div>
-          </section>
-          
-          <section>
-            <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] mb-4 border-b pb-2">Condiciones Laborales</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="text-[9px] font-bold uppercase">Sueldo</label><input type="number" className="w-full border p-2 rounded-lg" value={formData.salary} onChange={e => setFormData({...formData, salary: Number(e.target.value)})} /></div>
-              <div><label className="text-[9px] font-bold uppercase">Afiliado IESS</label>
-                <select className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, isAffiliated: e.target.value === 'yes'})}>
-                  <option value="yes">Sí</option>
-                  <option value="no">No</option>
+      <Modal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} title="Registro de Personal">
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+             <div className="col-span-2"><label className="text-[9px] font-bold uppercase">Nombre y Apellidos</label><input className="w-full border p-3 rounded-xl bg-slate-50" onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+             <div><label className="text-[9px] font-bold uppercase">N° Identificación</label><input className="w-full border p-3 rounded-xl bg-slate-50" onChange={e => setFormData({...formData, identification: e.target.value})} /></div>
+             <div><label className="text-[9px] font-bold uppercase">PIN (6 dígitos)</label><input maxLength={6} className="w-full border p-3 rounded-xl bg-slate-50 font-black text-center" onChange={e => setFormData({...formData, pin: e.target.value})} /></div>
+             <div><label className="text-[9px] font-bold uppercase">Celular (10 dígitos)</label><input maxLength={10} className="w-full border p-3 rounded-xl bg-slate-50" onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+             <div><label className="text-[9px] font-bold uppercase">Sueldo Base</label><input type="number" className="w-full border p-3 rounded-xl bg-slate-50" value={formData.salary} onChange={e => setFormData({...formData, salary: Number(e.target.value)})} /></div>
+             <div><label className="text-[9px] font-bold uppercase">Afiliación IESS</label>
+                <select className="w-full border p-3 rounded-xl bg-slate-50" onChange={e => setFormData({...formData, isAffiliated: e.target.value === 'yes'})}>
+                   <option value="yes">Asegurado (IESS)</option>
+                   <option value="no">No Asegurado</option>
                 </select>
-              </div>
-              <div><label className="text-[9px] font-bold uppercase">Sobre Sueldos</label>
+             </div>
+             <div><label className="text-[9px] font-bold uppercase">Sobre Sueldos</label>
                 <select 
                   disabled={!formData.isAffiliated} 
-                  className="w-full border p-2 rounded-lg disabled:bg-gray-100" 
+                  className="w-full border p-3 rounded-xl disabled:opacity-30 bg-slate-50" 
                   onChange={e => setFormData({...formData, overSalaryType: e.target.value as any})}
                 >
-                  <option value="accumulate">Acumula</option>
-                  <option value="monthly">Mensualiza</option>
+                   <option value="accumulate">Acumula (XVIII/XIV)</option>
+                   <option value="monthly">Mensualiza (XVIII/XIV)</option>
                 </select>
-              </div>
-              <div><label className="text-[9px] font-bold uppercase">Rol en Sistema</label>
-                <select className="w-full border p-2 rounded-lg" onChange={e => setFormData({...formData, role: e.target.value as Role})}>
-                  <option value={Role.EMPLOYEE}>Empleado</option>
-                  <option value={Role.PARTIAL_ADMIN}>Administrador Parcial</option>
-                  <option value={Role.SUPER_ADMIN}>Super Administrador</option>
+             </div>
+             <div><label className="text-[9px] font-bold uppercase">Rol en Sistema</label>
+                <select className="w-full border p-3 rounded-xl bg-slate-50" onChange={e => setFormData({...formData, role: e.target.value as Role})}>
+                   <option value={Role.EMPLOYEE}>Empleado Regular</option>
+                   <option value={Role.PARTIAL_ADMIN}>Administrador Parcial</option>
+                   <option value={Role.SUPER_ADMIN}>Super Administrador</option>
                 </select>
-              </div>
-            </div>
-          </section>
-
+             </div>
+          </div>
           <div className="flex justify-end gap-3 pt-4">
-            <button onClick={() => setIsRegisterModalOpen(false)} className="px-6 py-2 text-slate-400 font-bold text-[10px] uppercase">Cancelar</button>
-            <button onClick={handleSave} className="px-10 py-3 bg-blue-600 text-white font-black rounded-xl text-[10px] uppercase shadow-lg">Registrar Empleado</button>
+            <button onClick={() => setIsRegisterModalOpen(false)} className="px-6 py-2 text-slate-400 font-bold text-xs uppercase">Cerrar</button>
+            <button onClick={handleSave} className="px-10 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-xl">Guardar Empleado</button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal Ficha Laboral */}
       <Modal isOpen={!!selectedEmployee} onClose={() => setSelectedEmployee(null)} title="Ficha Laboral Integral">
         {selectedEmployee && (
-          <div className="space-y-8">
-            <div className="flex items-center gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-100">
-               <div className="w-24 h-24 bg-white rounded-2xl shadow-sm flex items-center justify-center font-black text-3xl text-slate-300">
-                 {selectedEmployee.photo ? <img src={selectedEmployee.photo} /> : selectedEmployee.name[0]}
+          <div className="space-y-6">
+            <div className="bg-slate-900 p-8 rounded-[2rem] text-white flex gap-6 items-center">
+               <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center font-black text-2xl border border-white/10">
+                 {selectedEmployee.name[0]}
                </div>
-               <div className="flex-1">
-                 <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">{selectedEmployee.name}</h3>
-                 <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{selectedEmployee.role} • {selectedEmployee.isFixed ? 'Personal Fijo' : 'Personal Temporal'}</p>
+               <div>
+                 <h3 className="text-xl font-black uppercase tracking-tight">{selectedEmployee.name}</h3>
+                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{selectedEmployee.identification}</p>
                  <div className="mt-2 flex gap-2">
-                    <span className={`px-2 py-1 rounded-md text-[8px] font-black uppercase ${selectedEmployee.status === 'active' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{selectedEmployee.status}</span>
-                    <span className="px-2 py-1 bg-slate-200 text-slate-600 rounded-md text-[8px] font-black uppercase">Ingreso: {selectedEmployee.startDate}</span>
+                    <span className="px-2 py-0.5 bg-white/10 rounded text-[8px] font-black uppercase tracking-widest">Ingreso: {selectedEmployee.startDate}</span>
+                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${selectedEmployee.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'}`}>{selectedEmployee.status}</span>
                  </div>
                </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 text-sm">
-               <div className="space-y-4">
-                  <h5 className="text-[10px] font-black uppercase border-b pb-1 text-slate-400">Datos del Contrato</h5>
-                  <p><b>Sueldo:</b> ${selectedEmployee.salary}</p>
-                  <p><b>Afiliación:</b> {selectedEmployee.isAffiliated ? 'SÍ' : 'NO'}</p>
-                  <p><b>Sobre Sueldos:</b> {selectedEmployee.overSalaryType === 'accumulate' ? 'Acumula' : 'Mensualiza'}</p>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+               <div className="p-4 bg-slate-50 rounded-2xl border">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Contrato y Haberes</p>
+                  <p className="mb-1"><b>Sueldo:</b> ${selectedEmployee.salary}</p>
+                  <p className="mb-1"><b>Afiliado:</b> {selectedEmployee.isAffiliated ? 'SÍ' : 'NO'}</p>
+                  <p className="mb-1"><b>Decimos:</b> {selectedEmployee.overSalaryType === 'accumulate' ? 'ACUMULADOS' : 'MENSUALIZADOS'}</p>
                </div>
-               <div className="space-y-4">
-                  <h5 className="text-[10px] font-black uppercase border-b pb-1 text-slate-400">Estadísticas</h5>
-                  <p><b>Horas Totales:</b> {selectedEmployee.totalHoursWorked.toFixed(1)} h</p>
-                  <p><b>PIN:</b> {selectedEmployee.pin}</p>
+               <div className="p-4 bg-slate-50 rounded-2xl border">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Desempeño Anual</p>
+                  <p className="mb-1"><b>Horas Totales:</b> {selectedEmployee.totalHoursWorked.toFixed(1)} h</p>
+                  <p className="mb-1"><b>Faltas:</b> 0</p>
+                  <p className="mb-1"><b>Atrasos:</b> 0</p>
                </div>
             </div>
 
             {selectedEmployee.status === 'active' && (
-              <div className="pt-8 border-t flex justify-center">
-                 <button 
+              <div className="pt-6 border-t flex justify-center">
+                <button 
                   onClick={() => setIsTerminationModalOpen(true)}
-                  className="px-8 py-3 bg-red-50 border border-red-200 text-red-600 font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all"
-                 >
-                   Desvincular Empleado
-                 </button>
+                  className="px-8 py-3 bg-red-50 text-red-600 font-black rounded-xl text-[10px] uppercase tracking-[0.2em] border border-red-100 hover:bg-red-600 hover:text-white transition-all"
+                >
+                  Desvincular Empleado
+                </button>
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      {/* Modal Desvinculación */}
-      <Modal isOpen={isTerminationModalOpen} onClose={() => setIsTerminationModalOpen(false)} title="Formulario de Desvinculación Laboral">
+      <Modal isOpen={isTerminationModalOpen} onClose={() => setIsTerminationModalOpen(false)} title="Terminación Laboral">
         <div className="space-y-6">
-          <p className="p-4 bg-red-50 text-red-800 rounded-xl text-xs font-bold uppercase tracking-tight">⚠ Advertencia: Esta acción es irreversible y bloqueará el acceso del empleado.</p>
-          <div><label className="text-[9px] font-bold uppercase">Motivo</label>
-            <select className="w-full border p-3 rounded-xl" id="term_reason">
-              {Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div><label className="text-[9px] font-bold uppercase">Observaciones / Argumentos</label>
-            <textarea className="w-full border p-3 rounded-xl h-24" id="term_obs" placeholder="Detalle los motivos de la terminación laboral..."></textarea>
-          </div>
-          <div className="flex justify-end gap-3">
-             <button onClick={() => setIsTerminationModalOpen(false)} className="px-6 py-2 text-slate-400 uppercase font-black text-xs">Cancelar</button>
-             <button 
-              onClick={() => {
-                const reason = (document.getElementById('term_reason') as HTMLSelectElement).value;
-                const obs = (document.getElementById('term_obs') as HTMLTextAreaElement).value;
-                handleTerminate(reason, obs);
-              }}
-              className="px-8 py-3 bg-red-600 text-white font-black rounded-xl uppercase text-xs shadow-xl"
-             >
-               Confirmar Baja Definitiva
-             </button>
-          </div>
+           <p className="text-xs text-red-800 bg-red-50 p-4 rounded-xl font-bold uppercase tracking-tight">⚠ Advertencia: Una vez desvinculado, el empleado perderá el acceso al sistema de asistencia y gestión.</p>
+           <div><label className="text-[9px] font-bold uppercase">Motivo Legal</label>
+             <select className="w-full border p-3 rounded-xl bg-slate-50" id="t_reason">
+               {Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}
+             </select>
+           </div>
+           <div><label className="text-[9px] font-bold uppercase">Justificación / Argumentos</label>
+             <textarea className="w-full border p-3 rounded-xl bg-slate-50 h-24" id="t_details" placeholder="Explique los motivos de la baja..."></textarea>
+           </div>
+           <div className="flex justify-end gap-3 pt-4">
+              <button onClick={() => setIsTerminationModalOpen(false)} className="px-6 py-2 text-slate-400 font-bold uppercase text-xs">Cerrar</button>
+              <button 
+                onClick={() => {
+                  const r = (document.getElementById('t_reason') as HTMLSelectElement).value;
+                  const d = (document.getElementById('t_details') as HTMLTextAreaElement).value;
+                  handleTerminate(r, d);
+                }}
+                className="px-10 py-3 bg-red-600 text-white font-black rounded-xl text-xs uppercase shadow-xl"
+              >
+                Ejecutar Desvinculación
+              </button>
+           </div>
         </div>
       </Modal>
     </div>

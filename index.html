@@ -14,7 +14,7 @@
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; overflow-x: hidden; }
         .gradient-blue { background: radial-gradient(circle at top left, #1e293b 0%, #0f172a 100%); }
-        @media print { .no-print { display: none !important; } body { background: white; } @page { size: A4 landscape; margin: 1cm; } }
+        @media print { .no-print { display: none !important; } body { background: white; } @page { size: A4 landscape; margin: 0; } }
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         #initial-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #0f172a; z-index: 9999; }
@@ -36,7 +36,7 @@
     <div id="initial-loader">
       <div class="flex flex-col items-center gap-4">
         <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-white font-black text-[9px] uppercase tracking-[0.4em]">Sincronizando ASIST UP...</p>
+        <p class="text-white font-black text-[9px] uppercase tracking-[0.4em]">Iniciando ASIST UP...</p>
       </div>
     </div>
     <div id="root"></div>

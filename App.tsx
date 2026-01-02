@@ -41,17 +41,14 @@ const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Firestore Listeners
+    // Listeners de Firestore
     const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCompany(data.payload ? decompressData(data.payload) : data as CompanyConfig);
       }
       setIsLoading(false);
-    }, (error) => {
-      console.error("Error al cargar empresa:", error);
-      setIsLoading(false);
-    });
+    }, () => setIsLoading(false));
 
     const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
       if (docSnap.exists()) {
@@ -69,10 +66,26 @@ const App: React.FC = () => {
       setEmployees(data);
     });
 
+    const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
+      const data = snapshot.docs.map(d => {
+        const raw = d.data();
+        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+      }) as AttendanceRecord[];
+      setAttendance(data);
+    });
+
+    const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
+      const data = snapshot.docs.map(d => {
+        const raw = d.data();
+        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+      }) as Payment[];
+      setPayments(data);
+    });
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      unsubCompany(); unsubSettings(); unsubEmployees();
+      unsubCompany(); unsubSettings(); unsubEmployees(); unsubAttendance(); unsubPayments();
     };
   }, []);
 
@@ -91,23 +104,20 @@ const App: React.FC = () => {
     setAdminPassInput('');
   };
 
-  const handleInstallClick = () => {
-    (window as any).installApp();
-  };
-
   const CloudStatus = () => (
-    <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-xl border border-slate-200 no-print transition-all hover:scale-105">
-      <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] animate-pulse' : 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]'}`}></div>
+    <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-xl border border-slate-200 no-print">
+      <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] animate-pulse' : 'bg-red-500'}`}></div>
       <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
-        {isOnline ? 'Nube Estable' : 'Sin Conexión'}
+        {isOnline ? 'NUBE ACTIVA' : 'MODO OFFLINE'}
       </span>
     </div>
   );
 
   if (isLoading) {
     return (
-      <div className="min-h-screen gradient-blue flex items-center justify-center">
-        <div className="text-white font-black animate-pulse">SINCRONIZANDO SISTEMA...</div>
+      <div className="min-h-screen gradient-blue flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-white font-black text-[10px] tracking-[0.4em] uppercase">Sincronizando con Firebase...</div>
       </div>
     );
   }
@@ -117,19 +127,9 @@ const App: React.FC = () => {
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6 relative">
         <CloudStatus />
         
-        <div className="absolute top-10 left-10 flex gap-4 no-print">
-          <button 
-            onClick={handleInstallClick}
-            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-            Instalar Escritorio
-          </button>
-        </div>
-
         <button 
           onClick={() => setIsAdminLoginModalOpen(true)}
-          className="absolute top-10 right-10 text-white opacity-20 hover:opacity-100 p-2 no-print transition-opacity"
+          className="absolute top-10 right-10 text-white opacity-20 hover:opacity-100 p-2 no-print transition-all"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </button>
@@ -140,36 +140,33 @@ const App: React.FC = () => {
               <svg viewBox="0 0 100 100" className="w-12 h-12 stroke-white fill-none" strokeWidth="8"><path d="M20 80V60M50 80V40M80 80V20" strokeOpacity="0.5"/><path d="M20 50L50 30L80 10" stroke="#3b82f6"/></svg>
             </div>
           </div>
-          
           <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tighter">ASIST UP</h1>
-          <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[9px] mb-12">Talento Humano & Asistencia</p>
-          
+          <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[9px] mb-12">Gestión Administrativa y Asistencia</p>
           <button 
             onClick={() => setView('attendance')}
-            className="w-full py-6 bg-blue-600 text-white font-black rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 text-lg uppercase tracking-tight"
+            className="w-full py-6 bg-blue-600 text-white font-black rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 text-lg uppercase"
           >
-            PANEL DE ASISTENCIA
+            MARCAR ASISTENCIA
           </button>
         </div>
 
         <Modal 
           isOpen={isAdminLoginModalOpen} 
           onClose={() => setIsAdminLoginModalOpen(false)} 
-          title="Seguridad Administrativa"
-          footer={<button onClick={handleAdminLogin} className="px-10 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Entrar</button>}
+          title="Login Administrativo"
+          footer={<button onClick={handleAdminLogin} className="px-10 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase">Ingresar</button>}
         >
           <div className="space-y-6">
-            <p className="text-xs text-slate-500 text-center font-medium">Ingrese su clave maestra para acceder al panel de gestión.</p>
             <input 
               type="password" 
               value={adminPassInput} 
               onChange={e => setAdminPassInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleAdminLogin(); }}
-              className="w-full border-2 border-slate-100 rounded-2xl p-5 text-center text-3xl font-black tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+              className="w-full border-2 rounded-2xl p-5 text-center text-3xl font-black outline-none focus:border-blue-500"
               placeholder="••••••"
               autoFocus
             />
-            <p className="text-[10px] text-slate-400 text-center italic uppercase font-bold tracking-widest">Presione ENTER para ingresar</p>
+            <p className="text-[10px] text-slate-400 text-center italic uppercase font-bold tracking-widest">Presione ENTER para acceder</p>
           </div>
         </Modal>
       </div>
@@ -183,8 +180,7 @@ const App: React.FC = () => {
         <AttendanceSystem 
           employees={employees} 
           onRegister={async (r) => {
-            const compressed = compressData(r);
-            await addDoc(collection(db, "attendance"), { payload: compressed, timestamp: r.timestamp });
+            await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp });
           }} 
           onBack={() => setView('selection')}
           onUpdateEmployees={async (emps) => {
@@ -215,7 +211,11 @@ const App: React.FC = () => {
         payments={payments}
         onUpdatePayments={async (pys) => {
           for (const p of pys) {
-            await setDoc(doc(db, "payments", p.id), { payload: compressData(p) });
+            if (p.id) {
+              await setDoc(doc(db, "payments", p.id), { payload: compressData(p) });
+            } else {
+              await addDoc(collection(db, "payments"), { payload: compressData(p) });
+            }
           }
         }}
         settings={settings}
