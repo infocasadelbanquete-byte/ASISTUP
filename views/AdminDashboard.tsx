@@ -179,7 +179,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
 
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
-          {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} />}
+          {/* Fix: Pass missing company prop to EmployeeModule */}
+          {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
           {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} company={company} settings={settings} role={role} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} />}
           {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} />}

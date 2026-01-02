@@ -1,4 +1,3 @@
-
 export enum Role {
   SUPER_ADMIN = 'Super Administrador',
   PARTIAL_ADMIN = 'Administrador Parcial',
@@ -28,7 +27,6 @@ export interface AbsenceRecord {
   documentUrl?: string;
 }
 
-// Added missing AttendanceRecord interface to fix importation errors in App.tsx and other views
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
@@ -36,7 +34,6 @@ export interface AttendanceRecord {
   type: 'in' | 'out';
 }
 
-// Added missing Payment interface to fix importation errors across the application modules
 export interface Payment {
   id: string;
   employeeId: string;
@@ -44,14 +41,14 @@ export interface Payment {
   date: string;
   month: string;
   year: string;
-  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency';
+  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation';
   method: 'Efectivo' | 'Transferencia' | 'Cheque';
   concept: string;
   status: 'paid' | 'void';
   balanceAfter?: number;
   isPartial?: boolean;
   voidJustification?: string;
-  bankSource?: string;
+  bankSource?: 'Banco del Austro' | 'Banco Guayaquil';
 }
 
 export interface Employee {
@@ -62,14 +59,14 @@ export interface Employee {
   birthDate: string;
   origin: string;
   address: string;
-  phone: string; // Celular strictly 10 digits
+  phone: string; 
   email: string;
   bloodType: BloodType;
   emergencyContact: { name: string; phone: string; };
   startDate: string;
   role: Role;
   // Laboral
-  isFixed: boolean;
+  isFixed: boolean; // Fijo o Temporal
   salary: number;
   isAffiliated: boolean;
   overSalaryType: 'accumulate' | 'monthly' | 'none';
@@ -79,7 +76,7 @@ export interface Employee {
     account: string; 
   };
   photo: string;
-  pin: string; // 6 digits
+  pin: string; 
   pinChanges: number;
   status: 'active' | 'terminated';
   terminationDate?: string;
@@ -93,26 +90,20 @@ export interface Employee {
 export interface CompanyConfig {
   name: string;
   legalRep: string;
-  ruc: string; // 13 digits, ends in 001
+  ruc: string; 
   address: string;
-  phone: string; // Fixed 9 or Mobile 10
+  phone: string; 
   email: string;
   logo: string;
 }
 
-// Updated GlobalSettings to include the schedule property used in App.tsx
 export interface GlobalSettings {
-  sbu: number; // 2026: 475.00 default
+  sbu: number; 
   iessRate: number;
   reserveRate: number;
-  schedule?: {
-    weekdays: {
-      morning: { start: string; end: string; enabled: boolean };
-      afternoon: { start: string; end: string; enabled: boolean };
-    };
-    saturdays: {
-      morning: { start: string; end: string; enabled: boolean };
-      afternoon: { start: string; end: string; enabled: boolean };
-    };
+  schedule: {
+    monFri: { in: string; out: string };
+    sat: { in: string; out: string };
+    halfDayOff: string; // Ej: Miércoles tarde
   };
 }

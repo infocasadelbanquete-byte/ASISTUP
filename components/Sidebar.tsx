@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Role } from '../types.ts';
 
@@ -25,12 +24,11 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
     <aside className="w-80 gradient-blue text-white flex flex-col shadow-[15px_0_40px_rgba(0,0,0,0.3)] z-20 border-r border-white/5 relative no-print">
       <div className="p-10">
         <div className="flex items-center gap-5 mb-14">
-          <div className="w-14 h-14 bg-gradient-to-br from-white to-slate-200 text-slate-900 rounded-2xl flex items-center justify-center shadow-2xl logo-shimmer border border-white/20">
-            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-none stroke-slate-900" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M25 75V65" strokeOpacity="0.3" />
-                <path d="M45 75V55" strokeOpacity="0.6" />
-                <path d="M65 75V45" strokeOpacity="0.8" />
-                <path d="M25 55L45 35L60 50L85 15" stroke="#2563eb" strokeWidth="10" />
+          {/* Logo Sophisticated Moderno */}
+          <div className="w-14 h-14 logo-gradient rounded-2xl flex items-center justify-center shadow-2xl border border-white/20">
+            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-none stroke-white" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M30 70 L45 55 L55 65 L75 35" />
+                <circle cx="75" cy="35" r="5" fill="white" />
             </svg>
           </div>
           <div>

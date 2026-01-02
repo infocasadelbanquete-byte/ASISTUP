@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Employee, Role, BloodType, TerminationReason, AbsenceRecord } from '../../types.ts';
+import { Employee, Role, BloodType, TerminationReason, AbsenceRecord, CompanyConfig } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 
 interface EmployeeModuleProps {
@@ -8,9 +8,10 @@ interface EmployeeModuleProps {
   role: Role;
   attendance: any[];
   payments: any[];
+  company: CompanyConfig | null;
 }
 
-const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, role }) => {
+const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, role, company }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [viewingEmp, setViewingEmp] = useState<Employee | null>(null);
@@ -22,7 +23,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     name: '', surname: '', identification: '', birthDate: '', origin: '', address: '',
     phone: '', email: '', bloodType: BloodType.O_POS,
     emergencyContact: { name: '', phone: '' }, startDate: new Date().toISOString().split('T')[0],
-    role: Role.EMPLOYEE, isFixed: true, salary: 475, isAffiliated: true, overSalaryType: 'accumulate',
+    role: Role.EMPLOYEE, isFixed: true, salary: 482.00, isAffiliated: true, overSalaryType: 'accumulate',
     bankInfo: { ifi: '', type: 'Ahorros', account: '' }, photo: '', pin: '',
     status: 'active', observations: [], absences: [], totalHoursWorked: 0
   };
@@ -30,10 +31,11 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   const [form, setForm] = useState<Partial<Employee>>(initialForm);
 
   const validateForm = () => {
-    if (!form.name || !form.surname || !form.identification || !form.pin) return "Nombre, Apellido, ID y PIN son obligatorios.";
-    if (form.pin?.length !== 6) return "El PIN debe ser de 6 dígitos estrictamente.";
+    if (!form.name || !form.surname || !form.identification || !form.pin) return "Datos básicos obligatorios faltantes.";
+    if (form.pin?.length !== 6) return "PIN debe ser de 6 dígitos estrictamente.";
     if (form.phone?.length !== 10) return "El celular debe tener estrictamente 10 dígitos.";
-    if (form.identification?.length < 10) return "ID no válido.";
+    if (!form.emergencyContact?.name || !form.emergencyContact?.phone) return "Contacto de emergencia es obligatorio (Nombre y Teléfono).";
+    if (form.emergencyContact.phone.length !== 10) return "El teléfono de emergencia debe tener 10 dígitos.";
     if (form.isAffiliated === false && form.overSalaryType !== 'none') return "Si no es afiliado, no tiene derecho a sobresueldos.";
     return null;
   };
@@ -54,29 +56,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     setIsModalOpen(false);
     setEditingEmp(null);
     setForm(initialForm);
-    alert("Expediente guardado con éxito.");
-  };
-
-  const handleEdit = (emp: Employee) => {
-    setEditingEmp(emp);
-    setForm(emp);
-    setIsModalOpen(true);
-  };
-
-  const handleRegisterAbsence = (data: Partial<AbsenceRecord>) => {
-    if (!viewingEmp) return;
-    const newAbsence: AbsenceRecord = {
-      id: Math.random().toString(36).substr(2, 5),
-      date: data.date!,
-      type: data.type!,
-      reason: data.reason!,
-      justified: data.justified || false
-    };
-    const updated = employees.map(e => e.id === viewingEmp.id ? { ...e, absences: [...(e.absences || []), newAbsence] } : e);
-    onUpdate(updated);
-    setIsAbsenceModalOpen(false);
-    setViewingEmp(updated.find(e => e.id === viewingEmp.id)!);
-    alert("Ausencia registrada correctamente.");
+    alert("Expediente de personal guardado con éxito.");
   };
 
   const handleTermination = (data: any) => {
@@ -90,66 +70,52 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     } : e);
     onUpdate(updated);
     setIsTermModalOpen(false);
-    setViewingEmp(null);
-    alert("Empleado desvinculado. Acceso bloqueado.");
-    window.print();
-  };
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setForm({ ...form, photo: reader.result as string });
-      reader.readAsDataURL(file);
-    }
+    alert("Empleado desvinculado con éxito. Se generará el acta de cese de funciones.");
+    setTimeout(() => window.print(), 500);
   };
 
   return (
-    <div className="space-y-6 fade-in no-print">
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border flex justify-between items-center">
+    <div className="space-y-6 fade-in">
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border flex justify-between items-center no-print">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Talento</h2>
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Control de Expedientes y Ausentismo</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Talento Humano</h2>
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Registros, Fichas e Historiales</p>
         </div>
         <button onClick={() => { setForm(initialForm); setEditingEmp(null); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-2xl shadow-xl uppercase text-[10px] tracking-widest hover:scale-105 transition-transform">Registrar Empleado</button>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-sm border overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] shadow-sm border overflow-hidden no-print">
         <div className="p-6 bg-slate-50 border-b flex gap-4">
-          <input type="text" placeholder="Buscar por nombre o ID..." className="flex-1 bg-white border p-3 rounded-xl text-xs font-bold" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <input type="text" placeholder="Buscar por nombre, apellido o ID..." className="flex-1 bg-white border p-3 rounded-xl text-xs font-bold focus:border-blue-500 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
             <tr>
               <th className="px-8 py-4">Foto</th>
-              <th className="px-8 py-4">Empleado</th>
-              <th className="px-8 py-4">ID / PIN</th>
+              <th className="px-8 py-4">Colaborador</th>
+              <th className="px-8 py-4">Rol en Sistema</th>
               <th className="px-8 py-4">Estado</th>
-              <th className="px-8 py-4 text-right">Acción</th>
+              <th className="px-8 py-4 text-right">Expediente</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
-            {employees.filter(e => (e.name + e.surname).toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+          <tbody className="divide-y text-xs">
+            {employees.filter(e => (e.name + " " + e.surname + " " + e.identification).toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
               <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-8 py-4">
-                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 border">
-                    {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-300">N/A</div>}
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border">
+                    {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : null}
                   </div>
                 </td>
                 <td className="px-8 py-4">
-                  <p className="font-black text-slate-900 text-sm uppercase">{emp.name} {emp.surname}</p>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase">{emp.role}</p>
+                   <p className="font-black uppercase text-slate-900">{emp.name} {emp.surname}</p>
+                   <p className="text-[9px] text-slate-400 font-bold tracking-widest uppercase">{emp.identification}</p>
                 </td>
-                <td className="px-8 py-4 font-mono text-xs">
-                  <span className="text-slate-600">{emp.identification}</span>
-                  <span className="block text-blue-500 font-bold">PIN: {emp.pin}</span>
-                </td>
+                <td className="px-8 py-4 font-bold text-slate-400 uppercase">{emp.role}</td>
                 <td className="px-8 py-4">
-                  <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{emp.status}</span>
+                  <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{emp.status}</span>
                 </td>
-                <td className="px-8 py-4 text-right space-x-2">
-                  <button onClick={() => handleEdit(emp)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">Editar</button>
-                  <button onClick={() => setViewingEmp(emp)} className="p-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest">Ver Ficha</button>
+                <td className="px-8 py-4 text-right">
+                   <button onClick={() => setViewingEmp(emp)} className="text-blue-600 font-black uppercase hover:underline">Ver Ficha Completa</button>
                 </td>
               </tr>
             ))}
@@ -157,185 +123,223 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </table>
       </div>
 
-      {/* Modal de Registro/Edición */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Editar Expediente" : "Nuevo Registro de Empleado"}>
-        <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-2 custom-scroll">
-          <div className="flex flex-col items-center gap-4 mb-6">
-            <div className="w-32 h-32 rounded-3xl bg-slate-50 border-4 border-dashed border-slate-200 flex items-center justify-center relative overflow-hidden group">
-              {form.photo ? <img src={form.photo} className="w-full h-full object-cover" /> : <span className="text-slate-300 font-black text-[10px] uppercase">Foto Requerida</span>}
-              <input type="file" accept="image/*" onChange={handlePhotoChange} className="absolute inset-0 opacity-0 cursor-pointer" />
-            </div>
-            <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Click para subir foto</p>
-          </div>
+      {/* Formulario de Registro con TODOS los campos solicitados */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Editar Expediente Laboral" : "Nuevo Registro de Personal"}>
+        <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-4 custom-scroll">
+           <div className="grid grid-cols-2 gap-6">
+              <div className="col-span-2 flex flex-col items-center gap-2">
+                 <div className="w-28 h-28 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
+                    {form.photo ? <img src={form.photo} className="w-full h-full object-cover" /> : <span className="text-[10px] font-black text-slate-300 uppercase">Subir Foto</span>}
+                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => {
+                       const file = e.target.files?.[0];
+                       if(file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setForm({...form, photo: reader.result as string});
+                          reader.readAsDataURL(file);
+                       }
+                    }} />
+                 </div>
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Imagen Identificativa</p>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-1">
-              <label className="text-[9px] font-black text-slate-400 uppercase">Nombre</label>
-              <input className="w-full p-3 border rounded-xl" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
-            </div>
-            <div className="col-span-1">
-              <label className="text-[9px] font-black text-slate-400 uppercase">Apellido</label>
-              <input className="w-full p-3 border rounded-xl" value={form.surname} onChange={e => setForm({...form, surname: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase">N° Identificación</label>
-              <input className="w-full p-3 border rounded-xl" value={form.identification} onChange={e => setForm({...form, identification: e.target.value})} />
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase">PIN Asistencia (6 dígitos)</label>
-              <input maxLength={6} className="w-full p-3 border-2 border-blue-100 rounded-xl font-black text-center text-xl tracking-tighter" value={form.pin} onChange={e => setForm({...form, pin: e.target.value.replace(/\D/g,'')})} />
-            </div>
-            <div>
-               <label className="text-[9px] font-black text-slate-400 uppercase">Fecha Nacimiento</label>
-               <input type="date" className="w-full p-3 border rounded-xl" value={form.birthDate} onChange={e => setForm({...form, birthDate: e.target.value})} />
-            </div>
-            <div>
-               <label className="text-[9px] font-black text-slate-400 uppercase">Procedencia</label>
-               <input className="w-full p-3 border rounded-xl" value={form.origin} onChange={e => setForm({...form, origin: e.target.value})} />
-            </div>
-            <div>
-               <label className="text-[9px] font-black text-slate-400 uppercase">Tipo de Sangre</label>
-               <select className="w-full p-3 border rounded-xl" value={form.bloodType} onChange={e => setForm({...form, bloodType: e.target.value as BloodType})}>
-                  {Object.values(BloodType).map(v => <option key={v} value={v}>{v}</option>)}
-               </select>
-            </div>
-            <div>
-               <label className="text-[9px] font-black text-slate-400 uppercase">Celular (10 dígitos)</label>
-               <input maxLength={10} className="w-full p-3 border rounded-xl" value={form.phone} onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g,'')})} />
-            </div>
-          </div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Nombres del empleado</label><input required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Apellidos del empleado</label><input required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.surname} onChange={e => setForm({...form, surname: e.target.value})} /></div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">N° de identificación</label><input required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.identification} onChange={e => setForm({...form, identification: e.target.value})} /></div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">PIN de Asistencia (6 dígitos)</label><input maxLength={6} required className="w-full border-2 border-blue-100 p-3 rounded-xl text-center font-black text-2xl tracking-widest" value={form.pin} onChange={e => setForm({...form, pin: e.target.value.replace(/\D/g,'')})} /></div>
+              
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Fecha de nacimiento</label><input type="date" required className="w-full border-2 p-3 rounded-xl" value={form.birthDate} onChange={e => setForm({...form, birthDate: e.target.value})} /></div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Procedencia (Lugar de origen)</label><input required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.origin} onChange={e => setForm({...form, origin: e.target.value})} /></div>
+              
+              <div className="col-span-2"><label className="text-[9px] font-black uppercase text-slate-400">Dirección de domicilio completa</label><input required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+              
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Teléfono (Celular estrictamente 10 dígitos)</label><input maxLength={10} required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.phone} onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g,'')})} /></div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Correo electrónico</label><input type="email" required className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+              
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Tipo de sangre</label>
+                 <select className="w-full border-2 p-3 rounded-xl" value={form.bloodType} onChange={e => setForm({...form, bloodType: e.target.value as BloodType})}>
+                    {Object.values(BloodType).map(t => <option key={t} value={t}>{t}</option>)}
+                 </select>
+              </div>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Fecha de vinculación (Ingreso)</label><input type="date" required className="w-full border-2 p-3 rounded-xl" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></div>
+              
+              <div className="col-span-2 border-t pt-4">
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Contacto de Emergencia (Obligatorio)</h4>
+                 <div className="grid grid-cols-2 gap-4">
+                    <input placeholder="Nombre completo" className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.emergencyContact?.name} onChange={e => setForm({...form, emergencyContact: {...form.emergencyContact!, name: e.target.value}})} />
+                    <input maxLength={10} placeholder="Teléfono/Celular" className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.emergencyContact?.phone} onChange={e => setForm({...form, emergencyContact: {...form.emergencyContact!, phone: e.target.value.replace(/\D/g,'')}})} />
+                 </div>
+              </div>
 
-          <div className="bg-slate-50 p-6 rounded-3xl border space-y-4">
-             <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Condiciones Laborales</h4>
-             <div className="grid grid-cols-2 gap-4">
-                <div>
-                   <label className="text-[9px] font-black text-slate-400 uppercase">Sueldo Nominal ($)</label>
-                   <input type="number" className="w-full p-3 border rounded-xl" value={form.salary} onChange={e => setForm({...form, salary: Number(e.target.value)})} />
-                </div>
-                <div>
-                   <label className="text-[9px] font-black text-slate-400 uppercase">Afiliación IESS</label>
-                   <select className="w-full p-3 border rounded-xl" value={form.isAffiliated ? 'si' : 'no'} onChange={e => {
-                     const isAff = e.target.value === 'si';
-                     setForm({...form, isAffiliated: isAff, overSalaryType: isAff ? 'accumulate' : 'none'});
-                   }}>
-                      <option value="si">SÍ</option>
-                      <option value="no">NO (Bloquea Sobresueldos)</option>
-                   </select>
-                </div>
-                <div>
-                   <label className="text-[9px] font-black text-slate-400 uppercase">Sobresueldos (F. Reserva)</label>
-                   <select disabled={!form.isAffiliated} className="w-full p-3 border rounded-xl disabled:opacity-30" value={form.overSalaryType} onChange={e => setForm({...form, overSalaryType: e.target.value as any})}>
-                      <option value="accumulate">Acumula</option>
-                      <option value="monthly">Mensualiza</option>
-                      <option value="none">Ninguno</option>
-                   </select>
-                </div>
-                <div>
-                   <label className="text-[9px] font-black text-slate-400 uppercase">Tipo Contrato</label>
-                   <select className="w-full p-3 border rounded-xl" value={form.isFixed ? 'fijo' : 'temp'} onChange={e => setForm({...form, isFixed: e.target.value === 'fijo'})}>
-                      <option value="fijo">Fijo</option>
-                      <option value="temp">Temporal</option>
-                   </select>
-                </div>
-             </div>
-          </div>
+              <div className="col-span-2 bg-slate-50 p-6 rounded-3xl border border-slate-200">
+                 <h4 className="text-[11px] font-black text-blue-800 uppercase tracking-widest mb-4">Condiciones Laborales y Bancarias</h4>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[9px] font-black uppercase">Tipo de empleado</label>
+                        <select className="w-full border p-2 rounded-lg bg-white" value={form.isFixed ? 'f' : 't'} onChange={e => setForm({...form, isFixed: e.target.value === 'f'})}>
+                            <option value="f">Empleado Fijo</option>
+                            <option value="t">Empleado Temporal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[9px] font-black uppercase">Sueldo acordado ($)</label>
+                        <input type="number" step="0.01" className="w-full border p-2 rounded-lg bg-white font-bold" value={form.salary} onChange={e => setForm({...form, salary: Number(e.target.value)})} />
+                    </div>
+                    <div>
+                        <label className="text-[9px] font-black uppercase">Afiliación IESS</label>
+                        <select className="w-full border p-2 rounded-lg bg-white" value={form.isAffiliated ? 'si' : 'no'} onChange={e => {
+                            const isA = e.target.value === 'si'; 
+                            setForm({...form, isAffiliated: isA, overSalaryType: isA ? 'accumulate' : 'none'})
+                        }}>
+                            <option value="si">SÍ (Derecho a afiliación)</option>
+                            <option value="no">NO (Sin derecho a afiliación/sobresueldos)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[9px] font-black uppercase">Sobre sueldos (Fondos Reserva)</label>
+                        <select disabled={!form.isAffiliated} className="w-full border p-2 rounded-lg bg-white disabled:bg-slate-200 disabled:opacity-50" value={form.overSalaryType} onChange={e => setForm({...form, overSalaryType: e.target.value as any})}>
+                            <option value="accumulate">Acumula</option>
+                            <option value="monthly">Mensualiza</option>
+                            <option value="none">No tiene derecho</option>
+                        </select>
+                        <p className="text-[8px] text-slate-400 mt-1 italic leading-none">Fondos de reserva se pagan a partir del segundo año.</p>
+                    </div>
+                    <div className="col-span-2 mt-4 space-y-3">
+                       <label className="text-[10px] font-black uppercase text-blue-600 block border-b pb-1">Registro de Cuenta Bancaria</label>
+                       <div className="grid grid-cols-3 gap-2">
+                          <input placeholder="IFI (Ej: Banco Pichincha)" className="w-full border p-2 rounded-lg bg-white text-[11px]" value={form.bankInfo?.ifi} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, ifi: e.target.value}})} />
+                          <select className="w-full border p-2 rounded-lg bg-white text-[11px]" value={form.bankInfo?.type} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, type: e.target.value as any}})}>
+                             <option value="Ahorros">Ahorros</option>
+                             <option value="Corriente">Corriente</option>
+                          </select>
+                          <input placeholder="# de Cuenta" className="w-full border p-2 rounded-lg bg-white text-[11px]" value={form.bankInfo?.account} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, account: e.target.value}})} />
+                       </div>
+                    </div>
+                 </div>
+              </div>
 
-          <button onClick={handleSave} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl shadow-xl uppercase text-xs tracking-widest">Guardar Información</button>
+              <div><label className="text-[9px] font-black uppercase text-slate-400">Rol en el Sistema</label>
+                 <select className="w-full border-2 p-3 rounded-xl focus:border-blue-500 outline-none" value={form.role} onChange={e => setForm({...form, role: e.target.value as Role})}>
+                    {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
+                 </select>
+              </div>
+           </div>
+           <button onClick={handleSave} className="w-full py-5 bg-blue-700 text-white font-black rounded-3xl shadow-xl uppercase text-xs tracking-widest hover:bg-blue-800 transition-all">Guardar Expediente Maestro</button>
         </div>
       </Modal>
 
-      {/* Ficha Laboral Completa */}
-      <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Expediente Laboral Integral">
+      {/* Ficha Laboral Integral e Historial (Imprimible) */}
+      <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Ficha Laboral Integral">
         {viewingEmp && (
-          <div className="space-y-6">
-            <div className="flex gap-6 items-center bg-slate-900 p-8 rounded-[2rem] text-white">
-               <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white/20">
-                  {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <div className="bg-white/10 w-full h-full"></div>}
-               </div>
-               <div>
-                  <h3 className="text-2xl font-black uppercase tracking-tight">{viewingEmp.name} {viewingEmp.surname}</h3>
-                  <p className="text-blue-400 font-black text-xs uppercase tracking-widest">ID: {viewingEmp.identification}</p>
-                  <div className="flex gap-2 mt-4">
-                    <span className="px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase">Ingreso: {viewingEmp.startDate}</span>
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${viewingEmp.isAffiliated ? 'bg-emerald-500' : 'bg-red-500'}`}>{viewingEmp.isAffiliated ? 'Afiliado' : 'No Afiliado'}</span>
-                  </div>
-               </div>
-            </div>
+          <div className="space-y-8 print:p-0">
+             <header className="flex gap-8 items-center bg-slate-900 p-10 rounded-[2.5rem] text-white print:bg-white print:text-black print:border-b-2 print:border-black print:rounded-none">
+                <div className="w-32 h-32 rounded-3xl overflow-hidden border-4 border-white/20 print:border-black shadow-2xl">
+                   {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-800 flex items-center justify-center text-3xl">👤</div>}
+                </div>
+                <div className="flex-1">
+                   <h1 className="text-4xl font-black uppercase tracking-tighter leading-none mb-2">{viewingEmp.name} {viewingEmp.surname}</h1>
+                   <div className="flex gap-4">
+                      <p className="text-blue-400 font-black text-xs uppercase tracking-widest print:text-black">ID: {viewingEmp.identification}</p>
+                      <p className="text-white/40 font-black text-xs uppercase tracking-widest print:text-black">| Sangre: {viewingEmp.bloodType}</p>
+                   </div>
+                   <div className="flex gap-3 mt-6 no-print">
+                      <span className="px-4 py-1.5 bg-white/10 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest">Desde: {viewingEmp.startDate}</span>
+                      <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${viewingEmp.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'}`}>{viewingEmp.status === 'active' ? 'Activo' : 'Desvinculado'}</span>
+                   </div>
+                </div>
+                <div className="no-print"><button onClick={() => window.print()} className="p-5 bg-white/10 rounded-2xl hover:bg-white/20 transition-all shadow-xl">🖨️</button></div>
+             </header>
 
-            <div className="grid grid-cols-2 gap-4">
-               <div className="p-5 bg-slate-50 rounded-2xl border space-y-2">
-                  <p className="text-[9px] font-black text-slate-400 uppercase border-b pb-1">Ausentismo</p>
-                  <div className="flex justify-between text-xs"><span>Faltas Totales:</span><span className="font-black">{viewingEmp.absences?.filter(a => a.type === 'Falta').length || 0}</span></div>
-                  <div className="flex justify-between text-xs"><span>Permisos:</span><span className="font-black">{viewingEmp.absences?.filter(a => a.type === 'Permiso').length || 0}</span></div>
-                  <button onClick={() => setIsAbsenceModalOpen(true)} className="w-full mt-3 py-2 bg-slate-200 text-slate-800 font-black text-[9px] uppercase rounded-lg">Registrar Ausencia</button>
-               </div>
-               <div className="p-5 bg-slate-50 rounded-2xl border space-y-2">
-                  <p className="text-[9px] font-black text-slate-400 uppercase border-b pb-1">Resumen Horas</p>
-                  <div className="flex justify-between text-xs"><span>Horas Totales:</span><span className="font-black text-blue-600">{viewingEmp.totalHoursWorked}h</span></div>
-                  <p className="text-[8px] text-slate-400 mt-2 uppercase font-bold italic">Actualizado al último marcaje</p>
-               </div>
-            </div>
+             <div className="grid grid-cols-2 gap-8 print:grid-cols-1">
+                <section className="space-y-4">
+                   <h3 className="text-[12px] font-black text-blue-700 uppercase tracking-widest border-b-2 border-blue-100 pb-2">Información del Personal</h3>
+                   <div className="text-[11px] space-y-3">
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Procedencia:</span> <span className="font-black text-slate-900 uppercase">{viewingEmp.origin}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">F. Nacimiento:</span> <span className="font-black text-slate-900">{viewingEmp.birthDate}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Teléfono:</span> <span className="font-black text-slate-900">{viewingEmp.phone}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Email:</span> <span className="font-black text-slate-900 lowercase">{viewingEmp.email}</span></p>
+                      <p className="flex justify-between mt-6 p-4 bg-slate-50 rounded-2xl">
+                         <span className="text-slate-500 uppercase font-black text-[9px]">Contacto Emergencia:</span> 
+                         <span className="font-black text-slate-900 text-right uppercase leading-tight">{viewingEmp.emergencyContact?.name}<br/>{viewingEmp.emergencyContact?.phone}</span>
+                      </p>
+                   </div>
+                </section>
+                <section className="space-y-4">
+                   <h3 className="text-[12px] font-black text-blue-700 uppercase tracking-widest border-b-2 border-blue-100 pb-2">Condiciones Contractuales</h3>
+                   <div className="text-[11px] space-y-3">
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Tipo Contrato:</span> <span className="font-black text-slate-900 uppercase">{viewingEmp.isFixed ? 'Personal Fijo' : 'Personal Temporal'}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Sueldo Acordado:</span> <span className="font-black text-emerald-600 text-lg">${viewingEmp.salary.toFixed(2)}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">IESS:</span> <span className="font-black text-slate-900 uppercase">{viewingEmp.isAffiliated ? 'SÍ (Afiliado)' : 'NO (Sin Afiliación)'}</span></p>
+                      <p className="flex justify-between border-b border-slate-50 pb-1"><span className="text-slate-400 uppercase">Fondos Reserva:</span> <span className="font-black text-slate-900 uppercase">{viewingEmp.overSalaryType === 'accumulate' ? 'ACUMULA' : viewingEmp.overSalaryType === 'monthly' ? 'MENSUALIZA' : 'NO APLICA'}</span></p>
+                      <div className="mt-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                         <span className="text-blue-700 uppercase font-black text-[9px] block mb-1">Datos Bancarios para Nómina:</span> 
+                         <p className="text-[11px] font-black text-slate-900 uppercase">{viewingEmp.bankInfo?.ifi} - {viewingEmp.bankInfo?.type}</p>
+                         <p className="text-[12px] font-black text-blue-600">CTA: {viewingEmp.bankInfo?.account}</p>
+                      </div>
+                   </div>
+                </section>
+             </div>
 
-            <div className="flex gap-4">
-               <button onClick={() => { handleEdit(viewingEmp); setViewingEmp(null); }} className="flex-1 py-4 bg-slate-100 text-slate-900 font-black rounded-xl uppercase text-[10px]">Editar Datos</button>
-               {viewingEmp.status === 'active' && (
-                 <button onClick={() => setIsTermModalOpen(true)} className="flex-1 py-4 bg-red-50 text-red-600 border border-red-200 font-black rounded-xl uppercase text-[10px]">Desvincular</button>
-               )}
-            </div>
+             <section className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-200">
+                <h3 className="text-[12px] font-black text-slate-900 uppercase tracking-widest mb-6 flex justify-between">
+                   <span>Resumen de historial laboral</span>
+                   <span className="text-blue-600">Corte 2026</span>
+                </h3>
+                <div className="grid grid-cols-3 gap-6 text-center">
+                   <div className="bg-white p-4 rounded-2xl shadow-sm border">
+                      <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Faltas acumuladas</p>
+                      <p className="text-2xl font-black text-red-600">{viewingEmp.absences?.filter(a => a.type === 'Falta').length || 0}</p>
+                   </div>
+                   <div className="bg-white p-4 rounded-2xl shadow-sm border">
+                      <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Atrasos totales</p>
+                      <p className="text-2xl font-black text-orange-500">{viewingEmp.absences?.filter(a => a.type === 'Atraso').length || 0}</p>
+                   </div>
+                   <div className="bg-white p-4 rounded-2xl shadow-sm border">
+                      <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Horas trabajadas</p>
+                      <p className="text-2xl font-black text-blue-600">{viewingEmp.totalHoursWorked || 0}h</p>
+                   </div>
+                </div>
+                {viewingEmp.status === 'terminated' && (
+                   <div className="mt-8 p-6 bg-red-50 border-2 border-red-200 rounded-3xl">
+                      <h4 className="text-[10px] font-black text-red-700 uppercase mb-2 italic">Registro de Desvinculación:</h4>
+                      <p className="text-xs font-bold text-slate-700">FECHA: {viewingEmp.terminationDate} | MOTIVO: {viewingEmp.terminationReason}</p>
+                      <p className="text-[11px] text-slate-500 mt-2">Detalle: {viewingEmp.terminationDetails}</p>
+                   </div>
+                )}
+             </section>
+
+             <div className="flex gap-4 no-print">
+                {viewingEmp.status === 'active' && (
+                  <button onClick={() => { setIsTermModalOpen(true); }} className="flex-1 py-5 bg-red-600 text-white font-black rounded-3xl uppercase text-[11px] shadow-xl hover:bg-red-700 transition-all">Desvinculación Laboral</button>
+                )}
+                <button onClick={() => { setEditingEmp(viewingEmp); setForm(viewingEmp); setIsModalOpen(true); setViewingEmp(null); }} className="flex-1 py-5 bg-slate-900 text-white font-black rounded-3xl uppercase text-[11px] shadow-xl hover:bg-slate-800 transition-all">Editar Ficha</button>
+             </div>
           </div>
         )}
       </Modal>
 
-      {/* Modal Desvinculación */}
-      <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Proceso de Baja Laboral">
-        <div className="space-y-6">
-           <div className="p-4 bg-red-50 text-red-800 rounded-2xl text-[10px] font-bold italic border border-red-100">Confirmación Requerida: ¿Desea proceder con la desvinculación definitiva?</div>
-           <div className="space-y-4">
-              <div>
-                 <label className="text-[9px] font-black uppercase text-slate-400">Fecha de Desvinculación</label>
-                 <input type="date" id="t_date" className="w-full p-4 border rounded-xl" defaultValue={new Date().toISOString().split('T')[0]} />
-              </div>
-              <div>
-                 <label className="text-[9px] font-black uppercase text-slate-400">Motivo</label>
-                 <select id="t_reason" className="w-full p-4 border rounded-xl">
-                    {Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}
-                 </select>
-              </div>
-              <button onClick={() => {
-                const date = (document.getElementById('t_date') as HTMLInputElement).value;
-                const reason = (document.getElementById('t_reason') as HTMLSelectElement).value;
-                handleTermination({ date, reason, details: '' });
-              }} className="w-full py-5 bg-red-600 text-white font-black rounded-2xl uppercase text-xs shadow-xl">Confirmar Desvinculación</button>
-           </div>
-        </div>
-      </Modal>
-
-      {/* Modal Registro de Ausencia */}
-      <Modal isOpen={isAbsenceModalOpen} onClose={() => setIsAbsenceModalOpen(false)} title="Registrar Falta / Permiso">
-        <div className="space-y-4">
-           <div>
-              <label className="text-[9px] font-black uppercase text-slate-400">Fecha del Evento</label>
-              <input type="date" id="abs_date" className="w-full p-3 border rounded-xl" defaultValue={new Date().toISOString().split('T')[0]} />
-           </div>
-           <div>
-              <label className="text-[9px] font-black uppercase text-slate-400">Tipo</label>
-              <select id="abs_type" className="w-full p-3 border rounded-xl">
-                 <option value="Falta">Falta Injustificada</option>
-                 <option value="Permiso">Permiso / Licencia</option>
-                 <option value="Atraso">Atraso Justificado</option>
-              </select>
-           </div>
-           <div>
-              <label className="text-[9px] font-black uppercase text-slate-400">Justificación / Motivo</label>
-              <textarea id="abs_reason" className="w-full p-3 border rounded-xl h-24" placeholder="Argumente el motivo..."></textarea>
-           </div>
-           <button onClick={() => {
-             const date = (document.getElementById('abs_date') as HTMLInputElement).value;
-             const type = (document.getElementById('abs_type') as HTMLSelectElement).value as any;
-             const reason = (document.getElementById('abs_reason') as HTMLTextAreaElement).value;
-             handleRegisterAbsence({ date, type, reason });
-           }} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-xs">Guardar Registro</button>
-        </div>
+      {/* Formulario de Desvinculación strictly as requested */}
+      <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Proceso de Cese de Funciones">
+         <div className="space-y-6">
+            <div className="p-5 bg-red-50 border-2 border-red-100 text-red-800 rounded-3xl text-[10px] font-black uppercase italic text-center leading-relaxed">
+               ¿Confirmar desvinculación? Al proceder, se bloqueará el acceso al sistema y se registrará la baja definitiva del personal fijo.
+            </div>
+            <div className="space-y-4">
+               <div><label className="text-[9px] font-black uppercase text-slate-400">Fecha de desvinculación</label><input type="date" id="t_date" className="w-full border-2 p-4 rounded-2xl focus:border-red-500 outline-none font-bold" defaultValue={new Date().toISOString().split('T')[0]} /></div>
+               <div><label className="text-[9px] font-black uppercase text-slate-400">Motivo de la desvinculación</label>
+                  <select id="t_reason" className="w-full border-2 p-4 rounded-2xl focus:border-red-500 outline-none font-bold">
+                     {Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+               </div>
+               <div><label className="text-[9px] font-black uppercase text-slate-400">Argumentación / Observaciones</label><textarea id="t_details" className="w-full border-2 p-4 rounded-2xl h-28 focus:border-red-500 outline-none" placeholder="En caso de 'Otro' u observaciones adicionales, detalle aquí..."></textarea></div>
+               <button onClick={() => {
+                  const date = (document.getElementById('t_date') as HTMLInputElement).value;
+                  const reason = (document.getElementById('t_reason') as HTMLSelectElement).value;
+                  const details = (document.getElementById('t_details') as HTMLTextAreaElement).value;
+                  if (reason === 'Otro' && !details) return alert("Si señala 'Otro', debe argumentar el motivo obligatoriamente.");
+                  handleTermination({ date, reason, details });
+               }} className="w-full py-5 bg-red-600 text-white font-black rounded-3xl uppercase text-xs shadow-2xl hover:bg-red-700 transition-all">Registrar Baja y Generar Acta</button>
+            </div>
+         </div>
       </Modal>
     </div>
   );
