@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
@@ -8,7 +8,7 @@ import { db, collection, doc, onSnapshot, setDoc, addDoc, compressData, decompre
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
   const [view, setView] = useState<'selection' | 'admin' | 'attendance'>('selection');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   
@@ -32,57 +32,51 @@ const App: React.FC = () => {
     }
   });
 
-  const hideLoader = () => {
-    const loader = document.getElementById('initial-loader');
-    if (loader) loader.classList.add('hidden');
-    setIsLoading(false);
-  };
-
   useEffect(() => {
-    // Escuchar cambios en la configuración de la empresa
-    const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setCompany(data.payload ? decompressData(data.payload) : data as any);
-      }
-      hideLoader(); // Ocultar loader tras la primera carga exitosa o fallida
-    }, (err) => {
-      console.warn("Error cargando empresa, usando valores por defecto.");
-      hideLoader();
-    });
+    const unsubscribes: (() => void)[] = [];
 
-    // Carga de colecciones en segundo plano
-    const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
-      setEmployees(snapshot.docs.map(d => {
-        const raw = d.data();
-        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-      }) as Employee[]);
-    });
+    try {
+      const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setCompany(data.payload ? decompressData(data.payload) : data as any);
+        }
+        setIsLoadingData(false);
+      }, (err) => {
+        console.warn("Firestore error:", err);
+        setIsLoadingData(false);
+      });
+      unsubscribes.push(unsubCompany);
 
-    const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
-      setAttendance(snapshot.docs.map(d => {
-        const raw = d.data();
-        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-      }) as AttendanceRecord[]);
-    });
+      const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
+        setEmployees(snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+        }) as Employee[]);
+      });
+      unsubscribes.push(unsubEmployees);
 
-    const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
-      setPayments(snapshot.docs.map(d => {
-        const raw = d.data();
-        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-      }) as Payment[]);
-    });
+      const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
+        setAttendance(snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+        }) as AttendanceRecord[]);
+      });
+      unsubscribes.push(unsubAttendance);
 
-    // Timeout de seguridad forzado (1.5s)
-    const timer = setTimeout(hideLoader, 1500);
+      const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
+        setPayments(snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+        }) as Payment[]);
+      });
+      unsubscribes.push(unsubPayments);
+    } catch (e) {
+      console.error("Error setting up listeners:", e);
+      setIsLoadingData(false);
+    }
 
-    return () => {
-      unsubCompany();
-      unsubEmployees();
-      unsubAttendance();
-      unsubPayments();
-      clearTimeout(timer);
-    };
+    return () => unsubscribes.forEach(unsub => unsub());
   }, []);
 
   const handleAdminLogin = () => {
@@ -100,19 +94,17 @@ const App: React.FC = () => {
     setAdminPassInput('');
   };
 
-  if (isLoading) return null;
-
   if (view === 'selection') {
     return (
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 rounded-[4rem] shadow-2xl text-center fade-in border border-white/20">
+        <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 rounded-[4rem] shadow-2xl text-center border border-white/20">
           <div className="mb-14 flex justify-center">
             <div className="w-24 h-24 bg-blue-700 rounded-3xl flex items-center justify-center shadow-2xl border-4 border-blue-500/20">
               <svg viewBox="0 0 100 100" className="w-12 h-12 stroke-white fill-none" strokeWidth="8" strokeLinecap="round"><path d="M20 70L50 40L80 10" strokeWidth="12" /></svg>
             </div>
           </div>
           <h1 className="text-5xl font-[900] text-slate-900 mb-2 tracking-tighter uppercase italic leading-none">ASIST UP</h1>
-          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Talento Humano & Gestión</p>
+          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión de Talento Humano</p>
           
           <div className="space-y-4">
             <button 

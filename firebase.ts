@@ -20,6 +20,7 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
+// Inicialización robusta
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
