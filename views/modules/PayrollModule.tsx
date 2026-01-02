@@ -100,7 +100,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
               <th className="border-r border-slate-700 p-4">Anticipos/Multas</th>
               <th className="border-r border-slate-700 p-4 bg-red-800">Total Egresos</th>
               <th className="border-r border-slate-700 p-4 font-black text-sm">Neto Recibir</th>
-              <th className="p-4">Línea de Firma</th>
+              <th className="p-4">Acciones</th>
             </tr>
           </thead>
           <tbody className="text-[10px] uppercase font-bold text-slate-700">
@@ -121,8 +121,8 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
                   <td className="border-r border-slate-200 p-4 text-right bg-red-50 font-black text-red-900">${data.totalExpenses.toFixed(2)}</td>
                   <td className="border-r border-slate-200 p-4 text-right font-black text-slate-900 text-xs bg-slate-50">${data.netToReceive.toFixed(2)}</td>
                   <td className="p-4">
-                     <div className="w-full border-b border-slate-400 h-10 flex items-end justify-center">
-                        <button onClick={() => setIndividualPayroll(emp)} className="no-print text-[8px] text-blue-600 font-black hover:underline mb-1">Ver Individual</button>
+                     <div className="flex flex-col gap-1 items-center">
+                        <button onClick={() => setIndividualPayroll(emp)} className="no-print text-[8px] px-2 py-1 bg-blue-50 text-blue-600 rounded-md font-black hover:bg-blue-600 hover:text-white transition-all uppercase whitespace-nowrap">Individual</button>
                      </div>
                   </td>
                 </tr>
@@ -147,8 +147,14 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
         </div>
       </div>
 
-      {/* Modal Rol Individual strictly formatted */}
-      <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol de Pagos Individual">
+      <Modal 
+        isOpen={!!individualPayroll} 
+        onClose={() => setIndividualPayroll(null)} 
+        title="Rol de Pagos Individual"
+        footer={
+           <button onClick={() => setIndividualPayroll(null)} className="px-6 py-2 text-slate-400 font-black uppercase text-[10px] tracking-widest">Regresar a Nómina General</button>
+        }
+      >
         {individualPayroll && (
           <div className="p-6 space-y-8 bg-white">
             <div className="text-center border-b-2 border-slate-900 pb-6">

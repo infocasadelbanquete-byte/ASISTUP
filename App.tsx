@@ -9,6 +9,7 @@ const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
   const [view, setView] = useState<'selection' | 'admin' | 'attendance'>('selection');
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isDbConnected, setIsDbConnected] = useState(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   
@@ -17,7 +18,7 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>({
-    sbu: 482.00, // ACTUALIZADO SEGÚN REQUERIMIENTO 2026
+    sbu: 482.00,
     iessRate: 0.0945,
     reserveRate: 0.0833,
     schedule: {
@@ -28,7 +29,8 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    const rescueTimer = setTimeout(() => setIsLoadingData(false), 6000);
+    // Rescue timer más agresivo: si hay datos en caché, cargar de inmediato
+    const rescueTimer = setTimeout(() => setIsLoadingData(false), 3000);
     const unsubscribes: (() => void)[] = [];
 
     try {
@@ -37,8 +39,13 @@ const App: React.FC = () => {
           const data = docSnap.data();
           setCompany(data.payload ? decompressData(data.payload) : data as any);
         }
+        // isDbConnected es true solo si los datos NO vienen del caché
+        setIsDbConnected(!docSnap.metadata.fromCache);
         setIsLoadingData(false);
         clearTimeout(rescueTimer);
+      }, (error) => {
+        console.warn("Firestore offline mode active");
+        setIsDbConnected(false);
       });
       unsubscribes.push(unsubCompany);
 
@@ -47,7 +54,8 @@ const App: React.FC = () => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Employee[]);
-      });
+        if (!snapshot.metadata.fromCache) setIsDbConnected(true);
+      }, () => setIsDbConnected(false));
       unsubscribes.push(unsubEmployees);
 
       const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
@@ -55,7 +63,8 @@ const App: React.FC = () => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as AttendanceRecord[]);
-      });
+        if (!snapshot.metadata.fromCache) setIsDbConnected(true);
+      }, () => setIsDbConnected(false));
       unsubscribes.push(unsubAttendance);
 
       const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
@@ -63,10 +72,12 @@ const App: React.FC = () => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Payment[]);
-      });
+        if (!snapshot.metadata.fromCache) setIsDbConnected(true);
+      }, () => setIsDbConnected(false));
       unsubscribes.push(unsubPayments);
     } catch (e) {
       setIsLoadingData(false);
+      setIsDbConnected(false);
     }
 
     return () => { unsubscribes.forEach(unsub => unsub()); clearTimeout(rescueTimer); };
@@ -113,22 +124,23 @@ const App: React.FC = () => {
   }
 
   if (view === 'attendance') {
-    return <AttendanceSystem employees={employees} onBack={() => setView('selection')} onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }); }} onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }} />;
+    return <AttendanceSystem employees={employees} onBack={() => setView('selection')} onRegister={async (r: AttendanceRecord) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }); }} onUpdateEmployees={async (emps: Employee[]) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }} />;
   }
 
   return (
     <AdminDashboard 
       role={currentUserRole!} 
+      isDbConnected={isDbConnected}
       onLogout={() => { setCurrentUserRole(null); setView('selection'); }} 
       company={company}
-      onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
+      onUpdateCompany={async (c: CompanyConfig) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
       employees={employees}
-      onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
+      onUpdateEmployees={async (emps: Employee[]) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
       attendance={attendance}
       payments={payments}
-      onUpdatePayments={async (pys) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
+      onUpdatePayments={async (pys: Payment[]) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
       settings={settings}
-      onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
+      onUpdateSettings={async (s: GlobalSettings) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
     />
   );
 };

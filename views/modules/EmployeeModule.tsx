@@ -81,7 +81,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Gestión de Talento Humano</h2>
           <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Registros, Fichas e Historiales</p>
         </div>
-        <button onClick={() => { setForm(initialForm); setEditingEmp(null); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-2xl shadow-xl uppercase text-[10px] tracking-widest hover:scale-105 transition-transform">Registrar Empleado</button>
+        <button onClick={() => { setForm(initialForm); setEditingEmp(null); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-2xl shadow-xl uppercase text-[10px] tracking-widest hover:scale-105 transition-all">Registrar Empleado</button>
       </div>
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border overflow-hidden no-print">
@@ -123,8 +123,14 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </table>
       </div>
 
-      {/* Formulario de Registro con TODOS los campos solicitados */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Editar Expediente Laboral" : "Nuevo Registro de Personal"}>
+      <Modal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        title={editingEmp ? "Editar Expediente Laboral" : "Nuevo Registro de Personal"}
+        footer={
+           <button onClick={() => setIsModalOpen(false)} className="px-6 py-2 text-slate-400 font-black uppercase text-[10px] tracking-widest">Regresar al Listado</button>
+        }
+      >
         <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-4 custom-scroll">
            <div className="grid grid-cols-2 gap-6">
               <div className="col-span-2 flex flex-col items-center gap-2">
@@ -227,7 +233,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </Modal>
 
-      {/* Ficha Laboral Integral e Historial (Imprimible) */}
       <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Ficha Laboral Integral">
         {viewingEmp && (
           <div className="space-y-8 print:p-0">
@@ -312,12 +317,12 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   <button onClick={() => { setIsTermModalOpen(true); }} className="flex-1 py-5 bg-red-600 text-white font-black rounded-3xl uppercase text-[11px] shadow-xl hover:bg-red-700 transition-all">Desvinculación Laboral</button>
                 )}
                 <button onClick={() => { setEditingEmp(viewingEmp); setForm(viewingEmp); setIsModalOpen(true); setViewingEmp(null); }} className="flex-1 py-5 bg-slate-900 text-white font-black rounded-3xl uppercase text-[11px] shadow-xl hover:bg-slate-800 transition-all">Editar Ficha</button>
+                <button onClick={() => setViewingEmp(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 font-black rounded-3xl uppercase text-[11px] shadow-sm hover:bg-slate-200 transition-all">Regresar</button>
              </div>
           </div>
         )}
       </Modal>
 
-      {/* Formulario de Desvinculación strictly as requested */}
       <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Proceso de Cese de Funciones">
          <div className="space-y-6">
             <div className="p-5 bg-red-50 border-2 border-red-100 text-red-800 rounded-3xl text-[10px] font-black uppercase italic text-center leading-relaxed">
@@ -331,13 +336,16 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   </select>
                </div>
                <div><label className="text-[9px] font-black uppercase text-slate-400">Argumentación / Observaciones</label><textarea id="t_details" className="w-full border-2 p-4 rounded-2xl h-28 focus:border-red-500 outline-none" placeholder="En caso de 'Otro' u observaciones adicionales, detalle aquí..."></textarea></div>
-               <button onClick={() => {
-                  const date = (document.getElementById('t_date') as HTMLInputElement).value;
-                  const reason = (document.getElementById('t_reason') as HTMLSelectElement).value;
-                  const details = (document.getElementById('t_details') as HTMLTextAreaElement).value;
-                  if (reason === 'Otro' && !details) return alert("Si señala 'Otro', debe argumentar el motivo obligatoriamente.");
-                  handleTermination({ date, reason, details });
-               }} className="w-full py-5 bg-red-600 text-white font-black rounded-3xl uppercase text-xs shadow-2xl hover:bg-red-700 transition-all">Registrar Baja y Generar Acta</button>
+               <div className="flex gap-4">
+                 <button onClick={() => setIsTermModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-2xl uppercase text-xs tracking-widest">Atrás</button>
+                 <button onClick={() => {
+                    const date = (document.getElementById('t_date') as HTMLInputElement).value;
+                    const reason = (document.getElementById('t_reason') as HTMLSelectElement).value;
+                    const details = (document.getElementById('t_details') as HTMLTextAreaElement).value;
+                    if (reason === 'Otro' && !details) return alert("Si señala 'Otro', debe argumentar el motivo obligatoriamente.");
+                    handleTermination({ date, reason, details });
+                 }} className="flex-[2] py-4 bg-red-600 text-white font-black rounded-2xl uppercase text-xs shadow-2xl hover:bg-red-700 transition-all">Registrar Baja definitiva</button>
+               </div>
             </div>
          </div>
       </Modal>

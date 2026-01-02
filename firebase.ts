@@ -1,6 +1,8 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { initializeApp } from "firebase/app";
 import { 
-  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
   collection, 
   doc, 
   onSnapshot, 
@@ -8,8 +10,8 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc 
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import LZString from "https://esm.sh/lz-string@1.5.0";
+} from "firebase/firestore";
+import LZString from "lz-string";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBMcYKMy9zPBeVZMUYtJsjMCVXQP7K7lx4",
@@ -21,7 +23,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+
+// Inicializar Firestore con persistencia de datos local (Offline Capability)
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 
 const safeStringify = (obj: any) => {
   const cache = new Set();

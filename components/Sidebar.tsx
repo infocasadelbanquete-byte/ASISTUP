@@ -24,15 +24,14 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
     <aside className="w-80 gradient-blue text-white flex flex-col shadow-[15px_0_40px_rgba(0,0,0,0.3)] z-20 border-r border-white/5 relative no-print">
       <div className="p-10">
         <div className="flex items-center gap-5 mb-14">
-          {/* Logo Sophisticated Moderno */}
-          <div className="w-14 h-14 logo-gradient rounded-2xl flex items-center justify-center shadow-2xl border border-white/20">
-            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-none stroke-white" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M30 70 L45 55 L55 65 L75 35" />
-                <circle cx="75" cy="35" r="5" fill="white" />
+          <div className="w-14 h-14 logo-gradient rounded-2xl flex items-center justify-center shadow-2xl border border-white/20 relative overflow-hidden group">
+            <div className="absolute inset-0 shimmer-bg opacity-30"></div>
+            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-none stroke-white relative z-10" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M25 75 C 25 75, 50 75, 50 50 C 50 25, 75 25, 75 25 M 65 25 L 75 25 L 75 35" />
             </svg>
           </div>
           <div>
-            <h2 className="text-2xl font-[900] tracking-tighter leading-none">ASIST UP</h2>
+            <h2 className="text-2xl font-[900] tracking-tighter leading-none shimmer-text uppercase italic">ASIST UP</h2>
             <p className="text-[8px] text-blue-400/60 uppercase tracking-[0.4em] font-black mt-1.5">Administrative Suite</p>
           </div>
         </div>

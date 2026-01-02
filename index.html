@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0f172a">
     <!-- Icono Empresarial Moderno SVG -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%232563eb;stop-opacity:1' /><stop offset='100%' style='stop-color:%230f172a;stop-opacity:1' /></linearGradient></defs><rect width='100' height='100' rx='25' fill='url(%23g)'/><path d='M30 70 L45 55 L55 65 L75 35' stroke='white' stroke-width='8' stroke-linecap='round' stroke-linejoin='round' fill='none'/><circle cx='75' cy='35' r='5' fill='white'/></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%232563eb;stop-opacity:1' /><stop offset='100%' style='stop-color:%230f172a;stop-opacity:1' /></linearGradient></defs><rect width='100' height='100' rx='25' fill='url(%23g)'/><path d='M25 75 C 25 75, 50 75, 50 50 C 50 25, 75 25, 75 25 M 65 25 L 75 25 L 75 35' stroke='white' stroke-width='8' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
     <title>ASIST UP - HR Enterprise Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -13,6 +13,25 @@
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; overflow-x: hidden; }
         .gradient-blue { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
         .logo-gradient { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
+        
+        /* Shimmering Effect */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .shimmer-text {
+            background: linear-gradient(90deg, #3b82f6, #ffffff, #3b82f6);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 4s infinite linear;
+        }
+        .shimmer-bg {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.05) 75%);
+            background-size: 200% auto;
+            animation: shimmer 3s infinite linear;
+        }
+
         @media print { 
             .no-print { display: none !important; } 
             body { background: white !important; } 
@@ -35,16 +54,14 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
     <script>window.process = { env: { NODE_ENV: 'production' } };</script>
-    <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
-    "lz-string": "https://esm.sh/lz-string@1.5.0",
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/",
+    "lz-string": "https://esm.sh/lz-string@^1.5.0",
     "vite": "https://esm.sh/vite@^7.3.0",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
@@ -53,12 +70,16 @@
 </head>
 <body>
     <div id="initial-loader">
-        <div class="relative mb-8">
-            <div class="w-20 h-20 border-4 border-blue-500/20 rounded-full"></div>
-            <div class="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+        <div class="relative mb-12">
+            <div class="w-24 h-24 logo-gradient rounded-[2rem] flex items-center justify-center shadow-[0_0_50px_rgba(59,130,246,0.5)] border border-white/20 animate-pulse">
+                <svg viewBox="0 0 100 100" class="w-14 h-14 fill-none stroke-white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M25 75 C 25 75, 50 75, 50 50 C 50 25, 75 25, 75 25 M 65 25 L 75 25 L 75 35" />
+                </svg>
+            </div>
+            <div class="absolute -inset-4 border-2 border-blue-500/10 rounded-[2.5rem] animate-ping"></div>
         </div>
-        <h2 class="text-white font-black text-3xl tracking-tighter uppercase italic">ASIST UP</h2>
-        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em] mt-4 animate-pulse">Iniciando Ecosistema de Talento 2026</p>
+        <h2 class="shimmer-text font-black text-4xl tracking-tighter uppercase italic">ASIST UP</h2>
+        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em] mt-6 animate-pulse">Ecosistema Administrativo de Elite</p>
     </div>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>

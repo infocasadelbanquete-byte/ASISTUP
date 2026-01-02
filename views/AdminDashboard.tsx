@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
@@ -13,6 +12,7 @@ import { ECUADOR_HOLIDAYS, DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx'
 
 interface AdminDashboardProps {
   role: Role;
+  isDbConnected?: boolean;
   onLogout: () => void;
   company: CompanyConfig | null;
   onUpdateCompany: (config: CompanyConfig) => void;
@@ -26,7 +26,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  role, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings 
+  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings 
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports'>('dashboard');
   const [isBackupReminderOpen, setIsBackupReminderOpen] = useState(false);
@@ -91,21 +91,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         companyName={company?.name}
       />
       
-      <main className="flex-1 overflow-y-auto px-12 py-12 scroll-smooth">
+      <main className="flex-1 overflow-y-auto px-12 py-12 scroll-smooth custom-scroll">
         <header className="flex justify-between items-center mb-16 fade-in no-print">
-          <div>
-            <h1 className="text-[2.75rem] font-[900] text-slate-900 tracking-tight leading-tight">
-              {activeTab === 'dashboard' ? 'Centro de Bienestar' : 
-               activeTab === 'company' ? 'Perfil Institucional' : 
-               activeTab === 'employees' ? 'Gestión de Talento' : 
-               activeTab === 'payroll' ? 'Nómina General' : 
-               activeTab === 'payments' ? 'Tesorería' : 
-               activeTab === 'reports' ? 'Centro de Reportes' : 'Ajustes Maestros'}
-            </h1>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="px-3 py-1 bg-slate-100 text-slate-500 font-black text-[9px] uppercase tracking-widest rounded-full">{role}</span>
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-              <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Entorno de Liderazgo Positivo</span>
+          <div className="flex items-center gap-6">
+            {activeTab !== 'dashboard' && (
+              <button 
+                onClick={() => setActiveTab('dashboard')} 
+                className="w-12 h-12 rounded-2xl bg-white shadow-xl border border-slate-100 flex items-center justify-center text-blue-600 hover:bg-blue-600 hover:text-white transition-all group active:scale-90"
+                title="Regresar al Dashboard"
+              >
+                <svg className="w-6 h-6 transform rotate-180 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+              </button>
+            )}
+            <div>
+              <h1 className="text-[2.75rem] font-[900] text-slate-900 tracking-tight leading-tight">
+                {activeTab === 'dashboard' ? 'Centro de Bienestar' : 
+                 activeTab === 'company' ? 'Perfil Institucional' : 
+                 activeTab === 'employees' ? 'Gestión de Talento' : 
+                 activeTab === 'payroll' ? 'Nómina General' : 
+                 activeTab === 'payments' ? 'Tesorería' : 
+                 activeTab === 'reports' ? 'Centro de Reportes' : 'Ajustes Maestros'}
+              </h1>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 bg-slate-100 text-slate-500 font-black text-[9px] uppercase tracking-widest rounded-full">{role}</span>
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                  <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">Entorno de Liderazgo Positivo</span>
+                </div>
+                
+                {role === Role.SUPER_ADMIN && (
+                   <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-50/50 border border-blue-100 rounded-2xl relative overflow-hidden group">
+                      <div className="absolute inset-0 shimmer-bg opacity-10"></div>
+                      <div className={`w-2 h-2 rounded-full shadow-[0_0_8px] transition-all duration-700 ${isDbConnected ? 'bg-emerald-500 shadow-emerald-500 animate-pulse' : 'bg-red-500 shadow-red-500'}`}></div>
+                      <span className="text-[9px] font-black text-blue-800 uppercase tracking-widest leading-none">
+                        {isDbConnected ? 'Nube Sincronizada' : 'Error de Conexión'}
+                      </span>
+                   </div>
+                )}
+              </div>
             </div>
           </div>
           
@@ -179,7 +202,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
 
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
-          {/* Fix: Pass missing company prop to EmployeeModule */}
           {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
           {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} company={company} settings={settings} role={role} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} />}
