@@ -39,12 +39,13 @@
             text-align: center;
             line-height: 1.5;
             background: rgba(255,0,0,0.1);
-            padding: 10px;
-            border-radius: 8px;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(248, 113, 113, 0.2);
+            word-break: break-all;
         }
     </style>
     <script>
-        // Prevenir errores de librerías que esperan un entorno de Node
         window.process = { env: { NODE_ENV: 'production' } };
     </script>
     <script type="importmap">
@@ -80,40 +81,46 @@
     <script>
         const displayError = (err) => {
             const display = document.getElementById('error-display');
-            let msg = '';
+            let msg = 'Error desconocido';
             
-            if (typeof err === 'string') msg = err;
-            else if (err instanceof Error) msg = err.message;
-            else if (err && typeof err === 'object') {
-                msg = err.message || JSON.stringify(err);
-            } else {
-                msg = 'Error de conexión de red';
+            if (err instanceof Error) {
+                msg = err.message;
+            } else if (typeof err === 'string') {
+                msg = err;
+            } else if (err && typeof err === 'object') {
+                try {
+                    msg = err.message || JSON.stringify(err);
+                } catch(e) {
+                    msg = 'Error de sistema (ver consola)';
+                }
             }
 
             if (display) {
-                display.innerText = "SISTEMA DETENIDO: " + msg;
+                display.innerText = "FALLO CRÍTICO: " + msg;
                 display.classList.remove('hidden');
             }
             const status = document.getElementById('loader-status');
-            if (status) status.innerText = "FALLO CRÍTICO";
+            if (status) status.innerText = "SISTEMA DETENIDO";
+            console.error('Error detallado:', err);
         };
 
-        window.addEventListener('error', function(e) {
-            console.error('Error capturado:', e);
+        window.addEventListener('error', (e) => {
             displayError(e.error || e.message);
         }, true);
-
-        window.addEventListener('unhandledrejection', function(e) {
-            console.error('Promesa fallida:', e.reason);
+        
+        window.addEventListener('unhandledrejection', (e) => {
             displayError(e.reason);
         });
 
-        // Fail-safe para ocultar el loader si todo parece ir bien tras 6 segundos
+        // Fail-safe para ocultar el loader si no hay errores tras 5 segundos
         setTimeout(() => {
             const loader = document.getElementById('initial-loader');
-            const errorVisible = !document.getElementById('error-display').classList.contains('hidden');
-            if (loader && !errorVisible) loader.classList.add('hidden');
-        }, 6000);
+            const errorDisplay = document.getElementById('error-display');
+            if (loader && errorDisplay.classList.contains('hidden')) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.classList.add('hidden'), 500);
+            }
+        }, 5000);
     </script>
 </body>
 </html>

@@ -20,8 +20,10 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
-// Inicialización robusta
+// Inicializar la aplicación
 const app = initializeApp(firebaseConfig);
+
+// Obtener la instancia de Firestore vinculada a la aplicación inicializada
 export const db = getFirestore(app);
 
 const safeStringify = (obj: any) => {
