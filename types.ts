@@ -32,6 +32,10 @@ export interface AttendanceRecord {
   employeeId: string;
   timestamp: string;
   type: 'in' | 'out';
+  status: 'confirmed' | 'pending_approval' | 'rejected';
+  isForgotten?: boolean;
+  justification?: string;
+  validatedAt?: string;
 }
 
 export interface Payment {
