@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
@@ -32,13 +32,13 @@ const App: React.FC = () => {
     }
   });
 
+  const loadedSections = useRef(new Set<string>());
+
   useEffect(() => {
-    let activeSnapshots = 0;
-    const totalExpected = 4;
-    
-    const checkLoaded = () => {
-      activeSnapshots++;
-      if (activeSnapshots >= totalExpected) {
+    const checkLoaded = (section: string) => {
+      loadedSections.current.add(section);
+      // Esperamos al menos 4 fuentes de datos críticas
+      if (loadedSections.current.size >= 4) {
         setIsLoading(false);
         const loader = document.getElementById('initial-loader');
         if (loader) loader.classList.add('hidden');
@@ -49,49 +49,42 @@ const App: React.FC = () => {
       onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data.payload) {
-            setCompany(decompressData(data.payload));
-          } else {
-            const { name, legalRep, ruc, address, phone, email, logo } = data as any;
-            setCompany({ name: name || '', legalRep: legalRep || '', ruc: ruc || '', address: address || '', phone: phone || '', email: email || '', logo: logo || '' });
-          }
+          setCompany(data.payload ? decompressData(data.payload) : data as any);
         }
-        checkLoaded();
-      }, (err) => {
-        console.error("Firebase Company Error:", err);
-        checkLoaded();
-      }),
+        checkLoaded('company');
+      }, () => checkLoaded('company')),
 
       onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Employee[]);
-        if (activeSnapshots < totalExpected) checkLoaded();
-      }),
+        checkLoaded('employees');
+      }, () => checkLoaded('employees')),
 
       onSnapshot(collection(db, "attendance"), (snapshot) => {
         setAttendance(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as AttendanceRecord[]);
-        if (activeSnapshots < totalExpected) checkLoaded();
-      }),
+        checkLoaded('attendance');
+      }, () => checkLoaded('attendance')),
 
       onSnapshot(collection(db, "payments"), (snapshot) => {
         setPayments(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Payment[]);
-        if (activeSnapshots < totalExpected) checkLoaded();
-      })
+        checkLoaded('payments');
+      }, () => checkLoaded('payments'))
     ];
 
+    // Timeout de seguridad extremo (3 segundos) por si Firebase tarda demasiado
     const safetyTimeout = setTimeout(() => {
       setIsLoading(false);
       const loader = document.getElementById('initial-loader');
       if (loader) loader.classList.add('hidden');
-    }, 5000);
+    }, 3000);
 
     return () => {
       unsub.forEach(u => u());
@@ -100,7 +93,6 @@ const App: React.FC = () => {
   }, []);
 
   const handleAdminLogin = () => {
-    // Lógica estricta de roles solicitada
     if (adminPassInput === 'admin123') {
       setCurrentUserRole(Role.SUPER_ADMIN);
       setView('admin');
@@ -122,19 +114,19 @@ const App: React.FC = () => {
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6 relative">
         <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 rounded-[4rem] shadow-2xl text-center fade-in border border-white/20">
           <div className="mb-14 flex justify-center">
-            <div className="w-24 h-24 bg-blue-700 rounded-3xl flex items-center justify-center shadow-2xl logo-shimmer border-4 border-blue-500/20">
+            <div className="w-24 h-24 bg-blue-700 rounded-3xl flex items-center justify-center shadow-2xl border-4 border-blue-500/20">
               <svg viewBox="0 0 100 100" className="w-12 h-12 stroke-white fill-none" strokeWidth="8" strokeLinecap="round"><path d="M20 70L50 40L80 10" strokeWidth="12" /></svg>
             </div>
           </div>
           <h1 className="text-5xl font-[900] text-slate-900 mb-2 tracking-tighter uppercase italic">ASIST UP</h1>
-          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Talento Humano & Asistencia</p>
+          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión Integral de Talento Humano</p>
           
           <div className="space-y-4">
             <button 
               onClick={() => setView('attendance')} 
               className="w-full py-6 bg-blue-700 text-white font-black rounded-3xl shadow-xl hover:bg-blue-800 transition-all uppercase text-xs tracking-widest active:scale-95"
             >
-              Registro de Asistencia
+              Control de Asistencia
             </button>
             <button 
               onClick={() => setIsAdminLoginModalOpen(true)} 
@@ -147,7 +139,7 @@ const App: React.FC = () => {
 
         <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Login Administrativo">
           <div className="space-y-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ingrese PIN de Administrador (Super o Parcial)</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ingrese su código de acceso maestro</p>
             <input 
               type="password" 
               value={adminPassInput} 
