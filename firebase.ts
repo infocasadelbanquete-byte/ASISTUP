@@ -20,10 +20,7 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
-// Inicialización de la App
 const app = initializeApp(firebaseConfig);
-
-// Inicialización de Firestore vinculada a la App
 const db = getFirestore(app);
 
 const safeStringify = (obj: any) => {
