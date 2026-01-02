@@ -35,13 +35,16 @@ const App: React.FC = () => {
   const loadedSections = useRef(new Set<string>());
 
   useEffect(() => {
+    const hideLoader = () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) loader.classList.add('hidden');
+      setIsLoading(false);
+    };
+
     const checkLoaded = (section: string) => {
       loadedSections.current.add(section);
-      // Esperamos al menos 4 fuentes de datos críticas
       if (loadedSections.current.size >= 4) {
-        setIsLoading(false);
-        const loader = document.getElementById('initial-loader');
-        if (loader) loader.classList.add('hidden');
+        hideLoader();
       }
     };
 
@@ -79,12 +82,8 @@ const App: React.FC = () => {
       }, () => checkLoaded('payments'))
     ];
 
-    // Timeout de seguridad extremo (3 segundos) por si Firebase tarda demasiado
-    const safetyTimeout = setTimeout(() => {
-      setIsLoading(false);
-      const loader = document.getElementById('initial-loader');
-      if (loader) loader.classList.add('hidden');
-    }, 3000);
+    // Timeout de seguridad de 2 segundos. Forzamos carga si Firebase no responde rápido.
+    const safetyTimeout = setTimeout(hideLoader, 2000);
 
     return () => {
       unsub.forEach(u => u());
@@ -102,7 +101,7 @@ const App: React.FC = () => {
       setView('admin');
       setIsAdminLoginModalOpen(false);
     } else {
-      alert('Clave de acceso incorrecta para el rol seleccionado.');
+      alert('Clave de acceso incorrecta.');
     }
     setAdminPassInput('');
   };
@@ -111,15 +110,15 @@ const App: React.FC = () => {
 
   if (view === 'selection') {
     return (
-      <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6 relative">
+      <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 rounded-[4rem] shadow-2xl text-center fade-in border border-white/20">
           <div className="mb-14 flex justify-center">
             <div className="w-24 h-24 bg-blue-700 rounded-3xl flex items-center justify-center shadow-2xl border-4 border-blue-500/20">
               <svg viewBox="0 0 100 100" className="w-12 h-12 stroke-white fill-none" strokeWidth="8" strokeLinecap="round"><path d="M20 70L50 40L80 10" strokeWidth="12" /></svg>
             </div>
           </div>
-          <h1 className="text-5xl font-[900] text-slate-900 mb-2 tracking-tighter uppercase italic">ASIST UP</h1>
-          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión Integral de Talento Humano</p>
+          <h1 className="text-5xl font-[900] text-slate-900 mb-2 tracking-tighter uppercase italic leading-none">ASIST UP</h1>
+          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión de Talento Humano</p>
           
           <div className="space-y-4">
             <button 
@@ -139,7 +138,7 @@ const App: React.FC = () => {
 
         <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Login Administrativo">
           <div className="space-y-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Ingrese su código de acceso maestro</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Clave de acceso requerida</p>
             <input 
               type="password" 
               value={adminPassInput} 
