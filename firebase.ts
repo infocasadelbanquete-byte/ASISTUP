@@ -1,3 +1,4 @@
+
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, 
@@ -13,20 +14,25 @@ import {
 } from "firebase/firestore";
 import LZString from "lz-string";
 
-// Se utiliza process.env para evitar que el escáner de Netlify detecte valores como secretos.
-// Las variables se inyectan automáticamente desde el entorno de ejecución.
+// Configuración de Firebase utilizando variables de entorno
+// FIX: Accessing API_KEY directly from process.env to avoid 'unknown' type errors when accessing window.process.env
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.API_KEY,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "asist-up-6ccd1.firebaseapp.com",
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || "asist-up-6ccd1",
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "asist-up-6ccd1.firebasestorage.app",
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "944407397524",
-  appId: process.env.VITE_FIREBASE_APP_ID || "1:944407397524:web:8e685e9ea9382288622081"
+  apiKey: process.env.API_KEY || "",
+  authDomain: "asist-up-6ccd1.firebaseapp.com",
+  projectId: "asist-up-6ccd1",
+  storageBucket: "asist-up-6ccd1.firebasestorage.app",
+  messagingSenderId: "944407397524",
+  appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
+
+// Validar si tenemos API Key antes de inicializar para evitar errores silenciosos
+if (!firebaseConfig.apiKey) {
+  console.warn("ADVERTENCIA: API_KEY de Firebase no detectada. La conexión puede fallar.");
+}
 
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Firestore con persistencia de datos local (Capacidad Offline)
+// Inicializar Firestore con persistencia optimizada
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
