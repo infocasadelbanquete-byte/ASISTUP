@@ -19,58 +19,16 @@ export enum TerminationReason {
   OTHER = 'Otro'
 }
 
-export interface CompanyConfig {
-  name: string;
-  legalRep: string;
-  ruc: string;
-  address: string;
-  phone: string;
-  email: string;
-  logo: string;
-}
-
-export interface Observation {
-  date: string;
-  text: string;
-}
-
-export interface AbsenceJustification {
-  date: string;
-  documentUrl?: string;
-  reason: string;
-  type: 'Falta' | 'Atraso' | 'Permiso';
-}
-
-export interface Employee {
+export interface AbsenceRecord {
   id: string;
-  name: string;
-  identification: string;
-  birthDate: string;
-  origin: string;
-  address: string;
-  phone: string;
-  email: string;
-  bloodType: BloodType;
-  emergencyContact: { name: string; phone: string; };
-  startDate: string;
-  role: Role;
-  isFixed: boolean;
-  salary: number;
-  isAffiliated: boolean;
-  overSalaryType: 'accumulate' | 'monthly' | 'none';
-  bankInfo: { ifi: string; type: 'Ahorros' | 'Corriente'; account: string; };
-  photo: string;
-  pin: string;
-  pinChanges: number;
-  status: 'active' | 'terminated';
-  terminationDate?: string;
-  terminationReason?: string;
-  terminationDetails?: string;
-  totalHoursWorked: number;
-  observations: Observation[];
-  justifications: AbsenceJustification[];
+  date: string;
+  type: 'Falta' | 'Permiso' | 'Atraso';
+  reason: string;
+  justified: boolean;
+  documentUrl?: string;
 }
 
+// Added missing AttendanceRecord interface to fix importation errors in App.tsx and other views
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
@@ -78,6 +36,7 @@ export interface AttendanceRecord {
   type: 'in' | 'out';
 }
 
+// Added missing Payment interface to fix importation errors across the application modules
 export interface Payment {
   id: string;
   employeeId: string;
@@ -85,34 +44,75 @@ export interface Payment {
   date: string;
   month: string;
   year: string;
-  type: 'Salary' | 'OverSalary' | 'Loan' | 'Emergency' | 'Bonus' | 'Vacation' | 'Settlement' | 'Compensation';
-  overSalaryType?: '13vo' | '14vo' | 'Vacaciones' | 'Fondos de Reserva';
-  method: 'Efectivo' | 'Cheque' | 'Transferencia';
-  bankSource?: 'Banco del Austro' | 'Banco Guayaquil';
+  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency';
+  method: 'Efectivo' | 'Transferencia' | 'Cheque';
   concept: string;
   status: 'paid' | 'void';
-  voidJustification?: string;
-  isPartial?: boolean;
   balanceAfter?: number;
+  isPartial?: boolean;
+  voidJustification?: string;
+  bankSource?: string;
 }
 
-export interface WorkShift {
-  start: string;
-  end: string;
-  enabled: boolean;
+export interface Employee {
+  id: string;
+  name: string;
+  surname: string;
+  identification: string;
+  birthDate: string;
+  origin: string;
+  address: string;
+  phone: string; // Celular strictly 10 digits
+  email: string;
+  bloodType: BloodType;
+  emergencyContact: { name: string; phone: string; };
+  startDate: string;
+  role: Role;
+  // Laboral
+  isFixed: boolean;
+  salary: number;
+  isAffiliated: boolean;
+  overSalaryType: 'accumulate' | 'monthly' | 'none';
+  bankInfo: { 
+    ifi: string; 
+    type: 'Ahorros' | 'Corriente'; 
+    account: string; 
+  };
+  photo: string;
+  pin: string; // 6 digits
+  pinChanges: number;
+  status: 'active' | 'terminated';
+  terminationDate?: string;
+  terminationReason?: string;
+  terminationDetails?: string;
+  observations: { date: string; text: string; }[];
+  absences: AbsenceRecord[];
+  totalHoursWorked: number;
 }
 
-export interface DaySchedule {
-  morning: WorkShift;
-  afternoon: WorkShift;
+export interface CompanyConfig {
+  name: string;
+  legalRep: string;
+  ruc: string; // 13 digits, ends in 001
+  address: string;
+  phone: string; // Fixed 9 or Mobile 10
+  email: string;
+  logo: string;
 }
 
+// Updated GlobalSettings to include the schedule property used in App.tsx
 export interface GlobalSettings {
-  sbu: number;
-  iessRate: number; // 9.45%
-  reserveRate: number; // 8.33%
-  schedule: {
-    weekdays: DaySchedule;
-    saturdays: DaySchedule;
+  sbu: number; // 2026: 475.00 default
+  iessRate: number;
+  reserveRate: number;
+  schedule?: {
+    weekdays: {
+      morning: { start: string; end: string; enabled: boolean };
+      afternoon: { start: string; end: string; enabled: boolean };
+    };
+    saturdays: {
+      morning: { start: string; end: string; enabled: boolean };
+      afternoon: { start: string; end: string; enabled: boolean };
+    };
   };
 }

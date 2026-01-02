@@ -25,23 +25,17 @@
             justify-content: center; 
             background: #0f172a; 
             z-index: 9999; 
-            transition: opacity 0.5s ease;
         }
-        #initial-loader.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
+        .hidden { display: none !important; }
     </style>
-    <script>
-        window.process = { env: { NODE_ENV: 'production' } };
-    </script>
+    <script>window.process = { env: { NODE_ENV: 'production' } };</script>
     <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom": "https://esm.sh/react-dom@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
     "lz-string": "https://esm.sh/lz-string@1.5.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
@@ -56,8 +50,7 @@
             <div class="w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
         </div>
         <h2 class="text-white font-black text-2xl tracking-tighter uppercase italic">ASIST UP</h2>
-        <p id="loader-status" class="text-blue-400 font-bold text-[9px] uppercase tracking-[0.4em] mt-4 animate-pulse">Iniciando Protección de Datos...</p>
-        <div id="error-display" class="hidden mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-mono max-w-xs text-center"></div>
+        <p class="text-blue-400 font-bold text-[9px] uppercase tracking-[0.4em] mt-4 animate-pulse">Sincronizando Sistema 2026...</p>
     </div>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
