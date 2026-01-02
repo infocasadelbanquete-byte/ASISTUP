@@ -2,20 +2,14 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  const root = createRoot(rootElement);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
   
-  // Quitar el loader después de que React tome el control
-  const loader = document.getElementById('initial-loader');
-  if (loader) {
-    setTimeout(() => {
-      loader.classList.add('hidden');
-    }, 100);
-  }
+  // Pequeño retardo para asegurar que el primer frame se pinte
+  requestAnimationFrame(() => {
+    const loader = document.getElementById('initial-loader');
+    if (loader) loader.classList.add('hidden');
+  });
 }

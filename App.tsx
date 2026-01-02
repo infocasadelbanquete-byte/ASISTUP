@@ -32,62 +32,56 @@ const App: React.FC = () => {
     }
   });
 
-  const loadedSections = useRef(new Set<string>());
+  const hideLoader = () => {
+    const loader = document.getElementById('initial-loader');
+    if (loader) loader.classList.add('hidden');
+    setIsLoading(false);
+  };
 
   useEffect(() => {
-    const hideLoader = () => {
-      const loader = document.getElementById('initial-loader');
-      if (loader) loader.classList.add('hidden');
-      setIsLoading(false);
-    };
-
-    const checkLoaded = (section: string) => {
-      loadedSections.current.add(section);
-      if (loadedSections.current.size >= 4) {
-        hideLoader();
+    // Escuchar cambios en la configuración de la empresa
+    const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCompany(data.payload ? decompressData(data.payload) : data as any);
       }
-    };
+      hideLoader(); // Ocultar loader tras la primera carga exitosa o fallida
+    }, (err) => {
+      console.warn("Error cargando empresa, usando valores por defecto.");
+      hideLoader();
+    });
 
-    const unsub = [
-      onSnapshot(doc(db, "config", "company"), (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setCompany(data.payload ? decompressData(data.payload) : data as any);
-        }
-        checkLoaded('company');
-      }, () => checkLoaded('company')),
+    // Carga de colecciones en segundo plano
+    const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
+      setEmployees(snapshot.docs.map(d => {
+        const raw = d.data();
+        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+      }) as Employee[]);
+    });
 
-      onSnapshot(collection(db, "employees"), (snapshot) => {
-        setEmployees(snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-        }) as Employee[]);
-        checkLoaded('employees');
-      }, () => checkLoaded('employees')),
+    const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
+      setAttendance(snapshot.docs.map(d => {
+        const raw = d.data();
+        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+      }) as AttendanceRecord[]);
+    });
 
-      onSnapshot(collection(db, "attendance"), (snapshot) => {
-        setAttendance(snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-        }) as AttendanceRecord[]);
-        checkLoaded('attendance');
-      }, () => checkLoaded('attendance')),
+    const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
+      setPayments(snapshot.docs.map(d => {
+        const raw = d.data();
+        return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+      }) as Payment[]);
+    });
 
-      onSnapshot(collection(db, "payments"), (snapshot) => {
-        setPayments(snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-        }) as Payment[]);
-        checkLoaded('payments');
-      }, () => checkLoaded('payments'))
-    ];
-
-    // Timeout de seguridad de 2 segundos. Forzamos carga si Firebase no responde rápido.
-    const safetyTimeout = setTimeout(hideLoader, 2000);
+    // Timeout de seguridad forzado (1.5s)
+    const timer = setTimeout(hideLoader, 1500);
 
     return () => {
-      unsub.forEach(u => u());
-      clearTimeout(safetyTimeout);
+      unsubCompany();
+      unsubEmployees();
+      unsubAttendance();
+      unsubPayments();
+      clearTimeout(timer);
     };
   }, []);
 
@@ -118,7 +112,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <h1 className="text-5xl font-[900] text-slate-900 mb-2 tracking-tighter uppercase italic leading-none">ASIST UP</h1>
-          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Gestión de Talento Humano</p>
+          <p className="text-blue-600 font-black uppercase tracking-[0.5em] text-[9px] mb-12">Talento Humano & Gestión</p>
           
           <div className="space-y-4">
             <button 

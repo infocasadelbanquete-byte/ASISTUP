@@ -59,11 +59,23 @@
         </div>
         <div class="text-center">
             <h2 class="text-white font-black text-2xl tracking-tighter uppercase mb-1">ASIST UP</h2>
-            <p class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.4em] animate-pulse">Iniciando Sistema Administrativo</p>
+            <p class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.4em] animate-pulse">Sincronizando Sistema</p>
         </div>
       </div>
     </div>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
+    <script>
+        // Fail-safe: si hay un error en los módulos, ocultar el loader para ver errores en consola
+        window.addEventListener('error', function() {
+            const loader = document.getElementById('initial-loader');
+            if (loader) loader.classList.add('hidden');
+        });
+        // Timeout de seguridad global
+        setTimeout(() => {
+            const loader = document.getElementById('initial-loader');
+            if (loader) loader.classList.add('hidden');
+        }, 5000);
+    </script>
 </body>
 </html>
