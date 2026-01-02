@@ -12,8 +12,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
-  const [canInstall, setCanInstall] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   // Data State
   const [company, setCompany] = useState<CompanyConfig | null>(null);
@@ -37,20 +36,20 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    // Monitor de conexión
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    const handleCanInstall = () => setCanInstall(true);
-    window.addEventListener('can-install-app', handleCanInstall);
     
+    // Firestore Listeners
     const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setCompany(data.payload ? decompressData(data.payload) : data as CompanyConfig);
       }
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error al cargar empresa:", error);
       setIsLoading(false);
     });
 
@@ -71,7 +70,6 @@ const App: React.FC = () => {
     });
 
     return () => {
-      window.removeEventListener('can-install-app', handleCanInstall);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       unsubCompany(); unsubSettings(); unsubEmployees();
@@ -97,37 +95,43 @@ const App: React.FC = () => {
     (window as any).installApp();
   };
 
-  // Componente de estado de nube
   const CloudStatus = () => (
-    <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-slate-100 no-print transition-all hover:scale-105">
-      <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse' : 'bg-red-500'}`}></div>
-      <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
-        {isOnline ? 'Nube Activa y Sincronizada' : 'Conexión Inestable'}
+    <div className="fixed bottom-6 right-6 z-[60] flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-xl border border-slate-200 no-print transition-all hover:scale-105">
+      <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)] animate-pulse' : 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]'}`}></div>
+      <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">
+        {isOnline ? 'Nube Estable' : 'Sin Conexión'}
       </span>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen gradient-blue flex items-center justify-center">
+        <div className="text-white font-black animate-pulse">SINCRONIZANDO SISTEMA...</div>
+      </div>
+    );
+  }
 
   if (view === 'selection') {
     return (
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6 relative">
         <CloudStatus />
         
-        {/* Botón de Instalación */}
         <div className="absolute top-10 left-10 flex gap-4 no-print">
           <button 
             onClick={handleInstallClick}
             className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-            Instalar App
+            Instalar Escritorio
           </button>
         </div>
 
         <button 
           onClick={() => setIsAdminLoginModalOpen(true)}
-          className="absolute top-10 right-10 text-white opacity-20 hover:opacity-100 p-2 no-print"
+          className="absolute top-10 right-10 text-white opacity-20 hover:opacity-100 p-2 no-print transition-opacity"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </button>
 
         <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 rounded-[4rem] shadow-2xl text-center fade-in">
@@ -138,34 +142,34 @@ const App: React.FC = () => {
           </div>
           
           <h1 className="text-4xl font-black text-slate-900 mb-2 tracking-tighter">ASIST UP</h1>
-          <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[9px] mb-12">Sistema de Gestión de Talento</p>
+          <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-[9px] mb-12">Talento Humano & Asistencia</p>
           
           <button 
             onClick={() => setView('attendance')}
-            className="w-full py-6 bg-blue-600 text-white font-black rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 text-lg"
+            className="w-full py-6 bg-blue-600 text-white font-black rounded-3xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 text-lg uppercase tracking-tight"
           >
-            MARCAR ASISTENCIA
+            PANEL DE ASISTENCIA
           </button>
         </div>
 
         <Modal 
           isOpen={isAdminLoginModalOpen} 
           onClose={() => setIsAdminLoginModalOpen(false)} 
-          title="Acceso Administrativo"
-          footer={<button onClick={handleAdminLogin} className="px-8 py-2 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-md">Ingresar</button>}
+          title="Seguridad Administrativa"
+          footer={<button onClick={handleAdminLogin} className="px-10 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Entrar</button>}
         >
-          <div className="space-y-4">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Credenciales Requeridas</p>
+          <div className="space-y-6">
+            <p className="text-xs text-slate-500 text-center font-medium">Ingrese su clave maestra para acceder al panel de gestión.</p>
             <input 
               type="password" 
               value={adminPassInput} 
               onChange={e => setAdminPassInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleAdminLogin(); }}
-              className="w-full border-2 rounded-2xl p-4 text-center text-2xl font-black tracking-widest outline-none focus:border-blue-500 transition-all"
+              className="w-full border-2 border-slate-100 rounded-2xl p-5 text-center text-3xl font-black tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
               placeholder="••••••"
               autoFocus
             />
-            <p className="text-[9px] text-slate-400 text-center italic">Presione Enter para acceder rápidamente</p>
+            <p className="text-[10px] text-slate-400 text-center italic uppercase font-bold tracking-widest">Presione ENTER para ingresar</p>
           </div>
         </Modal>
       </div>
