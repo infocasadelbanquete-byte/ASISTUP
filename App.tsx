@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
@@ -12,7 +11,6 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   
   const [company, setCompany] = useState<CompanyConfig | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -35,20 +33,26 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    let companyLoaded = false;
     
-    // Listeners centralizados
     const unsub = [
       onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setCompany(data.payload ? decompressData(data.payload) : data as CompanyConfig);
+          if (data.payload) {
+            setCompany(decompressData(data.payload));
+          } else {
+            const { name, legalRep, ruc, address, phone, email, logo } = data as any;
+            setCompany({ name: name || '', legalRep: legalRep || '', ruc: ruc || '', address: address || '', phone: phone || '', email: email || '', logo: logo || '' });
+          }
         }
+        companyLoaded = true;
         setIsLoading(false);
-      }, () => setIsLoading(false)),
+      }, (err) => {
+        console.error("Firebase Company Error:", err);
+        companyLoaded = true;
+        setIsLoading(false);
+      }),
 
       onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
@@ -72,12 +76,25 @@ const App: React.FC = () => {
       })
     ];
 
+    const timer = setTimeout(() => {
+      if (!companyLoaded) setIsLoading(false);
+    }, 4000);
+
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
       unsub.forEach(u => u());
+      clearTimeout(timer);
     };
   }, []);
+
+  useEffect(() => {
+    const loader = document.getElementById('initial-loader');
+    if (!isLoading && loader) {
+      loader.style.opacity = '0';
+      setTimeout(() => {
+        if (loader.parentNode) loader.remove();
+      }, 500);
+    }
+  }, [isLoading]);
 
   const handleAdminLogin = () => {
     if (adminPassInput === 'admin123') {
@@ -94,7 +111,7 @@ const App: React.FC = () => {
     setAdminPassInput('');
   };
 
-  if (isLoading) return null; // El loader de index.html se encarga
+  if (isLoading) return null;
 
   if (view === 'selection') {
     return (

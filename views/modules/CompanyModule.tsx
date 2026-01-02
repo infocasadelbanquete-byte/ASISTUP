@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CompanyConfig, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
@@ -31,14 +30,16 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
     e.preventDefault();
     if (!isEditable) return;
     
+    // Validación Estricta de RUC
     if (!/^\d{13}$/.test(formData.ruc) || !formData.ruc.endsWith('001')) {
-      alert('ERROR: El RUC debe tener estrictamente 13 dígitos numéricos y terminar en "001".');
+      alert('ERROR: El RUC debe ser estrictamente de 13 dígitos y sus últimos dígitos deben ser "001".');
       return;
     }
     
+    // Validación Estricta de Teléfono
     const phoneLen = formData.phone.length;
     if (phoneLen !== 9 && phoneLen !== 10) {
-      alert('ERROR: El teléfono fijo debe tener 9 dígitos y el celular 10 dígitos.');
+      alert('ERROR: Teléfono fijo debe ser estrictamente de 9 dígitos; celular debe ser estrictamente de 10 dígitos.');
       return;
     }
     
@@ -54,38 +55,38 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
     <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="p-8 border-b bg-gray-50/50 flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Módulo de Configuración de Empresa</h2>
-          <p className="text-sm text-gray-500">Gestión de datos legales e institucionales</p>
+          <h2 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Configuración de Empresa</h2>
+          <p className="text-sm text-gray-500">Datos legales y administrativos</p>
         </div>
         <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-200 overflow-hidden">
-           {formData.logo ? <img src={formData.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="font-bold text-2xl">A+</span>}
+           {formData.logo ? <img src={formData.logo} className="w-full h-full object-cover" alt="Logo" /> : <span className="font-bold text-2xl">UP</span>}
         </div>
       </div>
 
       <form onSubmit={handleOpenConfirm} className="p-8 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">Nombre Comercial (Fantasía)</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Nombre Comercial (Fantasía)</label>
             <input 
               disabled={!isEditable}
               required
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all disabled:bg-gray-50"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none transition-all disabled:bg-gray-50"
               value={formData.name}
               onChange={e => setFormData({...formData, name: e.target.value})}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">Representante Legal</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Representante Legal</label>
             <input 
               disabled={!isEditable}
               required
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all disabled:bg-gray-50"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none transition-all disabled:bg-gray-50"
               value={formData.legalRep}
               onChange={e => setFormData({...formData, legalRep: e.target.value})}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">RUC (13 Dígitos - Termina en 001)</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">RUC (13 dígitos, fin 001)</label>
             <input 
               disabled={!isEditable}
               required
@@ -96,18 +97,18 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">Teléfono / Celular</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Teléfono / Celular (9 o 10 dig)</label>
             <input 
               disabled={!isEditable}
               required
+              maxLength={10}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none disabled:bg-gray-50"
               value={formData.phone}
               onChange={e => setFormData({...formData, phone: e.target.value.replace(/\D/g, '')})}
-              placeholder="9 o 10 dígitos numéricos"
             />
           </div>
           <div className="md:col-span-2 space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">Dirección de Domicilio</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Dirección de Domicilio</label>
             <input 
               disabled={!isEditable}
               required
@@ -117,7 +118,7 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">Correo Electrónico</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Correo Electrónico</label>
             <input 
               disabled={!isEditable}
               required
@@ -128,13 +129,12 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-blue-800 uppercase tracking-[0.1em]">URL de Imagen (Logotipo)</label>
+            <label className="text-[10px] font-black text-blue-800 uppercase tracking-widest">URL Logotipo</label>
             <input 
               disabled={!isEditable}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 outline-none disabled:bg-gray-50"
               value={formData.logo}
               onChange={e => setFormData({...formData, logo: e.target.value})}
-              placeholder="Enlace a la imagen del logo"
             />
           </div>
         </div>
@@ -145,7 +145,7 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
               type="submit"
               className="px-10 py-4 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-2xl shadow-xl transition-all active:scale-95"
             >
-              Guardar y Registrar Empresa
+              Guardar Datos Empresa
             </button>
           </div>
         )}
@@ -154,22 +154,16 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
       <Modal 
         isOpen={isConfirmModalOpen} 
         onClose={() => setIsConfirmModalOpen(false)} 
-        title="Confirmar Datos Institucionales"
+        title="Confirmar Actualización"
         type="info"
         footer={
           <div className="flex gap-2">
             <button onClick={() => setIsConfirmModalOpen(false)} className="px-6 py-2 text-gray-400 font-bold text-xs uppercase">Cancelar</button>
-            <button onClick={handleConfirmSave} className="px-8 py-2 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Actualizar Perfil</button>
+            <button onClick={handleConfirmSave} className="px-8 py-2 bg-blue-600 text-white font-black rounded-xl text-xs uppercase shadow-lg">Confirmar</button>
           </div>
         }
       >
-        <div className="space-y-4">
-           <div className="flex items-center gap-3 text-blue-600 mb-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-              <p className="font-bold uppercase text-xs">Advertencia de Modificación</p>
-           </div>
-           <p className="text-sm text-gray-600 font-medium">¿Desea actualizar la información institucional de la empresa? Estos cambios afectarán los encabezados de todos los documentos oficiales.</p>
-        </div>
+        <p className="text-sm text-gray-600 font-medium">¿Está seguro de que desea actualizar la información de la empresa? Esto afectará los documentos legales generados.</p>
       </Modal>
     </div>
   );

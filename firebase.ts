@@ -1,4 +1,3 @@
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { 
   getFirestore, 
@@ -24,9 +23,22 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
+// Helper to stringify objects with circular references safely
+const safeStringify = (obj: any) => {
+  const cache = new Set();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (cache.has(value)) return;
+      cache.add(value);
+    }
+    return value;
+  });
+};
+
 export const compressData = (data: any): string => {
   try {
-    return LZString.compressToEncodedURIComponent(JSON.stringify(data));
+    if (!data) return "";
+    return LZString.compressToEncodedURIComponent(safeStringify(data));
   } catch (e) {
     console.error("Error al comprimir:", e);
     return "";
