@@ -14,19 +14,20 @@ const mount = () => {
       </React.StrictMode>
     );
     
-    // Ocultar loader con un delay seguro para permitir que Firebase conecte
+    // Ocultar loader con un delay que permita a Firebase estabilizar la conexión
     setTimeout(() => {
       const loader = document.getElementById('initial-loader');
       if (loader) {
         loader.style.opacity = '0';
-        setTimeout(() => loader.classList.add('hidden'), 500);
+        setTimeout(() => loader.classList.add('hidden'), 800);
       }
-    }, 1500);
+    }, 2000);
+    
   } catch (err) {
-    console.error('Fallo en el arranque:', err);
+    console.error('Fallo Crítico ASIST UP:', err);
     const errorDisplay = document.getElementById('error-display');
     if (errorDisplay) {
-      errorDisplay.innerText = "Fallo de renderizado: " + (err instanceof Error ? err.message : 'Conflicto de módulos');
+      errorDisplay.innerText = "Error de renderizado: " + (err instanceof Error ? err.message : 'Conflicto de módulos');
       errorDisplay.classList.remove('hidden');
     }
   }

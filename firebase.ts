@@ -9,7 +9,7 @@ import {
   updateDoc, 
   deleteDoc 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-import LZString from "lz-string";
+import LZString from "https://esm.sh/lz-string@1.5.0";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBMcYKMy9zPBeVZMUYtJsjMCVXQP7K7lx4",
@@ -20,10 +20,10 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
-// Inicializar la aplicación
+// Inicialización de la aplicación
 const app = initializeApp(firebaseConfig);
 
-// Obtener la instancia de Firestore vinculada a la aplicación inicializada
+// Obtención de la instancia de Firestore vinculada a la App
 export const db = getFirestore(app);
 
 const safeStringify = (obj: any) => {
