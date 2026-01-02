@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types';
-import AdminDashboard from './views/AdminDashboard';
-import AttendanceSystem from './views/AttendanceSystem';
-import Modal from './components/Modal';
-import { db, collection, doc, onSnapshot, setDoc, addDoc, compressData, decompressData } from './firebase';
+import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
+import AdminDashboard from './views/AdminDashboard.tsx';
+import AttendanceSystem from './views/AttendanceSystem.tsx';
+import Modal from './components/Modal.tsx';
+import { db, collection, doc, onSnapshot, setDoc, addDoc, compressData, decompressData } from './firebase.ts';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
@@ -114,7 +114,6 @@ const App: React.FC = () => {
   };
 
   const handleAdminLogin = () => {
-    // Contraseña maestra por defecto
     if (adminPassInput === 'admin123') {
       setCurrentUserRole(Role.SUPER_ADMIN);
       setView('admin');
@@ -134,7 +133,6 @@ const App: React.FC = () => {
   if (view === 'selection') {
     return (
       <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Acceso Administrativo Discreto (Candado 20% opacidad) */}
         <button 
           onClick={() => setIsAdminLoginModalOpen(true)}
           className="absolute top-10 right-10 text-white opacity-20 hover:opacity-100 hover:scale-110 transition-all duration-700 z-50 p-2"
@@ -147,14 +145,11 @@ const App: React.FC = () => {
 
         <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl p-16 md:p-20 rounded-[4rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.6)] text-center fade-in border border-white/20">
           <div className="mb-14 flex justify-center">
-            {/* Isotipo Profesional Gráfico Sophisticated */}
             <div className="w-32 h-32 bg-gradient-to-br from-slate-800 to-slate-950 rounded-[2.5rem] flex items-center justify-center shadow-[0_20px_50px_rgba(0,0,0,0.4)] ring-1 ring-white/10 logo-shimmer group transform transition-transform duration-700 hover:scale-105">
               <svg viewBox="0 0 100 100" className="w-16 h-16 fill-none stroke-white" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round">
-                {/* Barras de crecimiento */}
                 <path d="M25 75V60" strokeOpacity="0.3" />
                 <path d="M45 75V45" strokeOpacity="0.6" />
                 <path d="M65 75V30" strokeOpacity="0.8" />
-                {/* Línea de verificación / check ascendente */}
                 <path d="M25 55L45 35L60 50L85 15" stroke="#3b82f6" strokeWidth="8" />
               </svg>
             </div>
@@ -185,7 +180,6 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal de Acceso Administrativo */}
         <Modal 
           isOpen={isAdminLoginModalOpen} 
           onClose={() => setIsAdminLoginModalOpen(false)} 
@@ -212,7 +206,6 @@ const App: React.FC = () => {
           </div>
         </Modal>
         
-        {/* Footer Discreto */}
         <div className="absolute bottom-8 text-white/20 text-[9px] font-black uppercase tracking-[0.5em] select-none">
           Ecuador Industrial Standard Compliance
         </div>

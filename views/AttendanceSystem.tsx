@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Employee, AttendanceRecord } from '../types';
-import Clock from '../components/Clock';
-import { APP_NAME, MOTIVATIONAL_MESSAGES_START, MOTIVATIONAL_MESSAGES_END } from '../constants';
+import { Employee, AttendanceRecord } from '../types.ts';
+import Clock from '../components/Clock.tsx';
+import { APP_NAME, MOTIVATIONAL_MESSAGES_START, MOTIVATIONAL_MESSAGES_END } from '../constants.tsx';
 
 interface AttendanceSystemProps {
   employees: Employee[];

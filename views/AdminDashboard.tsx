@@ -1,15 +1,15 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types';
-import Sidebar from '../components/Sidebar';
-import CompanyModule from './modules/CompanyModule';
-import EmployeeModule from './modules/EmployeeModule';
-import PayrollModule from './modules/PayrollModule';
-import PaymentsModule from './modules/PaymentsModule';
-import SettingsModule from './modules/SettingsModule';
-import ReportsModule from './modules/ReportsModule';
-import Modal from '../components/Modal';
-import { ECUADOR_HOLIDAYS, DAILY_QUOTES, ACTIVE_BREAKS } from '../constants';
+import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
+import Sidebar from '../components/Sidebar.tsx';
+import CompanyModule from './modules/CompanyModule.tsx';
+import EmployeeModule from './modules/EmployeeModule.tsx';
+import PayrollModule from './modules/PayrollModule.tsx';
+import PaymentsModule from './modules/PaymentsModule.tsx';
+import SettingsModule from './modules/SettingsModule.tsx';
+import ReportsModule from './modules/ReportsModule.tsx';
+import Modal from '../components/Modal.tsx';
+import { ECUADOR_HOLIDAYS, DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx';
 
 interface AdminDashboardProps {
   role: Role;

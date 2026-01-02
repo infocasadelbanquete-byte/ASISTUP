@@ -29,8 +29,13 @@ export const db = getFirestore(app);
  * Comprime un objeto JS a una cadena Base64
  */
 export const compressData = (data: any): string => {
-  const jsonString = JSON.stringify(data);
-  return LZString.compressToEncodedURIComponent(jsonString);
+  try {
+    const jsonString = JSON.stringify(data);
+    return LZString.compressToEncodedURIComponent(jsonString);
+  } catch (e) {
+    console.error("Error al comprimir:", e);
+    return "";
+  }
 };
 
 /**
@@ -38,6 +43,7 @@ export const compressData = (data: any): string => {
  */
 export const decompressData = (compressed: string): any => {
   try {
+    if (!compressed) return null;
     const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
     return decompressed ? JSON.parse(decompressed) : null;
   } catch (e) {
