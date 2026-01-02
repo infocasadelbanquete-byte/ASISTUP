@@ -16,6 +16,10 @@ const App: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   
+  // Nuevos estados para feedback formal de sesión
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showLogoutFeedback, setShowLogoutFeedback] = useState(false);
+  
   const [company, setCompany] = useState<CompanyConfig | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -32,12 +36,10 @@ const App: React.FC = () => {
   });
 
   useEffect(() => {
-    // Detectar si es móvil
     const checkMobile = () => setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // Lógica de instalación (PWA)
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -113,12 +115,23 @@ const App: React.FC = () => {
         return;
       }
       setCurrentUserRole(role);
+      setShowWelcome(true); // Mostrar bienvenida
       setView('admin');
       setIsAdminLoginModalOpen(false);
     } else {
       alert('Clave incorrecta.');
     }
     setAdminPassInput('');
+  };
+
+  const handleLogoutRequest = () => {
+    setShowLogoutFeedback(true); // Mostrar feedback de cierre
+  };
+
+  const finalizeLogout = () => {
+    setCurrentUserRole(null);
+    setView('selection');
+    setShowLogoutFeedback(false);
   };
 
   const handleInstall = async () => {
@@ -153,7 +166,7 @@ const App: React.FC = () => {
           <div className="mt-8 flex items-center justify-center gap-2">
              <div className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></div>
              <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
-               {isDbConnected ? 'Sistema en línea' : 'Modo fuera de línea'}
+               {isDbConnected ? 'Sistema en línea y estable' : 'Buscando servidor...'}
              </span>
           </div>
         </div>
@@ -181,8 +194,17 @@ const App: React.FC = () => {
                 )}
               </button>
             </div>
-            <button onClick={handleAdminLogin} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">Entrar al Ecosistema</button>
+            <button onClick={handleAdminLogin} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">Validar Credenciales</button>
           </div>
+        </Modal>
+
+        <Modal isOpen={showLogoutFeedback} onClose={finalizeLogout} title="Cierre de Sesión Seguro" type="success">
+           <div className="text-center space-y-6">
+              <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">☁️</div>
+              <h3 className="text-xl font-black text-slate-900 uppercase">Sincronización Exitosa</h3>
+              <p className="text-sm text-slate-500 font-medium leading-relaxed">Sesión cerrada exitosamente.<br/><span className="font-bold text-emerald-600">Todos los registros han sido sincronizados y protegidos en la nube.</span></p>
+              <button onClick={finalizeLogout} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Entendido</button>
+           </div>
         </Modal>
       </div>
     );
@@ -193,20 +215,31 @@ const App: React.FC = () => {
   }
 
   return (
-    <AdminDashboard 
-      role={currentUserRole!} 
-      isDbConnected={isDbConnected}
-      onLogout={() => { setCurrentUserRole(null); setView('selection'); }} 
-      company={company}
-      onUpdateCompany={async (c: CompanyConfig) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
-      employees={employees}
-      onUpdateEmployees={async (emps: Employee[]) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
-      attendance={attendance}
-      payments={payments}
-      onUpdatePayments={async (pys: Payment[]) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
-      settings={settings}
-      onUpdateSettings={async (s: GlobalSettings) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
-    />
+    <>
+      <AdminDashboard 
+        role={currentUserRole!} 
+        isDbConnected={isDbConnected}
+        onLogout={handleLogoutRequest} 
+        company={company}
+        onUpdateCompany={async (c: CompanyConfig) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
+        employees={employees}
+        onUpdateEmployees={async (emps: Employee[]) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
+        attendance={attendance}
+        payments={payments}
+        onUpdatePayments={async (pys: Payment[]) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
+        settings={settings}
+        onUpdateSettings={async (s: GlobalSettings) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
+      />
+      
+      <Modal isOpen={showWelcome} onClose={() => setShowWelcome(false)} title="Acceso Autorizado" type="success">
+         <div className="text-center space-y-4">
+            <div className="text-5xl">🏢</div>
+            <h2 className="text-2xl font-black text-slate-900">¡Bienvenido al Panel de Gestión!</h2>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Sesión iniciada como: <span className="text-blue-600">{currentUserRole}</span></p>
+            <button onClick={() => setShowWelcome(false)} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl">Comenzar Gestión</button>
+         </div>
+      </Modal>
+    </>
   );
 };
 

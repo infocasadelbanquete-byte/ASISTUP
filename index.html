@@ -13,21 +13,30 @@
         .gradient-blue { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
         .logo-gradient { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
         
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+        @keyframes rotate-ring {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
+        .loading-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 2px solid rgba(59, 130, 246, 0.1);
+            border-top-color: #3b82f6;
+            animation: rotate-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+
         .shimmer-text {
-            background: linear-gradient(90deg, #3b82f6, #ffffff, #3b82f6);
+            background: linear-gradient(90deg, #94a3b8, #ffffff, #94a3b8);
             background-size: 200% auto;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            animation: shimmer 4s infinite linear;
-        }
-        .shimmer-bg {
-            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.05) 75%);
-            background-size: 200% auto;
             animation: shimmer 3s infinite linear;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
         }
 
         @media print { 
@@ -35,6 +44,7 @@
             body { background: white !important; } 
             @page { size: A4 landscape; margin: 0.5cm; }
         }
+        
         #initial-loader { 
             position: fixed; 
             inset: 0; 
@@ -44,14 +54,15 @@
             justify-content: center; 
             background: #0f172a; 
             z-index: 9999; 
+            transition: opacity 0.8s ease-out;
         }
-        .hidden { display: none !important; }
+        #initial-loader.hidden { opacity: 0; pointer-events: none; }
+        
         .custom-scroll::-webkit-scrollbar { width: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
     <script>
-      // Asegurar que process.env esté disponible antes de que carguen los módulos
       window.process = window.process || {};
       window.process.env = window.process.env || {};
       window.process.env.NODE_ENV = window.process.env.NODE_ENV || 'production';
@@ -72,16 +83,17 @@
 </head>
 <body>
     <div id="initial-loader">
-        <div class="relative mb-12">
-            <div class="w-24 h-24 logo-gradient rounded-[2rem] flex items-center justify-center shadow-[0_0_50px_rgba(59,130,246,0.5)] border border-white/20 animate-pulse">
-                <svg viewBox="0 0 100 100" class="w-14 h-14 fill-none stroke-white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M25 75 C 25 75, 50 75, 50 50 C 50 25, 75 25, 75 25 M 65 25 L 75 25 L 75 35" />
-                </svg>
-            </div>
-            <div class="absolute -inset-4 border-2 border-blue-500/10 rounded-[2.5rem] animate-ping"></div>
+        <div class="relative flex items-center justify-center mb-8">
+            <div class="loading-ring"></div>
+            <div class="absolute text-blue-500 font-black text-xs tracking-tighter italic">AU</div>
         </div>
-        <h2 class="shimmer-text font-black text-4xl tracking-tighter uppercase italic">ASIST UP</h2>
-        <p class="text-blue-400 font-bold text-[10px] uppercase tracking-[0.5em] mt-6 animate-pulse">Ecosistema Administrativo de Elite</p>
+        <h2 class="shimmer-text font-black text-2xl tracking-[0.3em] uppercase italic">ASIST UP</h2>
+        <div class="mt-12 flex flex-col items-center gap-2">
+            <p class="text-slate-500 font-bold text-[8px] uppercase tracking-[0.6em]">Cargando Sistemas</p>
+            <div class="w-32 h-0.5 bg-slate-800 rounded-full overflow-hidden">
+                <div class="w-1/2 h-full bg-blue-600 animate-[shimmer_1.5s_infinite_linear]"></div>
+            </div>
+        </div>
     </div>
     <div id="root"></div>
     <script type="module" src="index.tsx"></script>
