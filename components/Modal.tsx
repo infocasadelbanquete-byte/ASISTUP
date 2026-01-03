@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface ModalProps {
@@ -8,9 +7,10 @@ interface ModalProps {
   type?: 'info' | 'warning' | 'error' | 'success';
   children: React.ReactNode;
   footer?: React.ReactNode;
+  maxWidth?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, type = 'info', children, footer }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, type = 'info', children, footer, maxWidth }) => {
   if (!isOpen) return null;
 
   const headerColors = {
@@ -22,7 +22,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, type = 'info', ch
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidth || 'max-w-2xl'} overflow-hidden animate-in fade-in zoom-in duration-200`}>
         <div className={`${headerColors[type]} p-4 flex justify-between items-center text-white`}>
           <h3 className="text-xl font-bold">{title}</h3>
           <button onClick={onClose} className="hover:bg-white/20 p-1 rounded-full">

@@ -31,9 +31,10 @@ export interface AttendanceRecord {
   id: string;
   employeeId: string;
   timestamp: string;
-  type: 'in' | 'out';
+  type: 'in' | 'out' | 'half_day';
   status: 'confirmed' | 'pending_approval' | 'rejected';
   isForgotten?: boolean;
+  isLate?: boolean;
   justification?: string;
   validatedAt?: string;
 }
@@ -69,8 +70,7 @@ export interface Employee {
   emergencyContact: { name: string; phone: string; };
   startDate: string;
   role: Role;
-  // Laboral
-  isFixed: boolean; // Fijo o Temporal
+  isFixed: boolean; 
   salary: number;
   isAffiliated: boolean;
   overSalaryType: 'accumulate' | 'monthly' | 'none';
@@ -106,8 +106,8 @@ export interface GlobalSettings {
   iessRate: number;
   reserveRate: number;
   schedule: {
-    monFri: { in: string; out: string };
+    monFri: { in1: string; out1: string; in2: string; out2: string };
     sat: { in: string; out: string };
-    halfDayOff: string; // Ej: Miércoles tarde
+    halfDayOff: string; 
   };
 }

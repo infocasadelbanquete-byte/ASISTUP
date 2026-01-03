@@ -9,7 +9,7 @@ interface SettingsModuleProps {
 }
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role }) => {
-  const [local, setLocal] = useState<GlobalSettings>({ ...settings, sbu: 482.00 });
+  const [local, setLocal] = useState<GlobalSettings>({ ...settings });
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleSave = () => {
@@ -48,27 +48,42 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
               <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Horario Comercial y Jornada Laboral</h3>
               <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[9px] font-black uppercase">Vigente 2026</span>
            </div>
-           <div className="grid grid-cols-3 gap-8">
+           <div className="space-y-6">
               <div className="space-y-3">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lunes a Viernes</p>
-                 <div className="flex items-center gap-3">
-                    <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.in} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in: e.target.value}}})} />
-                    <span className="font-black text-slate-300">-</span>
-                    <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.out} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out: e.target.value}}})} />
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lunes a Viernes (Jornada Doble)</p>
+                 <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Entrada AM</p>
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.in1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in1: e.target.value}}})} />
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Salida AM</p>
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.out1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out1: e.target.value}}})} />
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Entrada PM</p>
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.in2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in2: e.target.value}}})} />
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Salida PM</p>
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.out2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out2: e.target.value}}})} />
+                    </div>
                  </div>
               </div>
-              <div className="space-y-3">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sábados</p>
-                 <div className="flex items-center gap-3">
-                    <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.in} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, in: e.target.value}}})} />
-                    <span className="font-black text-slate-300">-</span>
-                    <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.out} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, out: e.target.value}}})} />
-                 </div>
-              </div>
-              <div className="space-y-3">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Medio día libre</p>
-                 <input type="text" className="w-full p-3 border-2 rounded-xl text-xs font-black uppercase text-blue-600 bg-white" value={local.schedule.halfDayOff} onChange={e => setLocal({...local, schedule: {...local.schedule, halfDayOff: e.target.value}})} />
-                 <p className="text-[8px] text-slate-400 font-bold uppercase italic leading-none">Ej: Miércoles en la tarde</p>
+              <div className="grid grid-cols-2 gap-8">
+                <div className="space-y-3">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sábados</p>
+                   <div className="flex items-center gap-3">
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.in} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, in: e.target.value}}})} />
+                      <span className="font-black text-slate-300">-</span>
+                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.out} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, out: e.target.value}}})} />
+                   </div>
+                </div>
+                <div className="space-y-3">
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Medio día libre configurable</p>
+                   <input type="text" className="w-full p-3 border-2 rounded-xl text-xs font-black uppercase text-blue-600 bg-white" value={local.schedule.halfDayOff} onChange={e => setLocal({...local, schedule: {...local.schedule, halfDayOff: e.target.value}})} />
+                   <p className="text-[8px] text-slate-400 font-bold uppercase italic leading-none">Ej: Miércoles en la tarde</p>
+                </div>
               </div>
            </div>
         </section>
@@ -82,9 +97,9 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
       </div>
 
       <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)} title="Autorización de Cambio de Sistema" type="warning">
-         <div className="space-y-6">
-            <p className="text-sm font-medium text-slate-600 leading-relaxed italic">"Al confirmar, se re-calibrarán los sueldos y jornadas de todos los colaboradores según el nuevo marco legal de $482.00 decretado."</p>
-            <button onClick={() => { onUpdate(local); setShowConfirm(false); alert("Ecosistema de talento actualizado con los nuevos parámetros 2026."); }} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-xs shadow-xl tracking-widest">Confirmar y Aplicar Cambios</button>
+         <div className="space-y-6 text-center">
+            <p className="text-sm font-medium text-slate-600 leading-relaxed italic">"Al confirmar, se re-calibrarán los sueldos y jornadas de todos los colaboradores según el nuevo marco legal decretado."</p>
+            <button onClick={() => { onUpdate(local); setShowConfirm(false); alert("Ecosistema de talento actualizado con los nuevos parámetros."); }} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-xs shadow-xl tracking-widest active:scale-95 transition-all">Confirmar y Aplicar Cambios</button>
          </div>
       </Modal>
     </div>
