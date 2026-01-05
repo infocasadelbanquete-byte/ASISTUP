@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
@@ -12,20 +12,16 @@ const App: React.FC = () => {
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
-  const [showPass, setShowPass] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isMobile, setIsMobile] = useState(false);
   
+  // Ref para evitar fugas de memoria en listeners
+  const unsubscribesRef = useRef<(() => void)[]>([]);
+
   const [appMode, setAppMode] = useState<'full' | 'attendance'>(
     (localStorage.getItem('app_mode') as 'full' | 'attendance') || 'full'
   );
 
   const [showWelcome, setShowWelcome] = useState(false);
   const [showLogoutFeedback, setShowLogoutFeedback] = useState(false);
-  const [showConfigPrompt, setShowConfigPrompt] = useState(false);
-  const [configBoot, setConfigBoot] = useState(true);
-  const [configMode, setConfigMode] = useState<'full' | 'attendance'>('full');
-  
   const [modalAlert, setModalAlert] = useState<{isOpen: boolean, title: string, message: string, type: 'info' | 'success' | 'error'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
@@ -49,50 +45,23 @@ const App: React.FC = () => {
     setModalAlert({ isOpen: true, title, message, type });
   };
 
-  const sendPushNotification = useCallback((title: string, body: string) => {
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: 'https://cdn-icons-png.flaticon.com/512/1063/1063376.png' });
-    }
-  }, []);
+  const cleanListeners = () => {
+    unsubscribesRef.current.forEach(unsub => unsub());
+    unsubscribesRef.current = [];
+  };
 
-  // Habilitar tecla Escape global
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsAdminLoginModalOpen(false);
         setShowWelcome(false);
         setModalAlert(prev => ({ ...prev, isOpen: false }));
-        setShowConfigPrompt(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, []);
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    });
-
-    window.addEventListener('appinstalled', () => {
-      setShowConfigPrompt(true);
-    });
-
-    const unsubscribes: (() => void)[] = [];
-    const rescueTimer = setTimeout(() => setIsLoadingData(false), 3000);
-
-    const updateConnectionStatus = (metadata: any) => {
-      if (!metadata.fromCache) setIsDbConnected(true);
-    };
+    
+    // Iniciar listeners con limpieza
+    cleanListeners();
 
     try {
       const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
@@ -100,74 +69,49 @@ const App: React.FC = () => {
           const data = docSnap.data();
           setCompany(data.payload ? decompressData(data.payload) : data as any);
         }
-        updateConnectionStatus(docSnap.metadata);
+        setIsDbConnected(true);
         setIsLoadingData(false);
-        clearTimeout(rescueTimer);
       }, () => setIsDbConnected(false));
-      unsubscribes.push(unsubCompany);
+      unsubscribesRef.current.push(unsubCompany);
 
       const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Employee[]);
-        updateConnectionStatus(snapshot.metadata);
-      }, () => setIsDbConnected(false));
-      unsubscribes.push(unsubEmployees);
+      });
+      unsubscribesRef.current.push(unsubEmployees);
 
       const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
-        const newRecords = snapshot.docs.map(d => {
+        setAttendance(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
-        }) as AttendanceRecord[];
-        
-        if (localStorage.getItem('admin_logged_in') === 'true') {
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === "added" && !change.doc.metadata.fromCache) {
-              const rec = decompressData(change.doc.data().payload) as AttendanceRecord;
-              const emp = employees.find(e => e.id === rec.employeeId);
-              if (rec.isForgotten) {
-                sendPushNotification("Solicitud de Marcaje", `${emp?.surname} ha enviado una justificación.`);
-              }
-              if (rec.isLate) {
-                sendPushNotification("Atraso Crítico", `${emp?.surname} ha marcado con más de 15m de atraso.`);
-              }
-            }
-          });
-        }
-        
-        setAttendance(newRecords);
-        updateConnectionStatus(snapshot.metadata);
-      }, () => setIsDbConnected(false));
-      unsubscribes.push(unsubAttendance);
+        }) as AttendanceRecord[]);
+      });
+      unsubscribesRef.current.push(unsubAttendance);
 
-      onSnapshot(collection(db, "payments"), (snapshot) => {
+      const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
         setPayments(snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Payment[]);
       });
+      unsubscribesRef.current.push(unsubPayments);
 
     } catch (e) {
       setIsLoadingData(false);
-      setIsDbConnected(false);
     }
 
-    return () => { 
-      unsubscribes.forEach(unsub => unsub()); 
-      clearTimeout(rescueTimer);
-      window.removeEventListener('resize', checkMobile);
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      cleanListeners();
     };
-  }, [employees, sendPushNotification]);
+  }, []);
 
   const handleAdminLogin = () => {
     let role: Role | null = null;
-    
-    // Passwords estáticos de emergencia
     if (adminPassInput === 'admin123') role = Role.SUPER_ADMIN;
-    else if (adminPassInput === 'partial123') role = Role.PARTIAL_ADMIN;
     else {
-      // Validar mediante PIN de empleado con cargo administrativo
       const foundAdmin = employees.find(e => e.pin === adminPassInput && (e.role === Role.SUPER_ADMIN || e.role === Role.PARTIAL_ADMIN));
       if (foundAdmin) role = foundAdmin.role;
     }
@@ -179,7 +123,7 @@ const App: React.FC = () => {
       setView('admin');
       setIsAdminLoginModalOpen(false);
     } else {
-      showAlert("Error de Acceso", "Credencial administrativa no válida o sin privilegios.", "error");
+      showAlert("Error de Acceso", "Credencial no válida o sin privilegios.", "error");
     }
     setAdminPassInput('');
   };
@@ -220,17 +164,15 @@ const App: React.FC = () => {
           <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización">
             <div className="space-y-8 p-2 text-center">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ingrese Password o PIN Administrativo</p>
-              <div className="relative">
-                <input 
-                  type={showPass ? "text" : "password"} 
-                  value={adminPassInput} 
-                  onChange={e => setAdminPassInput(e.target.value)} 
-                  onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
-                  className="w-full border-2 border-slate-100 rounded-[2.5rem] p-8 text-center text-4xl font-black focus:border-blue-600 outline-none transition-all bg-slate-50" 
-                  placeholder="••••••" 
-                  autoFocus 
-                />
-              </div>
+              <input 
+                type="password"
+                value={adminPassInput} 
+                onChange={e => setAdminPassInput(e.target.value)} 
+                onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
+                className="w-full border-2 border-slate-100 rounded-[2.5rem] p-8 text-center text-4xl font-black focus:border-blue-600 outline-none transition-all bg-slate-50" 
+                placeholder="••••••" 
+                autoFocus 
+              />
               <button onClick={handleAdminLogin} className="w-full py-6 bg-blue-700 text-white font-black rounded-3xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Validar Ingreso</button>
             </div>
           </Modal>
@@ -262,6 +204,8 @@ const App: React.FC = () => {
           onUpdatePayments={async (pys) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
           settings={settings}
           onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
+          onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}
+          appMode={appMode}
         />
       )}
 

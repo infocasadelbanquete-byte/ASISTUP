@@ -4,6 +4,18 @@ export enum Role {
   EMPLOYEE = 'Empleado'
 }
 
+export enum Gender {
+  MASCULINO = 'Masculino',
+  FEMENINO = 'Femenino'
+}
+
+export enum CivilStatus {
+  SOLTERO = 'Soltero/a',
+  CASADO = 'Casado/a',
+  DIVORCIADO = 'Divorciado/a',
+  VIUDO = 'Viudo/a'
+}
+
 export enum BloodType {
   A_POS = 'A+', A_NEG = 'A-', B_POS = 'B+', B_NEG = 'B-', 
   AB_POS = 'AB+', AB_NEG = 'AB-', O_POS = 'O+', O_NEG = 'O-'
@@ -62,6 +74,8 @@ export interface Employee {
   surname: string;
   identification: string;
   birthDate: string;
+  gender: Gender;
+  civilStatus: CivilStatus;
   origin: string;
   address: string;
   phone: string; 
@@ -81,7 +95,8 @@ export interface Employee {
   };
   photo: string;
   pin: string; 
-  pinChanges: number;
+  pinChanged: boolean;
+  pinNeedsReset: boolean;
   status: 'active' | 'terminated';
   terminationDate?: string;
   terminationReason?: string;

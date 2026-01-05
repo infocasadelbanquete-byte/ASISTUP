@@ -23,23 +23,46 @@ interface AdminDashboardProps {
   onUpdatePayments: (payments: Payment[]) => void;
   settings: GlobalSettings;
   onUpdateSettings: (settings: GlobalSettings) => void;
+  onUpdateAppMode: (mode: 'full' | 'attendance') => void;
+  appMode: 'full' | 'attendance';
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings 
+  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings, onUpdateAppMode, appMode 
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports'>('dashboard');
+  const [showInstallModal, setShowInstallModal] = useState(false);
   
   const today = useMemo(() => new Date(), []);
   const dayOfYear = useMemo(() => {
     const start = new Date(today.getFullYear(), 0, 0);
     const diff = today.getTime() - start.getTime();
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
   }, [today]);
 
-  const dailyQuote = useMemo(() => DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length], [dayOfYear]);
-  const activeBreak = useMemo(() => ACTIVE_BREAKS[dayOfYear % ACTIVE_BREAKS.length], [dayOfYear]);
+  const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
+
+  const exportGeneralToExcel = () => {
+    const headers = "Empleado,Sueldo,Identificacion,Estado\n";
+    const rows = employees.map(e => `${e.name} ${e.surname},${e.salary},${e.identification},${e.status}`).join("\n");
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Nomina_Resumen_${new Date().toLocaleDateString()}.csv`;
+    link.click();
+  };
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showInstallModal) setShowInstallModal(false);
+        else setActiveTab('dashboard');
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    // Fix: Changed handleKey to handleEsc to match defined variable
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showInstallModal]);
 
   return (
     <div className="flex h-screen bg-[#fcfdfe] overflow-hidden flex-col md:flex-row">
@@ -55,44 +78,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 no-print pt-10 md:pt-0">
           <div>
             <h1 className="text-xl md:text-2xl font-[950] text-slate-900 tracking-tight uppercase">
-              {activeTab === 'dashboard' ? 'Centro de Bienestar' : 
-               activeTab === 'company' ? 'Institucional' : 
-               activeTab === 'employees' ? 'Talento Humano' : 
-               activeTab === 'payroll' ? 'Nómina' : 
-               activeTab === 'payments' ? 'Tesorería' : 
-               activeTab === 'reports' ? 'Inteligencia' : 'Configuración'}
+              Consola Operativa
             </h1>
-            <div className="flex items-center gap-2 mt-1">
-                <span className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 animate-pulse'}`}></span>
-                <span className="text-slate-400 font-black text-[7px] uppercase tracking-widest">
-                  {isDbConnected ? 'Red Activa' : 'Sin Sincro'}
-                </span>
-            </div>
+          </div>
+          <div className="flex gap-3">
+             {role === Role.SUPER_ADMIN && (
+               <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-slate-200">Instalar Equipo</button>
+             )}
+             <button onClick={exportGeneralToExcel} className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-100">Exportar Excel</button>
           </div>
         </header>
 
         <div className="animate-in fade-in duration-500">
           {activeTab === 'dashboard' && (
-            <div className="space-y-6 no-print">
+            <div className="space-y-6">
               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50">
                   <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-3">Reflexión Diaria</p>
                   <h2 className="text-lg md:text-xl font-[800] text-slate-800 leading-snug">"{dailyQuote}"</h2>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white">
-                   <h2 className="text-xl font-[950] mb-2 tracking-tighter uppercase text-blue-400">Personal</h2>
-                   <p className="text-slate-400 mb-6 text-xs font-medium">Gestión del Capital Humano.</p>
-                   <button onClick={() => setActiveTab('employees')} className="px-6 py-2 bg-white text-slate-900 font-black rounded-lg uppercase text-[8px] tracking-widest">Ver Expedientes</button>
-                </div>
-
-                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50 flex items-center gap-6">
-                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-2xl">{activeBreak.icon}</div>
-                    <div>
-                        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-1">{activeBreak.title}</h3>
-                        <p className="text-slate-500 font-medium text-[10px] leading-relaxed">{activeBreak.description}</p>
-                    </div>
-                </div>
+              <div className="grid grid-cols-3 gap-6">
+                 <div className="bg-blue-600 p-6 rounded-[2rem] text-white">
+                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Total Colaboradores</p>
+                    <p className="text-4xl font-black mt-1">{employees.length}</p>
+                 </div>
+                 <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
+                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">SBU Vigente</p>
+                    <p className="text-4xl font-black mt-1">${settings.sbu}</p>
+                 </div>
+                 <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Modo App</p>
+                    <p className="text-xl font-black mt-1 uppercase text-slate-900">{appMode === 'full' ? 'Suite Completa' : 'Solo Asistencia'}</p>
+                 </div>
               </div>
             </div>
           )}
@@ -105,6 +121,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} />}
         </div>
       </main>
+
+      <Modal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} title="Configuración de Dispositivo" maxWidth="max-w-md">
+         <div className="space-y-6">
+            <p className="text-xs text-slate-500 text-center">Defina cómo operará ASIST UP en este equipo físico.</p>
+            <div className="space-y-3">
+               <button onClick={() => { onUpdateAppMode('full'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between transition-all ${appMode === 'full' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+                  <div>
+                    <p className="font-black text-sm text-slate-900 uppercase">Suite Completa (Administración)</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Habilita todos los módulos de gestión.</p>
+                  </div>
+                  {appMode === 'full' && <span className="text-blue-600">✓</span>}
+               </button>
+               <button onClick={() => { onUpdateAppMode('attendance'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between transition-all ${appMode === 'attendance' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+                  <div>
+                    <p className="font-black text-sm text-slate-900 uppercase">Terminal de Asistencia (Kiosco)</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Oculta la administración por seguridad.</p>
+                  </div>
+                  {appMode === 'attendance' && <span className="text-blue-600">✓</span>}
+               </button>
+            </div>
+            <button onClick={() => setShowInstallModal(false)} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Finalizar Configuración</button>
+         </div>
+      </Modal>
     </div>
   );
 };
