@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
@@ -50,6 +51,11 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Solicitar permiso para notificaciones
+    if ("Notification" in window) {
+      Notification.requestPermission();
+    }
+
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsAdminLoginModalOpen(false);

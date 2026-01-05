@@ -1,3 +1,4 @@
+
 {
   "short_name": "ASISTUP",
   "name": "ASIST UP - HR Enterprise Suite",
@@ -15,7 +16,7 @@
       "purpose": "any"
     }
   ],
-  "start_url": "./index.html",
+  "start_url": "/",
   "display": "standalone",
   "theme_color": "#0f172a",
   "background_color": "#f8fafc",

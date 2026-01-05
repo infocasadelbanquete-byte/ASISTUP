@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
@@ -33,7 +34,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports'>('dashboard');
   const [showInstallModal, setShowInstallModal] = useState(false);
   
+  const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const today = useMemo(() => new Date(), []);
+  
+  // Lógica para detectar empleados que no han marcado hoy
+  useEffect(() => {
+    if (Notification.permission === "granted") {
+      const activeEmployees = employees.filter(e => e.status === 'active');
+      const markedTodayIds = new Set(attendance
+        .filter(a => a.timestamp.includes(todayDateStr))
+        .map(a => a.employeeId));
+      
+      const missingAttendanceCount = activeEmployees.filter(e => !markedTodayIds.has(e.id)).length;
+      
+      if (missingAttendanceCount > 0) {
+        new Notification("ALERTA DE ASISTENCIA", {
+          body: `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`,
+          icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+        });
+      }
+    }
+  }, [employees, attendance, todayDateStr]);
+
   const dayOfYear = useMemo(() => {
     const start = new Date(today.getFullYear(), 0, 0);
     const diff = today.getTime() - start.getTime();
@@ -143,7 +165,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                       <div className="bg-white/10 p-4 rounded-2xl">
                          <p className="text-[8px] font-black uppercase opacity-60">Marcaciones Hoy</p>
-                         <p className="text-3xl font-black">{attendance.filter(a => a.timestamp.includes(today.toISOString().split('T')[0])).length}</p>
+                         <p className="text-3xl font-black">{attendance.filter(a => a.timestamp.includes(todayDateStr)).length}</p>
                       </div>
                    </div>
                 </div>

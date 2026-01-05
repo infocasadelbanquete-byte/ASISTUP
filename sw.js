@@ -1,15 +1,15 @@
-const CACHE_NAME = 'asist-up-v2';
+
+const CACHE_NAME = 'asist-up-v3';
 const assets = [
-  './',
-  './index.html',
-  './manifest.json',
+  '/',
+  '/index.html',
+  '/manifest.json',
   'https://cdn-icons-png.flaticon.com/512/1063/1063376.png'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log('Cache abierto, agregando recursos...');
       return cache.addAll(assets);
     })
   );
@@ -33,9 +33,10 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request).then(response => {
-      // Retornar caché si existe, si no, intentar red
       return response || fetch(event.request).catch(() => {
-        // Si falla red y no hay caché, podrías retornar una página offline aquí
+        if (event.request.mode === 'navigate') {
+          return caches.match('/');
+        }
       });
     })
   );

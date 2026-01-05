@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
@@ -35,7 +36,16 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       const schedDate = new Date();
       schedDate.setHours(schedH, schedM, 0, 0);
       const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
-      if (diffMins > 15) isCriticalLate = true;
+      if (diffMins > 15) {
+        isCriticalLate = true;
+        // Notificación de retraso crítico
+        if (Notification.permission === "granted") {
+          new Notification("ALERTA DE RETRASO", {
+            body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha marcado con más de 15 minutos de retraso.`,
+            icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+          });
+        }
+      }
     }
 
     const record: AttendanceRecord = {
@@ -52,7 +62,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     // Verificación de Cumpleaños
     const today = new Date();
     const birth = new Date(currentEmp.birthDate);
-    const isBirthday = today.getMonth() === birth.getMonth() && today.getDate() === (birth.getDate() + 1); // +1 por desfase de zona horaria ISO usual
+    const isBirthday = today.getMonth() === birth.getMonth() && today.getDate() === (birth.getDate() + 1);
 
     let baseMsg = "";
     if (isBirthday) {
@@ -87,6 +97,15 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     } : e);
     
     onUpdateEmployees(updated);
+
+    // Notificación de cambio de PIN para el administrador
+    if (Notification.permission === "granted") {
+      new Notification("RESETEO DE PIN", {
+        body: `El colaborador ${currentEmp?.name} ha actualizado su clave de acceso.`,
+        icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+      });
+    }
+
     setFeedback({ isOpen: true, title: "PIN Actualizado", message: "Su clave de acceso ha sido cambiada. Ahora puede marcar su asistencia.", type: "success" });
     setStatus('confirm');
     setNewPin('');
