@@ -1,9 +1,9 @@
-const CACHE_NAME = 'asist-up-v3';
+const CACHE_NAME = 'asist-up-v4';
 const assets = [
   '/',
   '/index.html',
   '/manifest.json',
-  'https://cdn-icons-png.flaticon.com/512/2666/2666505.png'
+  'https://cdn-icons-png.flaticon.com/512/3421/3421714.png'
 ];
 
 self.addEventListener('install', event => {
