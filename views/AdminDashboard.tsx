@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
@@ -50,7 +49,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (missingAttendanceCount > 0) {
         new Notification("ALERTA DE ASISTENCIA", {
           body: `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`,
-          icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+          icon: "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
         });
       }
     }

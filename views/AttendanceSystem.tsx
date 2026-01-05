@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
@@ -42,7 +41,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
         if (Notification.permission === "granted") {
           new Notification("ALERTA DE RETRASO", {
             body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha marcado con más de 15 minutos de retraso.`,
-            icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+            icon: "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
           });
         }
       }
@@ -102,7 +101,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     if (Notification.permission === "granted") {
       new Notification("RESETEO DE PIN", {
         body: `El colaborador ${currentEmp?.name} ha actualizado su clave de acceso.`,
-        icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png"
+        icon: "https://cdn-icons-png.flaticon.com/512/2666/2666505.png"
       });
     }
 
