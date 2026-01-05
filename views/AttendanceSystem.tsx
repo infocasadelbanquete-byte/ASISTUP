@@ -20,9 +20,10 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
   const [newPin, setNewPin] = useState('');
   const [motivationalMsg, setMotivationalMsg] = useState('');
+  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error'}>({
+    isOpen: false, title: '', message: '', type: 'success'
+  });
   
-  const today = new Date();
-
   const handleMark = (type: 'in' | 'out' | 'half_day') => {
     if (!currentEmp || isProcessing) return;
     setIsProcessing(true);
@@ -49,7 +50,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     onRegister(record);
     
     let baseMsg = type === 'in' ? MOTIVATIONAL_MESSAGES_START[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_START.length)] : MOTIVATIONAL_MESSAGES_END[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_END.length)];
-    if (type === 'half_day') baseMsg = "Media jornada libre registrada con éxito.";
+    if (type === 'half_day') baseMsg = "Media jornada registrada con éxito.";
     
     setMotivationalMsg(baseMsg);
     setStatus('success');
@@ -64,7 +65,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
   const handlePinChange = () => {
     if (newPin.length !== 6 || newPin === currentEmp?.pin) {
-      alert("Ingrese un PIN nuevo de 6 dígitos diferente al anterior.");
+      setFeedback({ isOpen: true, title: "Error de PIN", message: "Ingrese un PIN nuevo de 6 dígitos diferente al actual.", type: "error" });
       return;
     }
     
@@ -76,7 +77,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     } : e);
     
     onUpdateEmployees(updated);
-    alert("PIN actualizado con éxito. Ahora puede marcar.");
+    setFeedback({ isOpen: true, title: "PIN Actualizado", message: "Su clave de acceso ha sido cambiada. Ahora puede marcar su asistencia.", type: "success" });
     setStatus('confirm');
     setNewPin('');
   };
@@ -123,7 +124,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
         {status === 'idle' && (
           <div className="w-full text-center">
-            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Identificación por PIN</h2>
+            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Acceso por PIN</h2>
             <div className="flex gap-3 justify-center mb-10">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className={`w-10 h-16 border-b-4 flex items-center justify-center text-4xl font-black transition-all ${pin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
@@ -131,14 +132,13 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                 </div>
               ))}
             </div>
-            
             <div className="grid grid-cols-3 gap-3 max-w-[320px] mx-auto">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
                 <button key={btn} onClick={() => {
                   if (btn === 'C') setPin('');
                   else if (btn === '←') setPin(p => p.slice(0, -1));
                   else if (pin.length < 6) setPin(p => p + btn);
-                }} className="h-14 md:h-18 bg-slate-50 hover:bg-blue-700 hover:text-white rounded-2xl text-xl font-black transition-all active:scale-90 border border-slate-100">
+                }} className="h-14 md:h-18 bg-slate-50 hover:bg-blue-700 hover:text-white rounded-2xl text-xl font-black border border-slate-100 active:scale-90 transition-all">
                   {btn}
                 </button>
               ))}
@@ -148,18 +148,10 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
         {status === 'change_pin' && currentEmp && (
           <div className="text-center w-full space-y-6">
-            <h2 className="text-2xl font-black text-slate-900 uppercase">Actualización de PIN</h2>
-            <p className="text-xs text-slate-500">Por seguridad, debe establecer un nuevo PIN personal de 6 dígitos.</p>
-            <input 
-              maxLength={6} 
-              type="password"
-              value={newPin} 
-              onChange={e => setNewPin(e.target.value.replace(/\D/g,''))} 
-              className="w-full border-2 p-5 rounded-2xl text-center text-4xl font-black focus:border-blue-600"
-              placeholder="••••••"
-              autoFocus
-            />
-            <button onClick={handlePinChange} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-lg">Actualizar PIN</button>
+            <h2 className="text-2xl font-black text-slate-900 uppercase">Cambio de Clave</h2>
+            <p className="text-xs text-slate-500">Por su seguridad, asigne un nuevo PIN personal de 6 dígitos.</p>
+            <input maxLength={6} type="password" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g,''))} className="w-full border-2 p-5 rounded-2xl text-center text-4xl font-black focus:border-blue-600 outline-none" placeholder="••••••" autoFocus />
+            <button onClick={handlePinChange} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Actualizar</button>
           </div>
         )}
 
@@ -168,24 +160,30 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             <div className="w-24 h-24 bg-blue-50 rounded-[2rem] mx-auto flex items-center justify-center text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-6">
                  {currentEmp.name[0]}
             </div>
-            <h2 className="text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter">{currentEmp.name} {currentEmp.surname}</h2>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <h2 className="text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
+            <div className="grid grid-cols-2 gap-4 mt-8">
               <button onClick={() => handleMark('in')} className="py-8 bg-blue-700 text-white rounded-[2rem] font-black text-xl uppercase shadow-2xl active:scale-95 transition-all">Ingreso</button>
               <button onClick={() => handleMark('out')} className="py-8 bg-slate-900 text-white rounded-[2rem] font-black text-xl uppercase shadow-2xl active:scale-95 transition-all">Salida</button>
             </div>
-            <button onClick={() => handleMark('half_day')} className="w-full py-4 bg-blue-50 text-blue-700 rounded-2xl font-black text-[10px] uppercase border border-blue-100">Media Jornada Libre</button>
           </div>
         )}
 
         {status === 'error' && (
           <div className="text-center text-red-600 py-10">
             <div className="text-7xl mb-4">✕</div>
-            <h2 className="text-2xl font-[950] uppercase tracking-tighter">Acceso Denegado</h2>
+            <h2 className="text-2xl font-[950] uppercase tracking-tighter">PIN Incorrecto</h2>
           </div>
         )}
       </div>
 
-      <button onClick={onBack} className="mt-10 text-white/30 hover:text-white font-black text-[11px] uppercase tracking-[0.6em]">Salir (Esc)</button>
+      <button onClick={onBack} className="mt-10 text-white/30 hover:text-white font-black text-[11px] uppercase tracking-[0.6em]">Cerrar Sistema</button>
+
+      <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
+          <div className="text-center space-y-6">
+              <p className="text-slate-600 font-bold uppercase text-[12px]">{feedback.message}</p>
+              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Entendido</button>
+          </div>
+      </Modal>
     </div>
   );
 };

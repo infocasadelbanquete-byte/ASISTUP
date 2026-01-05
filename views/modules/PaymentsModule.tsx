@@ -11,6 +11,10 @@ interface PaymentsModuleProps {
 
 const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, onUpdate, role }) => {
   const [isPayOpen, setIsPayOpen] = useState(false);
+  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
+    isOpen: false, title: '', message: '', type: 'info'
+  });
+
   const [payForm, setPayForm] = useState<Partial<Payment>>({
     type: 'Salary', 
     amount: 0, 
@@ -33,7 +37,10 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
   };
 
   const handleCreate = () => {
-    if (!payForm.employeeId || !payForm.amount) return alert("Seleccione empleado y monto.");
+    if (!payForm.employeeId || !payForm.amount) {
+        setFeedback({ isOpen: true, title: "Falta Información", message: "Seleccione empleado y monto para el pago.", type: "error" });
+        return;
+    }
     
     const balanceBefore = getPendingBalance(payForm.employeeId, payForm.month!);
     const remaining = payForm.type === 'Salary' ? balanceBefore - payForm.amount! : 0;
@@ -48,13 +55,17 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
 
     onUpdate([newPay, ...payments]);
     setIsPayOpen(false);
-    alert("Operación registrada con éxito.");
+    setFeedback({ isOpen: true, title: "Operación Exitosa", message: "Haber registrado y sincronizado con tesorería.", type: "success" });
   };
 
   const handleVoid = (id: string) => {
     const reason = prompt("Justificación obligatoria de anulación:");
-    if (!reason) return alert("La anulación requiere justificación.");
+    if (!reason) {
+        setFeedback({ isOpen: true, title: "Cancelado", message: "La anulación requiere una justificación válida.", type: "error" });
+        return;
+    }
     onUpdate(payments.map(p => p.id === id ? { ...p, status: 'void', voidJustification: reason } : p));
+    setFeedback({ isOpen: true, title: "Anulado", message: "El registro ha sido invalidado.", type: "info" });
   };
 
   return (
@@ -64,7 +75,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         <button 
           onClick={() => {
             if (role === Role.PARTIAL_ADMIN || role === Role.SUPER_ADMIN) setIsPayOpen(true);
-            else alert("No tiene permisos para realizar pagos.");
+            else setFeedback({ isOpen: true, title: "Permisos Insuficientes", message: "No tiene privilegios para registrar desembolsos.", type: "error" });
           }} 
           className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
         >
@@ -99,7 +110,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                   </td>
                   <td className="px-8 py-4 font-black text-slate-900 text-sm">${p.amount.toFixed(2)}</td>
                   <td className="px-8 py-4">
-                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.type === 'ExtraHours' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{p.type}</span>
+                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.type === 'ExtraHours' ? 'bg-blue-100 text-blue-700' : p.type === 'BackPay' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{p.type === 'BackPay' ? 'Pago Atrasado' : p.type}</span>
                   </td>
                   <td className="px-8 py-4">
                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.status === 'paid' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{p.status === 'paid' ? 'Pagado' : 'Anulado'}</span>
@@ -128,6 +139,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
               <label className="text-[9px] font-black uppercase text-slate-400">Concepto</label>
               <select className="w-full border-2 p-3 rounded-xl bg-slate-50" value={payForm.type} onChange={e => setPayForm({...payForm, type: e.target.value as any})}>
                 <option value="Salary">Sueldo / Abono</option>
+                <option value="BackPay">Pago Atrasado / Saldo Pendiente</option>
                 <option value="ExtraHours">Horas Extras/Supl.</option>
                 <option value="Bonus">Bono / Comisiones</option>
                 <option value="Loan">Préstamo</option>
@@ -147,10 +159,17 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
           </div>
           <div>
             <label className="text-[9px] font-black uppercase text-slate-400">Observación</label>
-            <textarea className="w-full border-2 p-3 rounded-xl bg-slate-50 h-20" onChange={e => setPayForm({...payForm, concept: e.target.value})}></textarea>
+            <textarea className="w-full border-2 p-3 rounded-xl bg-slate-50 h-20" placeholder="Ej: Saldo pendiente de Noviembre 2025" onChange={e => setPayForm({...payForm, concept: e.target.value})}></textarea>
           </div>
           <button onClick={handleCreate} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-xs shadow-xl active:scale-95 transition-all">Sincronizar Pago</button>
         </div>
+      </Modal>
+
+      <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
+          <div className="text-center space-y-6">
+              <p className="text-slate-600 font-bold uppercase text-[12px]">{feedback.message}</p>
+              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Aceptar</button>
+          </div>
       </Modal>
     </div>
   );

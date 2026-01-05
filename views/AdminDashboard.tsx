@@ -8,7 +8,7 @@ import PaymentsModule from './modules/PaymentsModule.tsx';
 import SettingsModule from './modules/SettingsModule.tsx';
 import ReportsModule from './modules/ReportsModule.tsx';
 import Modal from '../components/Modal.tsx';
-import { ECUADOR_HOLIDAYS, DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx';
+import { DAILY_QUOTES } from '../constants.tsx';
 
 interface AdminDashboardProps {
   role: Role;
@@ -42,50 +42,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
 
-  const exportGeneralToExcel = () => {
-    const headers = "Empleado,Sueldo,Identificacion,Estado\n";
-    const rows = employees.map(e => `${e.name} ${e.surname},${e.salary},${e.identification},${e.status}`).join("\n");
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Nomina_Resumen_${new Date().toLocaleDateString()}.csv`;
-    link.click();
+  const handlePurgeData = async () => {
+    if (role !== Role.SUPER_ADMIN) return;
+    onUpdateEmployees([]);
+    onUpdatePayments([]);
+    // La limpieza de asistencia debe manejarse en el componente padre si persiste en DB
   };
 
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showInstallModal) setShowInstallModal(false);
-        else setActiveTab('dashboard');
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    // Fix: Changed handleKey to handleEsc to match defined variable
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [showInstallModal]);
+  const allAppData = {
+    company,
+    employees,
+    attendance,
+    payments,
+    settings,
+    exportDate: new Date().toISOString()
+  };
 
   return (
     <div className="flex h-screen bg-[#fcfdfe] overflow-hidden flex-col md:flex-row">
-      <Sidebar 
-        role={role} 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        onLogout={onLogout} 
-        companyName={company?.name}
-      />
+      <Sidebar role={role} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} companyName={company?.name} />
       
       <main className="flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10 scroll-smooth custom-scroll">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 no-print pt-10 md:pt-0">
-          <div>
-            <h1 className="text-xl md:text-2xl font-[950] text-slate-900 tracking-tight uppercase">
-              Consola Operativa
-            </h1>
-          </div>
+          <h1 className="text-xl md:text-2xl font-[950] text-slate-900 tracking-tight uppercase">Panel Administrativo</h1>
           <div className="flex gap-3">
              {role === Role.SUPER_ADMIN && (
-               <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-slate-200">Instalar Equipo</button>
+               <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase border border-slate-200">Instalar Kiosco</button>
              )}
-             <button onClick={exportGeneralToExcel} className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-100">Exportar Excel</button>
           </div>
         </header>
 
@@ -98,16 +81,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div className="grid grid-cols-3 gap-6">
                  <div className="bg-blue-600 p-6 rounded-[2rem] text-white">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Total Colaboradores</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Personal Activo</p>
                     <p className="text-4xl font-black mt-1">{employees.length}</p>
                  </div>
                  <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">SBU Vigente</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">SBU 2026</p>
                     <p className="text-4xl font-black mt-1">${settings.sbu}</p>
                  </div>
                  <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Modo App</p>
-                    <p className="text-xl font-black mt-1 uppercase text-slate-900">{appMode === 'full' ? 'Suite Completa' : 'Solo Asistencia'}</p>
+                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Estatus DB</p>
+                    <p className="text-xl font-black mt-1 uppercase text-slate-900">{isDbConnected ? 'Sincronizado' : 'Offline'}</p>
                  </div>
               </div>
             </div>
@@ -117,31 +100,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
           {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} company={company} settings={settings} role={role} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} />}
-          {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} />}
+          {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} onPurge={handlePurgeData} allData={allAppData} />}
           {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} />}
         </div>
       </main>
 
-      <Modal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} title="Configuración de Dispositivo" maxWidth="max-w-md">
+      <Modal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} title="Configuración de Equipo" maxWidth="max-w-md">
          <div className="space-y-6">
-            <p className="text-xs text-slate-500 text-center">Defina cómo operará ASIST UP en este equipo físico.</p>
+            <p className="text-xs text-slate-500 text-center">Seleccione el modo operativo para esta estación de trabajo.</p>
             <div className="space-y-3">
-               <button onClick={() => { onUpdateAppMode('full'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between transition-all ${appMode === 'full' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+               <button onClick={() => { onUpdateAppMode('full'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between ${appMode === 'full' ? 'border-blue-600 bg-blue-50' : 'border-slate-100'}`}>
                   <div>
-                    <p className="font-black text-sm text-slate-900 uppercase">Suite Completa (Administración)</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Habilita todos los módulos de gestión.</p>
+                    <p className="font-black text-sm text-slate-900 uppercase">Administración Full</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Acceso total a módulos.</p>
                   </div>
-                  {appMode === 'full' && <span className="text-blue-600">✓</span>}
                </button>
-               <button onClick={() => { onUpdateAppMode('attendance'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between transition-all ${appMode === 'attendance' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}>
+               <button onClick={() => { onUpdateAppMode('attendance'); setShowInstallModal(false); }} className={`w-full p-6 rounded-2xl border-2 text-left flex items-center justify-between ${appMode === 'attendance' ? 'border-blue-600 bg-blue-50' : 'border-slate-100'}`}>
                   <div>
-                    <p className="font-black text-sm text-slate-900 uppercase">Terminal de Asistencia (Kiosco)</p>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Oculta la administración por seguridad.</p>
+                    <p className="font-black text-sm text-slate-900 uppercase">Sólo Marcación</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Modo kiosco seguro.</p>
                   </div>
-                  {appMode === 'attendance' && <span className="text-blue-600">✓</span>}
                </button>
             </div>
-            <button onClick={() => setShowInstallModal(false)} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Finalizar Configuración</button>
          </div>
       </Modal>
     </div>

@@ -58,7 +58,7 @@ export interface Payment {
   date: string;
   month: string;
   year: string;
-  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours';
+  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours' | 'BackPay';
   method: 'Efectivo' | 'Transferencia' | 'Cheque';
   concept: string;
   status: 'paid' | 'void';
