@@ -14,66 +14,109 @@ interface AttendanceSystemProps {
 
 const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendance, onRegister, onBack, onUpdateEmployees, settings }) => {
   const [pin, setPin] = useState('');
-  const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin'>('idle');
+  const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin' | 'justification_form'>('idle');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
+  const [pendingMarkData, setPendingMarkData] = useState<{ type: 'in' | 'out' | 'half_day', isLate: boolean } | null>(null);
+  const [justificationText, setJustificationText] = useState('');
   const [newPin, setNewPin] = useState('');
   const [forgotCi, setForgotCi] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'success'
   });
+
+  const isWithinRange = (now: Date, startStr: string, endStr: string) => {
+    const [sh, sm] = startStr.split(':').map(Number);
+    const [eh, em] = endStr.split(':').map(Number);
+    const s = new Date(now); s.setHours(sh, sm, 0, 0);
+    const e = new Date(now); e.setHours(eh, em, 0, 0);
+    return now >= s && now <= e;
+  };
   
   const handleMark = (type: 'in' | 'out' | 'half_day') => {
     if (!currentEmp || isProcessing) return;
+    
+    const now = new Date();
+    const day = now.getDay();
+    let isOffSchedule = false;
+    let isCriticalLate = false;
+
+    // Verificar si está dentro de algún bloque horario
+    if (day >= 1 && day <= 5) { // Lun-Vie
+      const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
+      const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
+      if (!in1 && !in2) isOffSchedule = true;
+
+      // Lógica de atraso crítico para entrada principal
+      if (type === 'in') {
+        const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
+        const schedDate = new Date(now);
+        schedDate.setHours(schedH, schedM, 0, 0);
+        const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
+        if (diffMins > 15) isCriticalLate = true;
+      }
+    } else if (day === 6) { // Sáb
+      if (!isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out)) isOffSchedule = true;
+    } else {
+      isOffSchedule = true; // Dom
+    }
+
+    if (isOffSchedule || isCriticalLate) {
+      setPendingMarkData({ type, isLate: isCriticalLate });
+      setStatus('justification_form');
+      return;
+    }
+
+    processRegistration(type, isCriticalLate);
+  };
+
+  const processRegistration = (type: 'in' | 'out' | 'half_day', isLate: boolean, justification?: string) => {
     setIsProcessing(true);
     
-    let isCriticalLate = false;
-    if (type === 'in') {
-      const now = new Date();
-      const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
-      const schedDate = new Date();
-      schedDate.setHours(schedH, schedM, 0, 0);
-      const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
-      if (diffMins > 15) {
-        isCriticalLate = true;
-        if (Notification.permission === "granted") {
-          new Notification("ALERTA DE ASISTENCIA", {
-            body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha marcado con más de 15 minutos de retraso.`,
-            icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
-          });
-        }
-      }
+    if (isLate && Notification.permission === "granted") {
+      new Notification("ALERTA DE ASISTENCIA", {
+        body: `El colaborador ${currentEmp?.name} ${currentEmp?.surname} ha marcado con más de 15 minutos de retraso.`,
+        icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
+      });
     }
 
     const record: AttendanceRecord = {
       id: Math.random().toString(36).substr(2, 9),
-      employeeId: currentEmp.id,
+      employeeId: currentEmp!.id,
       timestamp: new Date().toISOString(),
       type,
       status: 'confirmed',
-      isLate: isCriticalLate
+      isLate,
+      justification
     };
 
     onRegister(record);
     
-    // Mensaje estricto de éxito solicitado
-    if (type === 'in') {
-      setSuccessMsg("INGRESO REGISTRADO CON ÉXITO");
-    } else if (type === 'out') {
-      setSuccessMsg("SALIDA REGISTRADA CON ÉXITO");
-    } else {
-      setSuccessMsg("MARCACIÓN REGISTRADA CON ÉXITO");
-    }
+    if (type === 'in') setSuccessMsg("INGRESO REGISTRADO CON ÉXITO");
+    else if (type === 'out') setSuccessMsg("SALIDA REGISTRADA CON ÉXITO");
+    else setSuccessMsg("MARCACIÓN REGISTRADA CON ÉXITO");
     
     setStatus('success');
     setPin('');
+    setJustificationText('');
+    setPendingMarkData(null);
 
     setTimeout(() => {
       setStatus('idle');
       setCurrentEmp(null);
       setIsProcessing(false);
     }, 4000);
+  };
+
+  const handleConfirmJustification = () => {
+    if (!justificationText.trim()) {
+      setFeedback({ isOpen: true, title: "Requerido", message: "Debe ingresar un motivo para continuar.", type: "error" });
+      return;
+    }
+    if (pendingMarkData) {
+      processRegistration(pendingMarkData.type, pendingMarkData.isLate, justificationText);
+    }
   };
 
   const handlePinChange = () => {
@@ -193,13 +236,31 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               ))}
             </div>
             
-            {/* OPCIÓN VISIBLE PARA RESETEO DE PIN SOLICITADA */}
             <button 
               onClick={() => setStatus('forgotten_form')}
               className="w-full py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all"
             >
               ¿Olvidó su PIN? Solicitar Reseteo
             </button>
+          </div>
+        )}
+
+        {status === 'justification_form' && (
+          <div className="text-center w-full space-y-6 animate-in zoom-in">
+             <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center text-3xl mx-auto mb-4 border border-blue-100 shadow-inner">📝</div>
+             <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Justificación Requerida</h2>
+             <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">Su marcación se encuentra fuera del horario laboral o presenta un retraso crítico.</p>
+             <textarea 
+               value={justificationText}
+               onChange={e => setJustificationText(e.target.value)}
+               className="w-full border-2 p-5 rounded-2xl text-xs font-black uppercase focus:border-blue-600 outline-none bg-slate-50 min-h-[120px]" 
+               placeholder="Escriba el motivo detallado..." 
+               autoFocus 
+             />
+             <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setStatus('confirm')} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Cancelar</button>
+                <button onClick={handleConfirmJustification} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Marcación</button>
+             </div>
           </div>
         )}
 

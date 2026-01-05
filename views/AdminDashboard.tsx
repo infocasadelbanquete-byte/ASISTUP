@@ -42,8 +42,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const addNotification = (title: string, message: string, type: 'info' | 'alert' | 'critical') => {
     const id = Math.random().toString(36).substr(2, 9);
     setNotifications(prev => {
-      if (prev.some(n => n.title === title && n.message === message && !n.isRead)) return prev;
-      return [{ id, title, message, timestamp: new Date().toISOString(), type, isRead: false }, ...prev];
+      if (prev.some(n => n.title === title && n.message === message && !n.isRead && !n.isProcessed)) return prev;
+      return [{ id, title, message, timestamp: new Date().toISOString(), type, isRead: false, isProcessed: false }, ...prev];
     });
   };
   
@@ -150,7 +150,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
              <button onClick={() => setActiveTab('ai')} className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-[9px] font-black uppercase border border-blue-100 flex items-center gap-2 hover:bg-blue-100 transition-all">
                <span className="animate-pulse">✨</span> IA Assistant
              </button>
-             {role === Role.SUPER_ADMIN && (
+             {(role === Role.SUPER_ADMIN || role === Role.PARTIAL_ADMIN) && (
                <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase border border-slate-900 shadow-xl active:scale-95 transition-all">Estación Kiosco</button>
              )}
           </div>
@@ -217,7 +217,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'notifications' && (
             <NotificationsModule 
               notifications={notifications} 
-              onMarkRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))}
+              onToggleRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: !n.isRead } : n))}
+              onToggleProcessed={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isProcessed: !n.isProcessed } : n))}
               onClearAll={() => setNotifications([])}
             />
           )}

@@ -37,6 +37,7 @@ export interface NotificationMessage {
   timestamp: string;
   type: 'info' | 'alert' | 'critical';
   isRead: boolean;
+  isProcessed: boolean;
 }
 
 export interface AbsenceRecord {

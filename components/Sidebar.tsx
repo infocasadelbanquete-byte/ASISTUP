@@ -96,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
             ))}
           </nav>
 
-          {!isStandalone && role === Role.SUPER_ADMIN && (
+          {!isStandalone && (role === Role.SUPER_ADMIN || role === Role.PARTIAL_ADMIN) && (
             <div className="mt-8 border-t border-white/10 pt-8">
               <button 
                 onClick={() => setShowModeSelection(true)}
@@ -121,10 +121,10 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
 
       <Modal isOpen={showModeSelection} onClose={() => setShowModeSelection(false)} title="Configuración de Instalación" maxWidth="max-w-sm">
          <div className="space-y-6">
-            <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">Solo el Super Administrador puede instalar el sistema en este equipo móvil.</p>
+            <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">Solo el Administrador puede instalar el sistema en este equipo móvil.</p>
             <div className="space-y-2">
                <button onClick={() => handleInstallProcess('full')} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Sistema Administrativo</button>
-               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosko de Asistencia</button>
+               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosco de Asistencia</button>
             </div>
          </div>
       </Modal>
