@@ -30,6 +30,15 @@ export enum TerminationReason {
   OTHER = 'Otro'
 }
 
+export interface NotificationMessage {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  type: 'info' | 'alert' | 'critical';
+  isRead: boolean;
+}
+
 export interface AbsenceRecord {
   id: string;
   date: string;

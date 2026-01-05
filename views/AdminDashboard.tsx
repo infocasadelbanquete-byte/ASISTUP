@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
+import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
 import EmployeeModule from './modules/EmployeeModule.tsx';
@@ -8,6 +8,7 @@ import PaymentsModule from './modules/PaymentsModule.tsx';
 import SettingsModule from './modules/SettingsModule.tsx';
 import ReportsModule from './modules/ReportsModule.tsx';
 import AiAssistant from './modules/AiAssistant.tsx';
+import NotificationsModule from './modules/NotificationsModule.tsx';
 import Modal from '../components/Modal.tsx';
 import { DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx';
 
@@ -31,30 +32,65 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings, onUpdateAppMode, appMode 
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai' | 'notifications'>('dashboard');
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
   
   const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const today = useMemo(() => new Date(), []);
+
+  const addNotification = (title: string, message: string, type: 'info' | 'alert' | 'critical') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setNotifications(prev => {
+      if (prev.some(n => n.title === title && n.message === message && !n.isRead)) return prev;
+      return [{ id, title, message, timestamp: new Date().toISOString(), type, isRead: false }, ...prev];
+    });
+  };
   
-  // Lógica para detectar empleados que no han marcado hoy
+  // Lógica para detectar eventos que generan notificaciones
   useEffect(() => {
-    if (Notification.permission === "granted") {
-      const activeEmployees = employees.filter(e => e.status === 'active');
-      const markedTodayIds = new Set(attendance
-        .filter(a => a.timestamp.includes(todayDateStr))
-        .map(a => a.employeeId));
-      
-      const missingAttendanceCount = activeEmployees.filter(e => !markedTodayIds.has(e.id)).length;
-      
-      if (missingAttendanceCount > 0) {
-        new Notification("ALERTA DE ASISTENCIA", {
-          body: `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`,
-          icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
-        });
-      }
+    const activeEmployees = employees.filter(e => e.status === 'active');
+    const markedTodayIds = new Set(attendance
+      .filter(a => a.timestamp.includes(todayDateStr))
+      .map(a => a.employeeId));
+    
+    // Alerta de ausencias
+    const missingAttendanceCount = activeEmployees.filter(e => !markedTodayIds.has(e.id)).length;
+    if (missingAttendanceCount > 0) {
+      addNotification(
+        "Pendiente de Ingreso", 
+        `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`, 
+        'alert'
+      );
+    }
+
+    // Alerta de atrasos críticos
+    const todayLates = attendance.filter(a => a.timestamp.includes(todayDateStr) && a.isLate);
+    if (todayLates.length > 0) {
+      todayLates.forEach(late => {
+        const emp = employees.find(e => e.id === late.employeeId);
+        addNotification(
+          "Retraso Crítico", 
+          `El colaborador ${emp?.surname} marcó con más de 15 minutos de retraso.`, 
+          'critical'
+        );
+      });
+    }
+
+    // Alerta de reseteo de PIN
+    const pinResets = employees.filter(e => e.pinNeedsReset);
+    if (pinResets.length > 0) {
+      pinResets.forEach(emp => {
+        addNotification(
+          "Acceso Bloqueado", 
+          `El colaborador ${emp.name} ${emp.surname} solicita un nuevo PIN de acceso.`, 
+          'critical'
+        );
+      });
     }
   }, [employees, attendance, todayDateStr]);
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const dayOfYear = useMemo(() => {
     const start = new Date(today.getFullYear(), 0, 0);
@@ -66,7 +102,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return employees.filter(e => {
       if (!e.birthDate || e.status !== 'active') return false;
       const b = new Date(e.birthDate);
-      return b.getMonth() === today.getMonth() && b.getDate() === (today.getDate() + 1);
+      return b.getMonth() === today.getMonth() && b.getDate() === today.getDate();
     });
   }, [employees, today]);
 
@@ -90,7 +126,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="flex h-screen bg-[#fcfdfe] overflow-hidden flex-col md:flex-row">
-      <Sidebar role={role} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} companyName={company?.name} />
+      <Sidebar 
+        role={role} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        onLogout={onLogout} 
+        companyName={company?.name} 
+        unreadCount={unreadCount}
+      />
       
       <main className="flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10 scroll-smooth custom-scroll">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 no-print pt-10 md:pt-0">
@@ -169,6 +212,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'notifications' && (
+            <NotificationsModule 
+              notifications={notifications} 
+              onMarkRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))}
+              onClearAll={() => setNotifications([])}
+            />
           )}
 
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
