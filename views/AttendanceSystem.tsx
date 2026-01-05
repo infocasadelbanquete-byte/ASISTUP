@@ -42,13 +42,11 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     let isOffSchedule = false;
     let isCriticalLate = false;
 
-    // Verificar si está dentro de algún bloque horario
     if (day >= 1 && day <= 5) { // Lun-Vie
       const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
       const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
       if (!in1 && !in2) isOffSchedule = true;
 
-      // Lógica de atraso crítico para entrada principal
       if (type === 'in') {
         const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
         const schedDate = new Date(now);
@@ -129,7 +127,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       ...e,
       pin: newPin,
       pinChanged: true,
-      pinNeedsReset: false
+      pinNeedsReset: false,
+      pinResetRequested: false
     } : e);
     
     onUpdateEmployees(updated);
@@ -142,7 +141,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   const handleRequestPinReset = () => {
     const emp = employees.find(e => e.identification === forgotCi && e.status === 'active');
     if (emp) {
-      const updated = employees.map(e => e.id === emp.id ? { ...e, pinNeedsReset: true } : e);
+      const updated = employees.map(e => e.id === emp.id ? { ...e, pinResetRequested: true } : e);
       onUpdateEmployees(updated);
       
       if (Notification.permission === "granted") {
@@ -201,26 +200,26 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
       {status === 'success' && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-3xl flex flex-col items-center justify-center fade-in text-center p-8">
-           <div className="w-24 h-24 bg-emerald-500 text-white rounded-[2.5rem] flex items-center justify-center text-5xl mb-10 shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-bounce">✓</div>
-           <p className="text-white font-[950] text-4xl uppercase tracking-tighter text-center max-w-2xl leading-tight">{successMsg}</p>
+        <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-3xl flex flex-col items-center justify-center fade-in text-center p-6">
+           <div className="w-20 h-20 md:w-24 md:h-24 bg-emerald-500 text-white rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-center text-4xl md:text-5xl mb-8 md:mb-10 shadow-2xl animate-bounce">✓</div>
+           <p className="text-white font-[950] text-2xl md:text-4xl uppercase tracking-tighter text-center max-w-2xl leading-tight">{successMsg}</p>
         </div>
       )}
 
-      <div className={`w-full max-w-lg bg-white/95 backdrop-blur-3xl rounded-[3.5rem] shadow-2xl p-6 md:p-12 flex flex-col items-center relative overflow-hidden ${status === 'success' ? 'opacity-0' : 'fade-in'}`}>
-        <div className="mb-8 transform scale-[0.6] md:scale-[0.8]"><Clock /></div>
+      <div className={`w-full max-w-lg bg-white/95 backdrop-blur-3xl rounded-3xl md:rounded-[3.5rem] shadow-2xl p-6 md:p-12 flex flex-col items-center relative overflow-hidden ${status === 'success' ? 'opacity-0' : 'fade-in'}`}>
+        <div className="mb-6 md:mb-8 transform scale-[0.6] sm:scale-[0.8]"><Clock /></div>
 
         {status === 'idle' && (
           <div className="w-full text-center">
-            <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6">Ingresar PIN de 6 dígitos</h2>
-            <div className="flex gap-2 justify-center mb-10">
+            <h2 className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 md:mb-6">Ingresar PIN de 6 dígitos</h2>
+            <div className="flex gap-1.5 md:gap-2 justify-center mb-8 md:mb-10">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className={`w-10 h-16 border-b-4 flex items-center justify-center text-4xl font-black transition-all ${pin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
+                <div key={i} className={`w-8 h-12 md:w-10 md:h-16 border-b-4 flex items-center justify-center text-2xl md:text-4xl font-black transition-all ${pin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
                   {pin[i] ? '•' : ''}
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-3 max-w-[340px] mx-auto mb-10">
+            <div className="grid grid-cols-3 gap-2 md:gap-3 max-w-[280px] md:max-w-[340px] mx-auto mb-8 md:mb-10">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
                 <button 
                   key={btn} 
@@ -229,7 +228,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                     else if (btn === '←') setPin(p => p.slice(0, -1));
                     else if (pin.length < 6) setPin(p => p + btn);
                   }} 
-                  className="h-16 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-2xl text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center"
+                  className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center"
                 >
                   {btn}
                 </button>
@@ -238,7 +237,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             
             <button 
               onClick={() => setStatus('forgotten_form')}
-              className="w-full py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all"
+              className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95"
             >
               ¿Olvidó su PIN? Solicitar Reseteo
             </button>
@@ -246,92 +245,92 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
         )}
 
         {status === 'justification_form' && (
-          <div className="text-center w-full space-y-6 animate-in zoom-in">
-             <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center text-3xl mx-auto mb-4 border border-blue-100 shadow-inner">📝</div>
-             <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Justificación Requerida</h2>
-             <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">Su marcación se encuentra fuera del horario laboral o presenta un retraso crítico.</p>
+          <div className="text-center w-full space-y-4 md:space-y-6 animate-in zoom-in">
+             <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 text-blue-600 rounded-2xl md:rounded-3xl flex items-center justify-center text-3xl mx-auto mb-2 border border-blue-100 shadow-inner">📝</div>
+             <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Justificación Requerida</h2>
+             <p className="text-[9px] md:text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">Su marcación presenta una excepción horaria.</p>
              <textarea 
                value={justificationText}
                onChange={e => setJustificationText(e.target.value)}
-               className="w-full border-2 p-5 rounded-2xl text-xs font-black uppercase focus:border-blue-600 outline-none bg-slate-50 min-h-[120px]" 
-               placeholder="Escriba el motivo detallado..." 
+               className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-[11px] font-black uppercase focus:border-blue-600 outline-none bg-slate-50 min-h-[100px] md:min-h-[120px]" 
+               placeholder="Escriba el motivo..." 
                autoFocus 
              />
-             <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => setStatus('confirm')} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Cancelar</button>
-                <button onClick={handleConfirmJustification} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Confirmar Marcación</button>
+             <div className="grid grid-cols-2 gap-2 md:gap-3">
+                <button onClick={() => setStatus('confirm')} className="w-full py-3 md:py-4 bg-slate-100 text-slate-600 font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95">Cancelar</button>
+                <button onClick={handleConfirmJustification} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Confirmar</button>
              </div>
           </div>
         )}
 
         {status === 'forgotten_form' && (
-          <div className="text-center w-full space-y-6 animate-in zoom-in">
-            <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Solicitar Nuevo PIN</h2>
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Ingrese su Cédula / Identificación para validar su identidad</p>
+          <div className="text-center w-full space-y-4 md:space-y-6 animate-in zoom-in">
+            <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Solicitar Nuevo PIN</h2>
+            <p className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-widest">Ingrese su Identificación</p>
             <input 
               maxLength={10} 
               type="text" 
               inputMode="numeric"
               value={forgotCi} 
               onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))} 
-              className="w-full border-2 p-5 rounded-2xl text-center text-3xl font-black focus:border-blue-600 outline-none bg-slate-50" 
+              className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-center text-2xl md:text-3xl font-black focus:border-blue-600 outline-none bg-slate-50" 
               placeholder="0000000000" 
               autoFocus 
             />
-            <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => setStatus('idle')} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Cancelar</button>
-              <button onClick={handleRequestPinReset} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Enviar</button>
+            <div className="grid grid-cols-2 gap-2 md:gap-3">
+              <button onClick={() => setStatus('idle')} className="w-full py-3 md:py-4 bg-slate-100 text-slate-600 font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95">Cancelar</button>
+              <button onClick={handleRequestPinReset} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Enviar</button>
             </div>
           </div>
         )}
 
         {status === 'change_pin' && currentEmp && (
-          <div className="text-center w-full space-y-6">
-            <h2 className="text-2xl font-[950] text-slate-900 uppercase">Seguridad Obligatoria</h2>
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Asigne su nuevo PIN personal de 6 dígitos</p>
+          <div className="text-center w-full space-y-4 md:space-y-6">
+            <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase">Seguridad Obligatoria</h2>
+            <p className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-widest">Establezca su PIN de 6 dígitos</p>
             <input 
               maxLength={6} 
               type="password" 
               inputMode="numeric"
               value={newPin} 
               onChange={e => setNewPin(e.target.value.replace(/\D/g,''))} 
-              className="w-full border-2 p-5 rounded-2xl text-center text-4xl font-black focus:border-blue-600 outline-none bg-slate-50" 
+              className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-center text-3xl md:text-4xl font-black focus:border-blue-600 outline-none bg-slate-50" 
               placeholder="••••••" 
               autoFocus 
             />
-            <button onClick={handlePinChange} className="w-full py-5 bg-blue-700 text-white font-black rounded-[2rem] uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Establecer Nuevo PIN</button>
+            <button onClick={handlePinChange} className="w-full py-4 md:py-5 bg-blue-700 text-white font-black rounded-xl md:rounded-[2rem] uppercase text-[10px] md:text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Guardar PIN</button>
           </div>
         )}
 
         {status === 'confirm' && currentEmp && (
           <div className="text-center w-full animate-in zoom-in">
-            <div className="w-28 h-28 bg-slate-100 rounded-[2.5rem] mx-auto flex items-center justify-center text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-6 overflow-hidden">
+            <div className="w-24 h-24 md:w-28 md:h-28 bg-slate-100 rounded-2xl md:rounded-[2.5rem] mx-auto flex items-center justify-center text-3xl md:text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-4 md:mb-6 overflow-hidden">
                  {currentEmp.photo ? <img src={currentEmp.photo} className="w-full h-full object-cover" /> : <span>{currentEmp.name[0]}</span>}
             </div>
-            <h2 className="text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-10">{currentEmp.role}</p>
-            <div className="grid grid-cols-1 gap-4">
-              <button onClick={() => handleMark('in')} className="py-8 bg-blue-700 text-white rounded-[2rem] font-black text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-blue-900">Registrar Ingreso</button>
-              <button onClick={() => handleMark('out')} className="py-8 bg-slate-900 text-white rounded-[2rem] font-black text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-black">Registrar Salida</button>
+            <h2 className="text-2xl md:text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
+            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-8 md:mb-10">{currentEmp.role}</p>
+            <div className="grid grid-cols-1 gap-3 md:gap-4">
+              <button onClick={() => handleMark('in')} className="py-6 md:py-8 bg-blue-700 text-white rounded-2xl md:rounded-[2rem] font-black text-lg md:text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-blue-900">Ingreso</button>
+              <button onClick={() => handleMark('out')} className="py-6 md:py-8 bg-slate-900 text-white rounded-2xl md:rounded-[2rem] font-black text-lg md:text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-black">Salida</button>
             </div>
           </div>
         )}
 
         {status === 'error' && (
-          <div className="text-center text-red-600 py-10 animate-pulse">
-            <div className="text-7xl mb-4">✕</div>
-            <h2 className="text-2xl font-[950] uppercase tracking-tighter">Acceso Denegado</h2>
-            <p className="text-[10px] font-bold uppercase mt-2">PIN Incorrecto</p>
+          <div className="text-center text-red-600 py-6 md:py-10 animate-pulse">
+            <div className="text-6xl md:text-7xl mb-4">✕</div>
+            <h2 className="text-xl md:text-2xl font-[950] uppercase tracking-tighter">Denegado</h2>
+            <p className="text-[9px] md:text-[10px] font-bold uppercase mt-2">PIN Incorrecto</p>
           </div>
         )}
       </div>
 
-      <button onClick={onBack} className="mt-10 text-white/30 hover:text-white font-black text-[11px] uppercase tracking-[0.6em] p-4 transition-all">Salir del Terminal</button>
+      <button onClick={onBack} className="mt-8 md:mt-10 text-white/30 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.4em] md:tracking-[0.6em] p-4 transition-all active:scale-95">Salir del Terminal</button>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
-          <div className="text-center space-y-6">
-              <p className="text-slate-600 font-bold uppercase text-[12px] leading-relaxed">{feedback.message}</p>
-              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest active:scale-95">Entendido</button>
+          <div className="text-center space-y-4 md:space-y-6">
+              <p className="text-slate-600 font-bold uppercase text-[11px] md:text-[12px] leading-relaxed">{feedback.message}</p>
+              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest active:scale-95">Aceptar</button>
           </div>
       </Modal>
     </div>

@@ -50,7 +50,6 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // Solicitar permiso para notificaciones
     if ("Notification" in window) {
       Notification.requestPermission();
     }
@@ -145,14 +144,6 @@ const App: React.FC = () => {
       {view === 'selection' && (
         <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-lg bg-white/95 backdrop-blur-3xl p-10 md:p-16 rounded-[4.5rem] shadow-2xl text-center border border-white/20">
-            <div className="mb-14 flex justify-center">
-              <div className="ring-container scale-75">
-                  <div className="ring ring-1"></div>
-                  <div className="ring ring-2"></div>
-                  <div className="ring ring-3"></div>
-                  <div className="w-10 h-10 bg-blue-600 rounded-full"></div>
-              </div>
-            </div>
             <h1 className="text-4xl md:text-5xl font-[950] text-slate-900 mb-2 tracking-tighter uppercase leading-none">ASIST UP</h1>
             <p className="text-blue-600 font-black uppercase tracking-[0.6em] text-[10px] mb-14">Management Suite</p>
             
@@ -162,19 +153,19 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización" maxWidth="max-w-sm">
+          <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización" maxWidth="max-w-[280px]">
             <div className="space-y-6 p-2 text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ingrese Password o PIN Administrativo</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña o PIN</p>
               <input 
                 type="password"
                 value={adminPassInput} 
                 onChange={e => setAdminPassInput(e.target.value)} 
                 onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
-                className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none transition-all bg-slate-50" 
+                className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none bg-slate-50" 
                 placeholder="••••••" 
                 autoFocus 
               />
-              <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Validar Ingreso</button>
+              <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Ingresar</button>
             </div>
           </Modal>
         </div>
@@ -210,26 +201,24 @@ const App: React.FC = () => {
         />
       )}
 
-      <Modal isOpen={showWelcome} onClose={() => setShowWelcome(false)} title="Acceso Validado" type="success" maxWidth="max-w-sm">
+      <Modal isOpen={showWelcome} onClose={() => setShowWelcome(false)} title="Autorizado" type="success" maxWidth="max-w-[280px]">
          <div className="text-center space-y-6 p-2">
-            <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tight leading-none">Bienvenido</h2>
-            <p className="text-slate-500 text-xs font-medium uppercase tracking-widest">Iniciando Ecosistema...</p>
-            <button onClick={() => setShowWelcome(false)} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Ingresar</button>
+            <h2 className="text-xl font-[950] text-slate-900 uppercase tracking-tight leading-none">Bienvenido</h2>
+            <button onClick={() => setShowWelcome(false)} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Acceder</button>
          </div>
       </Modal>
 
-      <Modal isOpen={showLogoutFeedback} onClose={finalizeLogout} title="Cierre de Sesión" type="success" maxWidth="max-w-sm">
+      <Modal isOpen={showLogoutFeedback} onClose={finalizeLogout} title="Salida" type="success" maxWidth="max-w-[280px]">
          <div className="text-center space-y-6 p-2">
-            <h3 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">Sincronizado</h3>
-            <p className="text-slate-500 text-xs font-medium uppercase tracking-widest">Sesión Segura Finalizada</p>
+            <h3 className="text-xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">Sincronizado</h3>
             <button onClick={finalizeLogout} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Finalizar</button>
          </div>
       </Modal>
 
-      <Modal isOpen={modalAlert.isOpen} onClose={() => setModalAlert({...modalAlert, isOpen: false})} title={modalAlert.title} type={modalAlert.type}>
+      <Modal isOpen={modalAlert.isOpen} onClose={() => setModalAlert({...modalAlert, isOpen: false})} title={modalAlert.title} type={modalAlert.type} maxWidth="max-w-[280px]">
            <div className="text-center p-4">
-              <p className="text-slate-800 font-bold uppercase text-[12px]">{modalAlert.message}</p>
-              <button onClick={() => setModalAlert({...modalAlert, isOpen: false})} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase mt-6 active:scale-95 transition-all">Aceptar</button>
+              <p className="text-slate-800 font-bold uppercase text-[11px]">{modalAlert.message}</p>
+              <button onClick={() => setModalAlert({...modalAlert, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase mt-6 active:scale-95 transition-all">Ok</button>
            </div>
       </Modal>
     </div>

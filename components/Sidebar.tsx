@@ -37,7 +37,6 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
   };
 
   const handleInstallClick = () => {
-    // Siempre mostrar el modal de selección/confirmación para cumplir con "la app debe preguntar"
     setShowModeSelection(true);
   };
 
@@ -60,7 +59,11 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
 
   return (
     <>
-      <button onClick={() => setIsOpen(!isOpen)} className="fixed top-6 left-6 z-50 p-4 bg-blue-700 text-white rounded-2xl md:hidden shadow-2xl active:scale-90 transition-all">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="fixed top-4 left-4 z-50 p-3.5 bg-blue-700 text-white rounded-2xl md:hidden shadow-2xl active:scale-90 transition-all border border-blue-600"
+        aria-label="Abrir menú"
+      >
         {isOpen ? (
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"></path></svg>
         ) : (
@@ -68,31 +71,31 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
         )}
       </button>
 
-      <aside className={`fixed inset-y-0 left-0 z-40 w-80 gradient-blue text-white flex flex-col shadow-2xl transition-transform duration-500 md:translate-x-0 md:relative no-print ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-10 flex-1 overflow-y-auto custom-scroll">
-          <div className="flex items-center gap-6 mb-16">
-            <div className="ring-container scale-[0.45]">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-full max-w-[280px] md:max-w-[320px] gradient-blue text-white flex flex-col shadow-2xl transition-transform duration-500 md:translate-x-0 md:relative no-print ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-8 md:p-10 flex-1 overflow-y-auto custom-scroll">
+          <div className="flex items-center gap-4 md:gap-6 mb-12 md:mb-16">
+            <div className="ring-container scale-[0.4] md:scale-[0.45]">
                 <div className="ring ring-1"></div>
                 <div className="ring ring-2"></div>
                 <div className="ring ring-3"></div>
                 <div className="w-12 h-12 bg-blue-600 rounded-full"></div>
             </div>
             <div>
-              <h2 className="text-2xl font-[950] tracking-tighter leading-none uppercase">ASIST UP</h2>
-              <p className="text-[9px] text-blue-500 font-black tracking-[0.4em] mt-2">Enterprise Hub</p>
+              <h2 className="text-xl md:text-2xl font-[950] tracking-tighter leading-none uppercase">ASIST UP</h2>
+              <p className="text-[8px] md:text-[9px] text-blue-500 font-black tracking-[0.4em] mt-2">Enterprise Hub</p>
             </div>
           </div>
           
-          <nav className="space-y-3">
+          <nav className="space-y-2 md:space-y-3">
             {menuItems.filter(item => item.roles.includes(role)).map((item) => (
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setIsOpen(false); }}
-                className={`w-full flex items-center justify-between gap-5 px-6 py-5 rounded-[1.5rem] transition-all duration-300 font-black group ${activeTab === item.id ? 'bg-white text-slate-950 shadow-xl' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
+                className={`w-full flex items-center justify-between gap-4 px-5 py-4 md:px-6 md:py-5 rounded-2xl md:rounded-[1.5rem] transition-all duration-300 font-black group ${activeTab === item.id ? 'bg-white text-slate-950 shadow-xl' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
               >
-                <div className="flex items-center gap-5">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={item.icon}></path></svg>
-                  <span className="text-[11px] uppercase tracking-widest">{item.label}</span>
+                <div className="flex items-center gap-4 md:gap-5">
+                  <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={item.icon}></path></svg>
+                  <span className="text-[10px] md:text-[11px] uppercase tracking-widest text-left">{item.label}</span>
                 </div>
                 {item.badge ? (
                   <span className="bg-blue-600 text-white text-[8px] px-2 py-0.5 rounded-full shadow-[0_0_10px_#3b82f6]">{item.badge}</span>
@@ -105,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
             <div className="mt-8 border-t border-white/10 pt-8">
               <button 
                 onClick={handleInstallClick}
-                className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30"
+                className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30 active:scale-95"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                 <span>Instalar Aplicación</span>
@@ -114,10 +117,10 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
           )}
         </div>
 
-        <div className="p-10 border-t border-white/5">
+        <div className="p-8 md:p-10 border-t border-white/5">
           <button 
             onClick={onLogout}
-            className="w-full py-5 bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white rounded-[1.5rem] transition-all font-black border border-red-500/30 uppercase text-[11px] tracking-widest"
+            className="w-full py-4 md:py-5 bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white rounded-2xl md:rounded-[1.5rem] transition-all font-black border border-red-500/30 uppercase text-[10px] md:text-[11px] tracking-widest active:scale-95"
           >
             Cerrar Sesión
           </button>
