@@ -33,7 +33,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     gender: Gender.MASCULINO, civilStatus: CivilStatus.SOLTERO,
     origin: 'ECUATORIANA', address: '', 
     bloodType: BloodType.O_POS, startDate: new Date().toISOString().split('T')[0],
-    role: Role.EMPLOYEE, salary: 482.00, status: 'active', photo: '', pin: '',
+    role: Role.EMPLOYEE, salary: 482.00, status: 'active' as const, photo: '', pin: '',
     emergencyContact: { name: '', phone: '' },
     isFixed: true, isAffiliated: true, overSalaryType: 'monthly',
     bankInfo: { ifi: '', type: 'Ahorros', account: '' },
@@ -68,15 +68,25 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     const finalForm = { ...form };
     if (!hasBankInfo) finalForm.bankInfo = { ifi: 'NO APLICA', type: 'Ahorros', account: 'N/A' };
 
-    let updatedList;
+    let updatedList: Employee[];
     if (editingEmp) {
       updatedList = employees.map(e => e.id === editingEmp.id ? { ...e, ...finalForm } as Employee : e);
-      setFeedback({ isOpen: true, title: "Éxito", message: "Expediente actualizado.", type: "success" });
+      setFeedback({ isOpen: true, title: "Éxito", message: "Expediente actualizado correctamente.", type: "success" });
     } else {
       const autoPin = Math.floor(100000 + Math.random() * 900000).toString();
-      const newEmp = { ...finalForm, id: Math.random().toString(36).substr(2, 9), pin: autoPin, pinChanged: false, pinNeedsReset: false, absences: [], observations: [], totalHoursWorked: 0, status: 'active' } as Employee;
+      const newEmp: Employee = { 
+        ...finalForm, 
+        id: Math.random().toString(36).substr(2, 9), 
+        pin: autoPin, 
+        pinChanged: false, 
+        pinNeedsReset: false, 
+        absences: [], 
+        observations: [], 
+        totalHoursWorked: 0, 
+        status: 'active' as const 
+      } as Employee;
       updatedList = [...employees, newEmp];
-      setFeedback({ isOpen: true, title: "Éxito", message: `Colaborador registrado. PIN: ${autoPin}`, type: "success" });
+      setFeedback({ isOpen: true, title: "Éxito", message: `Colaborador registrado. PIN Inicial: ${autoPin}`, type: "success" });
     }
     onUpdate(updatedList);
     setIsModalOpen(false);
@@ -85,7 +95,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   const handleAddAbsence = () => {
     if (!viewingEmp) return;
     const record: AbsenceRecord = { ...newAbsence, id: Math.random().toString(36).substr(2, 9) } as AbsenceRecord;
-    const updated = employees.map(e => e.id === viewingEmp.id ? { ...e, absences: [...(e.absences || []), record] } : e);
+    const updated: Employee[] = employees.map(e => e.id === viewingEmp.id ? { ...e, absences: [...(e.absences || []), record] } : e);
     onUpdate(updated);
     setViewingEmp({ ...viewingEmp, absences: [...(viewingEmp.absences || []), record] });
     setIsAbsenceModalOpen(false);
@@ -93,11 +103,17 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
 
   const handleTerminate = () => {
     if (!viewingEmp) return;
-    const updated = employees.map(e => e.id === viewingEmp.id ? { ...e, status: 'terminated', terminationDate: termData.date, terminationReason: termData.reason, terminationDetails: termData.details } : e);
+    const updated: Employee[] = employees.map(e => e.id === viewingEmp.id ? { 
+      ...e, 
+      status: 'terminated' as const, 
+      terminationDate: termData.date, 
+      terminationReason: termData.reason, 
+      terminationDetails: termData.details 
+    } : e);
     onUpdate(updated);
     setViewingEmp(null);
     setIsTermModalOpen(false);
-    setFeedback({ isOpen: true, title: "Éxito", message: "Colaborador desvinculado.", type: "success" });
+    setFeedback({ isOpen: true, title: "Desvinculación", message: "Estatus del colaborador actualizado a salida.", type: "success" });
   };
 
   const filteredEmployees = employees.filter(e => {
@@ -111,13 +127,13 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         <div>
           <h2 className="text-xl font-[950] text-slate-900 tracking-tighter uppercase leading-none">Gestión Humana</h2>
           <div className="flex gap-4 mt-2">
-            <button onClick={() => setShowArchived(false)} className={`text-[9px] font-black uppercase tracking-widest ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Activos/Salidas</button>
-            <button onClick={() => setShowArchived(true)} className={`text-[9px] font-black uppercase tracking-widest ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Archivo</button>
+            <button onClick={() => setShowArchived(false)} className={`text-[9px] font-black uppercase tracking-widest ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Activos / Salidas</button>
+            <button onClick={() => setShowArchived(true)} className={`text-[9px] font-black uppercase tracking-widest ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Archivados</button>
           </div>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
-          <input type="text" placeholder="Buscar..." className="flex-1 p-3 border rounded-xl text-xs uppercase font-bold" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-          <button onClick={() => { setForm(initialForm); setEditingEmp(null); setHasBankInfo(true); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-2xl shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition-all">Nuevo Registro</button>
+          <input type="text" placeholder="Buscar por nombre o CI..." className="flex-1 p-3 border rounded-xl text-xs uppercase font-bold" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <button onClick={() => { setForm(initialForm); setEditingEmp(null); setHasBankInfo(true); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-2xl shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition-all">Nuevo Colaborador</button>
         </div>
       </div>
 
@@ -126,9 +142,9 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           <thead className="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest">
             <tr>
               <th className="px-6 py-4">Colaborador</th>
-              <th className="px-6 py-4">Cédula</th>
+              <th className="px-6 py-4">Identificación</th>
               <th className="px-6 py-4">Cargo</th>
-              <th className="px-6 py-4 text-center">Estatus</th>
+              <th className="px-6 py-4 text-center">Estado</th>
               <th className="px-6 py-4 text-right">Acciones</th>
             </tr>
           </thead>
@@ -160,22 +176,38 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </table>
       </div>
 
-      <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Expediente Integral">
+      {/* MODAL EXPEDIENTE */}
+      <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Expediente de Personal">
         {viewingEmp && (
           <div className="space-y-6">
             <div className="flex gap-6 items-center border-b pb-4">
-               <div className="w-20 h-20 rounded-2xl overflow-hidden border bg-slate-100 flex items-center justify-center shadow-md">
-                  {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <span className="text-3xl">👤</span>}
+               <div className="w-24 h-24 rounded-2xl overflow-hidden border bg-slate-100 flex items-center justify-center shadow-lg">
+                  {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <span className="text-4xl">👤</span>}
                </div>
                <div>
-                  <h3 className="text-xl font-[950] text-slate-900 uppercase tracking-tighter">{viewingEmp.surname} {viewingEmp.name}</h3>
-                  <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{viewingEmp.role} | {viewingEmp.identification}</p>
-                  <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Ingreso: {viewingEmp.startDate}</p>
+                  <h3 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">{viewingEmp.surname} {viewingEmp.name}</h3>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{viewingEmp.role} | CI: {viewingEmp.identification}</p>
+                  <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase">Fecha Ingreso: {viewingEmp.startDate}</p>
                </div>
             </div>
+            
+            <div className="grid grid-cols-2 gap-4 text-[10px] font-bold uppercase">
+               <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-slate-400 font-black text-[8px] mb-1">Información de Pago</p>
+                  <p>Sueldo: ${viewingEmp.salary.toFixed(2)}</p>
+                  <p>IESS: {viewingEmp.isAffiliated ? 'Afiliado' : 'No Afiliado'}</p>
+                  <p>Beneficios: {viewingEmp.overSalaryType === 'monthly' ? 'Mensualizados' : viewingEmp.overSalaryType === 'accumulate' ? 'Acumulados' : 'N/A'}</p>
+               </div>
+               <div className="p-4 bg-slate-50 rounded-xl">
+                  <p className="text-slate-400 font-black text-[8px] mb-1">Datos Bancarios</p>
+                  <p>{viewingEmp.bankInfo?.ifi || 'N/A'}</p>
+                  <p>{viewingEmp.bankInfo?.type} - {viewingEmp.bankInfo?.account}</p>
+               </div>
+            </div>
+
             <section>
                <div className="flex justify-between items-center mb-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Historial de Novedades (Faltas/Atrasos/Permisos)</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Historial de Novedades</h4>
                   {viewingEmp.status === 'active' && <button onClick={() => setIsAbsenceModalOpen(true)} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[8px] font-black uppercase">Nueva Novedad</button>}
                </div>
                <div className="bg-slate-50 rounded-2xl overflow-hidden border max-h-48 overflow-y-auto custom-scroll">
@@ -185,33 +217,35 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                      </thead>
                      <tbody className="text-[9px] font-bold uppercase divide-y">
                         {viewingEmp.absences?.map(a => (
-                           <tr key={a.id}><td className="p-3">{a.date}</td><td className="p-3">{a.type}</td><td className="p-3">{a.reason}</td><td className="p-3 text-center">{a.justified ? 'S' : 'N'}</td></tr>
-                        )) || <tr><td colSpan={4} className="p-10 text-center text-slate-300">Sin registros</td></tr>}
+                           <tr key={a.id}><td className="p-3">{a.date}</td><td className="p-3">{a.type}</td><td className="p-3">{a.reason}</td><td className="p-3 text-center">{a.justified ? 'SI' : 'NO'}</td></tr>
+                        )) || <tr><td colSpan={4} className="p-10 text-center text-slate-300">Sin registros de novedades.</td></tr>}
                      </tbody>
                   </table>
                </div>
             </section>
+            
             {viewingEmp.status === 'active' && role === Role.SUPER_ADMIN && (
               <div className="pt-4 border-t flex justify-end">
-                 <button onClick={() => setIsTermModalOpen(true)} className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-[9px] font-black uppercase border border-red-200">Desvincular Empleado</button>
+                 <button onClick={() => setIsTermModalOpen(true)} className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-[9px] font-black uppercase border border-red-200">Procesar Salida</button>
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Expediente" : "Nuevo Registro"}>
+      {/* MODAL REGISTRO / EDICIÓN */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Colaborador" : "Nuevo Registro de Personal"}>
          <div className="space-y-6 max-h-[75vh] overflow-y-auto px-2 custom-scroll">
             <section className="border-b pb-4">
-               <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">I. Identidad y Fotografía</h4>
+               <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">I. Datos de Identidad</h4>
                <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                     <label className="text-[9px] font-black text-slate-400 uppercase">Cargar Foto desde Dispositivo</label>
+                     <label className="text-[9px] font-black text-slate-400 uppercase">Fotografía (Desde el equipo)</label>
                      <div className="flex gap-4 items-center mt-2">
                         <div className="w-20 h-20 bg-slate-50 rounded-2xl border-2 border-dashed flex items-center justify-center overflow-hidden">
-                           {form.photo ? <img src={form.photo} className="w-full h-full object-cover" /> : <span className="text-[10px] text-slate-300">SIN FOTO</span>}
+                           {form.photo ? <img src={form.photo} className="w-full h-full object-cover" /> : <span className="text-[10px] text-slate-300 uppercase">Sin Foto</span>}
                         </div>
-                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="text-[10px] font-bold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                        <input type="file" accept="image/*" onChange={handlePhotoUpload} className="text-[10px] font-bold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:bg-blue-50 file:text-blue-700" />
                      </div>
                   </div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Nombres*</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.name} onChange={e => setForm({...form, name: e.target.value.toUpperCase()})} /></div>
@@ -222,63 +256,66 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Estado Civil</label><select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.civilStatus} onChange={e => setForm({...form, civilStatus: e.target.value as CivilStatus})}>{Object.values(CivilStatus).map(s => <option key={s} value={s}>{s}</option>)}</select></div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Nacionalidad</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.origin} onChange={e => setForm({...form, origin: e.target.value.toUpperCase()})} /></div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Tipo Sangre</label><select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.bloodType} onChange={e => setForm({...form, bloodType: e.target.value as BloodType})}>{Object.values(BloodType).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase">Dirección Domiciliaria</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.address} onChange={e => setForm({...form, address: e.target.value.toUpperCase()})} /></div>
-                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Teléfono Móvil</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.phone} onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g,'')})} /></div>
-                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Correo Electrónico</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.email} onChange={e => setForm({...form, email: e.target.value.toLowerCase()})} /></div>
+                  <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase">Dirección</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.address} onChange={e => setForm({...form, address: e.target.value.toUpperCase()})} /></div>
+                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Teléfono</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.phone} onChange={e => setForm({...form, phone: e.target.value.replace(/\D/g,'')})} /></div>
+                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Email</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.email} onChange={e => setForm({...form, email: e.target.value.toLowerCase()})} /></div>
                </div>
             </section>
             <section className="border-b pb-4">
-               <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">II. Información Laboral, IESS y Pagos</h4>
+               <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">II. Configuración Laboral</h4>
                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Fecha de Ingreso</label><input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></div>
+                  <div><label className="text-[9px] font-black text-slate-400 uppercase">Fecha Ingreso</label><input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Sueldo Base*</label><input type="number" step="0.01" className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.salary} onChange={e => setForm({...form, salary: Number(e.target.value)})} /></div>
                   <div className="flex items-center gap-2 pt-4">
                      <input type="checkbox" id="isAffiliated" className="w-4 h-4" checked={form.isAffiliated} onChange={e => setForm({...form, isAffiliated: e.target.checked})} />
                      <label htmlFor="isAffiliated" className="text-[10px] font-black uppercase text-slate-600">Afiliación IESS</label>
                   </div>
                   <div>
-                     <label className={`text-[9px] font-black uppercase tracking-widest ${form.isAffiliated ? 'text-blue-600' : 'text-slate-300'}`}>Mensualización de Beneficios</label>
+                     <label className={`text-[9px] font-black uppercase tracking-widest ${form.isAffiliated ? 'text-blue-600' : 'text-slate-300'}`}>Mensualización Beneficios</label>
                      <select disabled={!form.isAffiliated} className="w-full border-2 p-3 rounded-xl text-xs font-black disabled:bg-slate-50" value={form.overSalaryType} onChange={e => setForm({...form, overSalaryType: e.target.value as any})}>
-                        <option value="monthly">Mensualizar (Pagar en Rol)</option>
-                        <option value="accumulate">Acumular (Pago Legal)</option>
-                        <option value="none">No aplica</option>
+                        <option value="monthly">Mensualizar</option><option value="accumulate">Acumular</option><option value="none">No aplica</option>
                      </select>
-                  </div>
-                  <div className="col-span-2 space-y-4 pt-4">
-                     <div className="flex items-center gap-2">
-                        <input type="checkbox" id="hasBank" className="w-4 h-4" checked={hasBankInfo} onChange={e => setHasBankInfo(e.target.checked)} />
-                        <label htmlFor="hasBank" className="text-[10px] font-black uppercase text-slate-600">Pago vía Transferencia Bancaria</label>
-                     </div>
-                     {hasBankInfo && (
-                       <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed">
-                          <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase">Institución Financiera (IFI)</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.bankInfo?.ifi} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, ifi: e.target.value.toUpperCase()}})} /></div>
-                          <div><label className="text-[9px] font-black text-slate-400 uppercase">Tipo Cuenta</label><select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.bankInfo?.type} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, type: e.target.value as any}})}><option value="Ahorros">Ahorros</option><option value="Corriente">Corriente</option></select></div>
-                          <div><label className="text-[9px] font-black text-slate-400 uppercase">Número de Cuenta</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.bankInfo?.account} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, account: e.target.value}})} /></div>
-                       </div>
-                     )}
                   </div>
                </div>
             </section>
-            <button onClick={handleSave} className="w-full py-5 bg-slate-900 text-white font-[950] rounded-[2rem] uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Sincronizar Colaborador</button>
+            <section className="pb-4">
+               <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">III. Datos Bancarios</h4>
+               <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                     <input type="checkbox" id="hasBank" className="w-4 h-4" checked={hasBankInfo} onChange={e => setHasBankInfo(e.target.checked)} />
+                     <label htmlFor="hasBank" className="text-[10px] font-black uppercase text-slate-600">Pago por Acreditación</label>
+                  </div>
+                  {hasBankInfo && (
+                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed">
+                       <div className="col-span-2"><label className="text-[9px] font-black text-slate-400 uppercase">Institución Financiera</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black uppercase" value={form.bankInfo?.ifi} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, ifi: e.target.value.toUpperCase()}})} /></div>
+                       <div><label className="text-[9px] font-black text-slate-400 uppercase">Tipo Cuenta</label><select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.bankInfo?.type} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, type: e.target.value as any}})}><option value="Ahorros">Ahorros</option><option value="Corriente">Corriente</option></select></div>
+                       <div><label className="text-[9px] font-black text-slate-400 uppercase">Número Cuenta</label><input className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.bankInfo?.account} onChange={e => setForm({...form, bankInfo: {...form.bankInfo!, account: e.target.value}})} /></div>
+                    </div>
+                  )}
+               </div>
+            </section>
+            <button onClick={handleSave} className="w-full py-5 bg-slate-900 text-white font-[950] rounded-[2rem] uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Sincronizar Registro</button>
          </div>
       </Modal>
 
-      <Modal isOpen={isAbsenceModalOpen} onClose={() => setIsAbsenceModalOpen(false)} title="Nueva Novedad" maxWidth="max-w-sm">
+      {/* MODAL NOVEDAD */}
+      <Modal isOpen={isAbsenceModalOpen} onClose={() => setIsAbsenceModalOpen(false)} title="Registrar Novedad" maxWidth="max-w-sm">
          <div className="space-y-4">
             <select className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={newAbsence.type} onChange={e => setNewAbsence({...newAbsence, type: e.target.value as any})}><option value="Falta">Falta</option><option value="Permiso">Permiso</option><option value="Atraso">Atraso</option></select>
             <input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={newAbsence.date} onChange={e => setNewAbsence({...newAbsence, date: e.target.value})} />
-            <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold h-20" placeholder="Motivo de la novedad..." value={newAbsence.reason} onChange={e => setNewAbsence({...newAbsence, reason: e.target.value})} />
+            <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold h-20" placeholder="Motivo o Justificación..." value={newAbsence.reason} onChange={e => setNewAbsence({...newAbsence, reason: e.target.value})} />
             <div className="flex items-center gap-2"><input type="checkbox" id="isJustified" checked={newAbsence.justified} onChange={e => setNewAbsence({...newAbsence, justified: e.target.checked})} /><label htmlFor="isJustified" className="text-[10px] font-black uppercase">Justificado</label></div>
             <button onClick={handleAddAbsence} className="w-full py-4 bg-blue-600 text-white font-black rounded-xl uppercase text-[10px]">Guardar Novedad</button>
          </div>
       </Modal>
 
-      <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Procesar Desvinculación" maxWidth="max-w-sm">
+      {/* MODAL SALIDA */}
+      <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Salida de Personal" maxWidth="max-w-sm">
          <div className="space-y-4">
             <select className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={termData.reason} onChange={e => setTermData({...termData, reason: e.target.value as TerminationReason})}>{Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}</select>
             <input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={termData.date} onChange={e => setTermData({...termData, date: e.target.value})} />
-            <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold h-24" placeholder="Detalles de la salida..." value={termData.details} onChange={e => setTermData({...termData, details: e.target.value})} />
-            <button onClick={handleTerminate} className="w-full py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px]">Confirmar Salida Definitiva</button>
+            <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold h-24" placeholder="Detalles de desvinculación..." value={termData.details} onChange={e => setTermData({...termData, details: e.target.value})} />
+            <button onClick={handleTerminate} className="w-full py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px]">Confirmar Salida</button>
          </div>
       </Modal>
 

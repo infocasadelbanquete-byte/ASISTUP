@@ -95,11 +95,11 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
              <select className="p-2 border rounded-xl text-[10px] font-black uppercase" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
                 {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
              </select>
-             <input type="text" placeholder="Buscar empleado..." className="p-2 border rounded-xl text-[10px] font-bold uppercase min-w-[200px]" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             <input type="text" placeholder="Buscar..." className="p-2 border rounded-xl text-[10px] font-bold uppercase min-w-[200px]" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
         </div>
         <div className="flex gap-2">
-           <button onClick={exportGeneralExcel} className="px-6 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all">Exportar Excel General</button>
+           <button onClick={exportGeneralExcel} className="px-6 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all">Excel General</button>
            <button onClick={() => window.print()} className="px-6 py-3 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all">Imprimir General</button>
         </div>
       </div>
@@ -107,17 +107,17 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
       <div className="bg-white p-10 rounded-[3rem] shadow-sm overflow-x-auto border">
         <div className="mb-8 text-center border-b pb-6 print-only">
            <h1 className="text-3xl font-[950] text-slate-900 uppercase tracking-tighter">{company?.name || 'ROL DE PAGOS'}</h1>
-           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Nómina - {selectedMonth} 2026</p>
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Período Fiscal: {selectedMonth} 2026</p>
         </div>
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-900 text-white text-[8px] font-black uppercase">
             <tr>
               <th className="p-4 rounded-tl-2xl">Empleado</th>
-              <th className="p-4 text-center">Sueldo Base</th>
+              <th className="p-4 text-center">Base</th>
               <th className="p-4 text-center">Extra/Bono</th>
-              <th className="p-4 text-center">13ero Mens.</th>
-              <th className="p-4 text-center">14to Mens.</th>
-              <th className="p-4 text-center">Fondos Res.</th>
+              <th className="p-4 text-center">13ero Mens</th>
+              <th className="p-4 text-center">14to Mens</th>
+              <th className="p-4 text-center">Fondos Res</th>
               <th className="p-4 text-center">IESS 9.45%</th>
               <th className="p-4 text-center">Descuentos</th>
               <th className="p-4 text-center bg-blue-800 rounded-tr-2xl">Neto a Recibir</th>
@@ -155,44 +155,40 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
              <div className="p-6 space-y-8 bg-white" id="individual-role-print">
                <div className="flex justify-between items-start border-b-2 pb-6">
                   <div><h3 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">{company?.name || 'EMPRESA'}</h3><p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Identificación Tributaria: {company?.ruc || '0000000000001'}</p></div>
-                  <div className="text-right"><p className="text-[10px] font-black uppercase bg-slate-900 text-white px-4 py-2 rounded-2xl">COMPROBANTE INDIVIDUAL</p><p className="text-[9px] font-bold text-slate-500 uppercase mt-2">{selectedMonth} 2026</p></div>
+                  <div className="text-right"><p className="text-[10px] font-black uppercase bg-slate-900 text-white px-4 py-2 rounded-2xl">ROL INDIVIDUAL</p><p className="text-[9px] font-bold text-slate-500 uppercase mt-2">{selectedMonth} 2026</p></div>
                </div>
                <div className="grid grid-cols-2 gap-8 text-[10px] font-bold uppercase">
-                  <div className="space-y-2"><p className="text-slate-400 font-black tracking-widest text-[8px]">Datos del Colaborador</p><p className="text-slate-900 text-base font-black">{individualPayroll.surname} {individualPayroll.name}</p><p className="text-slate-500">CI: {individualPayroll.identification}</p><p className="text-slate-500">Cargo: {individualPayroll.role}</p></div>
-                  <div className="space-y-2 text-right"><p className="text-slate-400 font-black tracking-widest text-[8px]">Cuenta de Pago</p><p className="text-slate-900">{individualPayroll.bankInfo?.ifi}</p><p className="text-slate-500">{individualPayroll.bankInfo?.type} - {individualPayroll.bankInfo?.account}</p></div>
+                  <div className="space-y-2"><p className="text-slate-400 font-black tracking-widest text-[8px]">Titular del Pago</p><p className="text-slate-900 text-base font-black">{individualPayroll.surname} {individualPayroll.name}</p><p className="text-slate-500">CI: {individualPayroll.identification}</p></div>
+                  <div className="space-y-2 text-right"><p className="text-slate-400 font-black tracking-widest text-[8px]">Depósito Bancario</p><p className="text-slate-900">{individualPayroll.bankInfo?.ifi}</p><p className="text-slate-500">{individualPayroll.bankInfo?.account}</p></div>
                </div>
                <div className="grid grid-cols-2 gap-10">
                   <div className="space-y-4">
                      <h4 className="text-[9px] font-black uppercase text-emerald-600 tracking-[0.2em] border-b pb-2">I. Haberes / Ingresos</h4>
                      <div className="space-y-2 text-[10px] font-bold uppercase">
-                        <div className="flex justify-between"><span>Sueldo Mensual</span><span>${d.baseSalary.toFixed(2)}</span></div>
-                        <div className="flex justify-between text-blue-600"><span>Horas Extras y Bonos</span><span>${(d.extraHours+d.bonuses).toFixed(2)}</span></div>
-                        <div className="flex justify-between text-emerald-600"><span>Décimo Tercero (Mens)</span><span>${d.monthly13th.toFixed(2)}</span></div>
-                        <div className="flex justify-between text-emerald-600"><span>Décimo Cuarto (Mens)</span><span>${d.monthly14th.toFixed(2)}</span></div>
-                        <div className="flex justify-between text-emerald-600"><span>Fondos Reserva (Mens)</span><span>${d.reserveFund.toFixed(2)}</span></div>
-                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>TOTAL INGRESOS</span><span>${d.totalIncomes.toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span>Sueldo Base</span><span>${d.baseSalary.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-blue-600"><span>Variables (Horas Extras/Bonos)</span><span>${(d.extraHours+d.bonuses).toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>D3ro (Mensualizado)</span><span>${d.monthly13th.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>D4to (Mensualizado)</span><span>${d.monthly14th.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>Fondos Reserva (Mensualizado)</span><span>${d.reserveFund.toFixed(2)}</span></div>
+                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>INGRESOS BRUTOS</span><span>${d.totalIncomes.toFixed(2)}</span></div>
                      </div>
                   </div>
                   <div className="space-y-4">
                      <h4 className="text-[9px] font-black uppercase text-red-600 tracking-[0.2em] border-b pb-2">II. Descuentos / Egresos</h4>
                      <div className="space-y-2 text-[10px] font-bold uppercase">
-                        <div className="flex justify-between"><span>Aporte Personal IESS (9.45%)</span><span>${d.iessContribution.toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span>Anticipos y Préstamos</span><span>${d.loans.toFixed(2)}</span></div>
-                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>TOTAL EGRESOS</span><span>${d.totalExpenses.toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span>IESS Personal (9.45%)</span><span>${d.iessContribution.toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span>Préstamos / Anticipos</span><span>${d.loans.toFixed(2)}</span></div>
+                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>TOTAL DESCUENTOS</span><span>${d.totalExpenses.toFixed(2)}</span></div>
                      </div>
                   </div>
                </div>
                <div className="bg-slate-900 p-8 rounded-[2rem] text-white flex justify-between items-center shadow-2xl">
-                  <div><p className="text-[8px] font-black uppercase tracking-[0.4em] opacity-60">Líquido a Percibir</p></div>
+                  <div><p className="text-[8px] font-black uppercase tracking-[0.4em] opacity-60">Neto a Recibir</p></div>
                   <p className="text-4xl font-[950] tracking-tighter">${d.netToReceive.toFixed(2)}</p>
                </div>
-               <div className="grid grid-cols-2 gap-20 pt-20 text-center no-print-section">
-                  <div className="border-t-2 pt-4"><p className="text-[8px] font-black uppercase">Recibí Conforme (Firma)</p></div>
-                  <div className="border-t-2 pt-4"><p className="text-[8px] font-black uppercase">Autorización Institucional</p></div>
-               </div>
                <div className="flex gap-3 no-print">
-                  <button onClick={() => exportIndividualExcel(individualPayroll)} className="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Descargar Excel Individual</button>
-                  <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Imprimir Rol Individual</button>
+                  <button onClick={() => exportIndividualExcel(individualPayroll)} className="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Excel Individual</button>
+                  <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Imprimir / PDF</button>
                </div>
              </div>
            );
