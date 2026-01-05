@@ -7,6 +7,7 @@ import PayrollModule from './modules/PayrollModule.tsx';
 import PaymentsModule from './modules/PaymentsModule.tsx';
 import SettingsModule from './modules/SettingsModule.tsx';
 import ReportsModule from './modules/ReportsModule.tsx';
+import AiAssistant from './modules/AiAssistant.tsx';
 import Modal from '../components/Modal.tsx';
 import { DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx';
 
@@ -30,7 +31,7 @@ interface AdminDashboardProps {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, payments, onUpdatePayments, settings, onUpdateSettings, onUpdateAppMode, appMode 
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai'>('dashboard');
   const [showInstallModal, setShowInstallModal] = useState(false);
   
   const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -49,7 +50,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (missingAttendanceCount > 0) {
         new Notification("ALERTA DE ASISTENCIA", {
           body: `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`,
-          icon: "https://cdn-icons-png.flaticon.com/512/3421/3421714.png"
+          icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
         });
       }
     }
@@ -103,6 +104,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <div className="flex gap-3">
+             <button onClick={() => setActiveTab('ai')} className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl text-[9px] font-black uppercase border border-blue-100 flex items-center gap-2 hover:bg-blue-100 transition-all">
+               <span className="animate-pulse">✨</span> IA Assistant
+             </button>
              {role === Role.SUPER_ADMIN && (
                <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase border border-slate-900 shadow-xl active:scale-95 transition-all">Estación Kiosco</button>
              )}
@@ -112,8 +116,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="animate-in fade-in duration-500">
           {activeTab === 'dashboard' && (
             <div className="space-y-12">
-              
-              {/* ALERTA CUMPLEAÑOS */}
               {birthdayPeeps.length > 0 && role === Role.SUPER_ADMIN && (
                 <div className="bg-emerald-600 p-8 rounded-[3rem] text-white shadow-[0_20px_50px_rgba(16,185,129,0.2)] flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
                    <div className="flex items-center gap-6">
@@ -133,7 +135,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              <div className="relative overflow-hidden bg-slate-900 rounded-[3rem] p-12 text-white shadow-2xl min-h-[300px] flex flex-col justify-center">
+              <div className="relative overflow-hidden bg-slate-900 rounded-[3rem] p-12 text-white shadow-2xl min-h-[300px] flex flex-col justify-center bg-cover bg-center" style={{ backgroundImage: 'linear-gradient(rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.8)), url(https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&q=80&w=2070)' }}>
                   <div className="relative z-10 max-w-2xl">
                     <p className="text-blue-400 font-black text-[10px] uppercase tracking-[0.5em] mb-4">Reflexión Estratégica</p>
                     <h2 className="text-3xl md:text-5xl font-[900] leading-tight tracking-tighter italic">"{dailyQuote}"</h2>
@@ -155,17 +157,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-blue-600 p-10 rounded-[3rem] shadow-xl text-white space-y-4">
-                   <h3 className="text-xl font-[950] uppercase tracking-tighter">Resumen Operativo</h3>
-                   <div className="grid grid-cols-2 gap-4 pt-4">
-                      <div className="bg-white/10 p-4 rounded-2xl">
-                         <p className="text-[8px] font-black uppercase opacity-60">Personal Activo</p>
-                         <p className="text-3xl font-black">{employees.filter(e => e.status === 'active').length}</p>
-                      </div>
-                      <div className="bg-white/10 p-4 rounded-2xl">
-                         <p className="text-[8px] font-black uppercase opacity-60">Marcaciones Hoy</p>
-                         <p className="text-3xl font-black">{attendance.filter(a => a.timestamp.includes(todayDateStr)).length}</p>
-                      </div>
+                <div className="relative overflow-hidden bg-white rounded-[3rem] shadow-sm border border-slate-100 h-full">
+                   <img 
+                     src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&q=80&w=2070" 
+                     alt="Paisaje Relajante" 
+                     className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                   />
+                   <div className="absolute bottom-6 left-6 right-6">
+                      <p className="text-[8px] font-black text-white/50 uppercase tracking-[0.3em]">Ambiente de Paz</p>
                    </div>
                 </div>
               </div>
@@ -178,6 +177,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} />}
           {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} onPurge={handlePurgeData} allData={allAppData} />}
           {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} />}
+          {activeTab === 'ai' && <AiAssistant employees={employees} attendance={attendance} payments={payments} role={role} />}
         </div>
       </main>
 

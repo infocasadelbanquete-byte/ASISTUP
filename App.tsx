@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
@@ -163,19 +162,19 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización">
-            <div className="space-y-8 p-2 text-center">
+          <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización" maxWidth="max-w-sm">
+            <div className="space-y-6 p-2 text-center">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ingrese Password o PIN Administrativo</p>
               <input 
                 type="password"
                 value={adminPassInput} 
                 onChange={e => setAdminPassInput(e.target.value)} 
                 onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
-                className="w-full border-2 border-slate-100 rounded-[2.5rem] p-8 text-center text-4xl font-black focus:border-blue-600 outline-none transition-all bg-slate-50" 
+                className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none transition-all bg-slate-50" 
                 placeholder="••••••" 
                 autoFocus 
               />
-              <button onClick={handleAdminLogin} className="w-full py-6 bg-blue-700 text-white font-black rounded-3xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Validar Ingreso</button>
+              <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Validar Ingreso</button>
             </div>
           </Modal>
         </div>
