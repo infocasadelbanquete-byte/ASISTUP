@@ -1,4 +1,3 @@
-
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, 
@@ -14,10 +13,9 @@ import {
 } from "firebase/firestore";
 import LZString from "lz-string";
 
-// Configuración de Firebase utilizando variables de entorno
-// FIX: Accessing API_KEY directly from process.env to avoid 'unknown' type errors when accessing window.process.env
+// Configuración de Firebase utilizando variables de entorno inyectadas por Vite
 const firebaseConfig = {
-  apiKey: process.env.API_KEY || "",
+  apiKey: (process.env.API_KEY as string) || "",
   authDomain: "asist-up-6ccd1.firebaseapp.com",
   projectId: "asist-up-6ccd1",
   storageBucket: "asist-up-6ccd1.firebasestorage.app",
@@ -25,14 +23,9 @@ const firebaseConfig = {
   appId: "1:944407397524:web:8e685e9ea9382288622081"
 };
 
-// Validar si tenemos API Key antes de inicializar para evitar errores silenciosos
-if (!firebaseConfig.apiKey) {
-  console.warn("ADVERTENCIA: API_KEY de Firebase no detectada. La conexión puede fallar.");
-}
-
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Firestore con persistencia optimizada
+// Inicializar Firestore con persistencia optimizada para PWA
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
