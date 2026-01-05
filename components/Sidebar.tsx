@@ -37,13 +37,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
   };
 
   const handleInstallClick = () => {
-    if (role === Role.SUPER_ADMIN) {
-      setShowModeSelection(true);
-    } else if (role === Role.PARTIAL_ADMIN) {
-      // Los administradores parciales solo instalan el sistema de asistencia
-      localStorage.setItem('app_mode', 'attendance');
-      triggerPWAInstall();
-    }
+    // Siempre mostrar el modal de selección/confirmación para cumplir con "la app debe preguntar"
+    setShowModeSelection(true);
   };
 
   const handleInstallProcess = (mode: 'full' | 'attendance') => {
@@ -131,10 +126,14 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
 
       <Modal isOpen={showModeSelection} onClose={() => setShowModeSelection(false)} title="Configuración de Instalación" maxWidth="max-w-sm">
          <div className="space-y-6">
-            <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">Solo el Administrador puede instalar el sistema en este equipo móvil.</p>
+            <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">
+              ¿Desea habilitar el sistema en este dispositivo móvil o equipo?
+            </p>
             <div className="space-y-2">
-               <button onClick={() => handleInstallProcess('full')} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Sistema Administrativo</button>
-               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosko de Asistencia</button>
+               {role === Role.SUPER_ADMIN && (
+                 <button onClick={() => handleInstallProcess('full')} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Instalar Sistema Completo</button>
+               )}
+               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Instalar Sistema de Asistencia</button>
             </div>
          </div>
       </Modal>
