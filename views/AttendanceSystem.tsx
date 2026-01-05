@@ -19,8 +19,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
   const [newPin, setNewPin] = useState('');
+  const [forgotCi, setForgotCi] = useState('');
   const [motivationalMsg, setMotivationalMsg] = useState('');
-  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error'}>({
+  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'success'
   });
   
@@ -37,7 +38,6 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
       if (diffMins > 15) {
         isCriticalLate = true;
-        // Notificación de retraso crítico
         if (Notification.permission === "granted") {
           new Notification("ALERTA DE ASISTENCIA", {
             body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha marcado con más de 15 minutos de retraso.`,
@@ -58,17 +58,14 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    // Verificación de Cumpleaños
-    const today = new Date();
-    const birth = new Date(currentEmp.birthDate);
-    const isBirthday = today.getMonth() === birth.getMonth() && today.getDate() === (birth.getDate() + 1);
-
+    // Mensaje estricto de éxito según el tipo de marcación
     let baseMsg = "";
-    if (isBirthday) {
-      baseMsg = `¡FELIZ CUMPLEAÑOS ${currentEmp.name.toUpperCase()}! 🎂 Nuestra organización celebra tu vida y agradece tu valiosa entrega hoy. ¡Que sea un día excepcional!`;
+    if (type === 'in') {
+      baseMsg = "INGRESO REGISTRADO CON ÉXITO";
+    } else if (type === 'out') {
+      baseMsg = "SALIDA REGISTRADA CON ÉXITO";
     } else {
-      baseMsg = type === 'in' ? MOTIVATIONAL_MESSAGES_START[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_START.length)] : MOTIVATIONAL_MESSAGES_END[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_END.length)];
-      if (type === 'half_day') baseMsg = "Media jornada registrada con éxito.";
+      baseMsg = "MARCACIÓN REGISTRADA CON ÉXITO";
     }
     
     setMotivationalMsg(baseMsg);
@@ -79,7 +76,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       setStatus('idle');
       setCurrentEmp(null);
       setIsProcessing(false);
-    }, 5000);
+    }, 4000);
   };
 
   const handlePinChange = () => {
@@ -97,7 +94,6 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     
     onUpdateEmployees(updated);
 
-    // Notificación de cambio de PIN para el administrador
     if (Notification.permission === "granted") {
       new Notification("RESETEO DE PIN", {
         body: `El colaborador ${currentEmp?.name} ha actualizado su clave de acceso.`,
@@ -108,6 +104,37 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     setFeedback({ isOpen: true, title: "PIN Actualizado", message: "Su clave de acceso ha sido cambiada. Ahora puede marcar su asistencia.", type: "success" });
     setStatus('confirm');
     setNewPin('');
+  };
+
+  const handleRequestPinReset = () => {
+    const emp = employees.find(e => e.identification === forgotCi && e.status === 'active');
+    if (emp) {
+      const updated = employees.map(e => e.id === emp.id ? { ...e, pinNeedsReset: true } : e);
+      onUpdateEmployees(updated);
+      
+      if (Notification.permission === "granted") {
+        new Notification("SOLICITUD DE ACCESO", {
+          body: `El colaborador ${emp.name} solicita resetear su PIN de asistencia.`,
+          icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
+        });
+      }
+      
+      setFeedback({ 
+        isOpen: true, 
+        title: "Solicitud Recibida", 
+        message: "Su solicitud ha sido enviada al administrador. Por favor espere a que RRHH autorice su nuevo acceso.", 
+        type: "info" 
+      });
+      setStatus('idle');
+      setForgotCi('');
+    } else {
+      setFeedback({ 
+        isOpen: true, 
+        title: "Error", 
+        message: "No se encontró un colaborador activo con esa identificación.", 
+        type: "error" 
+      });
+    }
   };
 
   useEffect(() => {
@@ -160,7 +187,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-3 max-w-[340px] mx-auto">
+            <div className="grid grid-cols-3 gap-3 max-w-[340px] mx-auto mb-8">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
                 <button 
                   key={btn} 
@@ -174,6 +201,32 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                   {btn}
                 </button>
               ))}
+            </div>
+            <button 
+              onClick={() => setStatus('forgotten_form')}
+              className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+            >
+              ¿Olvidó su PIN? Solicitar Reseteo
+            </button>
+          </div>
+        )}
+
+        {status === 'forgotten_form' && (
+          <div className="text-center w-full space-y-6 animate-in zoom-in">
+            <h2 className="text-2xl font-black text-slate-900 uppercase">Solicitud de Acceso</h2>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Ingrese su Identificación / Cédula</p>
+            <input 
+              maxLength={10} 
+              type="text" 
+              value={forgotCi} 
+              onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))} 
+              className="w-full border-2 p-5 rounded-2xl text-center text-3xl font-black focus:border-blue-600 outline-none" 
+              placeholder="0000000000" 
+              autoFocus 
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setStatus('idle')} className="w-full py-4 bg-slate-100 text-slate-600 font-black rounded-2xl uppercase text-[10px] tracking-widest">Regresar</button>
+              <button onClick={handleRequestPinReset} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Enviar Solicitud</button>
             </div>
           </div>
         )}
