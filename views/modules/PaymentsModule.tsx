@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Employee, Payment, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
@@ -18,7 +17,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     method: 'Efectivo', 
     concept: '', 
     month: new Date().toLocaleString('es-EC', {month: 'long'}).toUpperCase(), 
-    year: '2024', 
+    year: '2026', 
     status: 'paid'
   });
 
@@ -26,7 +25,6 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     const emp = employees.find(e => e.id === empId);
     if (!emp) return 0;
     
-    // Sumar todos los pagos ya realizados en ese mes para ese empleado
     const totalPaid = payments
       .filter(p => p.employeeId === empId && p.month === month && p.status === 'paid' && p.type === 'Salary')
       .reduce((sum, p) => sum + p.amount, 0);
@@ -38,7 +36,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     if (!payForm.employeeId || !payForm.amount) return alert("Seleccione empleado y monto.");
     
     const balanceBefore = getPendingBalance(payForm.employeeId, payForm.month!);
-    const remaining = balanceBefore - payForm.amount!;
+    const remaining = payForm.type === 'Salary' ? balanceBefore - payForm.amount! : 0;
     
     const newPay: Payment = {
       ...payForm,
@@ -50,7 +48,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
 
     onUpdate([newPay, ...payments]);
     setIsPayOpen(false);
-    alert(remaining > 0 ? `Abono registrado. Saldo pendiente: $${remaining.toFixed(2)}` : "Pago total registrado con éxito.");
+    alert("Operación registrada con éxito.");
   };
 
   const handleVoid = (id: string) => {
@@ -70,7 +68,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
           }} 
           className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
         >
-          Nuevo Pago / Abono
+          Nuevo Pago / Novedad
         </button>
       </div>
 
@@ -80,8 +78,8 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
             <tr>
               <th className="px-8 py-4">Fecha / Mes</th>
               <th className="px-8 py-4">Empleado</th>
-              <th className="px-8 py-4">Monto Pagado</th>
-              <th className="px-8 py-4">Saldo Pendiente</th>
+              <th className="px-8 py-4">Monto</th>
+              <th className="px-8 py-4">Tipo</th>
               <th className="px-8 py-4">Estado</th>
               <th className="px-8 py-4 text-right">Acción</th>
             </tr>
@@ -96,12 +94,12 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                     <p className="text-[9px] uppercase font-black text-slate-400">{p.month}</p>
                   </td>
                   <td className="px-8 py-4 font-black uppercase text-slate-700">
-                    {emp?.name || '---'}
-                    <span className="block text-[8px] font-normal text-slate-400 italic lowercase">{p.concept}</span>
+                    {emp?.surname} {emp?.name}
+                    <span className="block text-[8px] font-normal text-slate-400 lowercase">{p.concept}</span>
                   </td>
                   <td className="px-8 py-4 font-black text-slate-900 text-sm">${p.amount.toFixed(2)}</td>
-                  <td className="px-8 py-4 font-black text-blue-600">
-                    {p.type === 'Salary' ? `$${(p.balanceAfter || 0).toFixed(2)}` : '---'}
+                  <td className="px-8 py-4">
+                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.type === 'ExtraHours' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{p.type}</span>
                   </td>
                   <td className="px-8 py-4">
                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.status === 'paid' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{p.status === 'paid' ? 'Pagado' : 'Anulado'}</span>
@@ -116,60 +114,42 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         </table>
       </div>
 
-      <Modal isOpen={isPayOpen} onClose={() => setIsPayOpen(false)} title="Registro de Pago de Haberes">
+      <Modal isOpen={isPayOpen} onClose={() => setIsPayOpen(false)} title="Registro de Pago / Haber">
         <div className="space-y-4">
           <div>
-            <label className="text-[9px] font-black uppercase text-slate-400">Empleado Beneficiario</label>
-            <select className="w-full border-2 p-3 rounded-xl bg-slate-50 focus:border-blue-500 outline-none" onChange={e => {
-              const empId = e.target.value;
-              setPayForm({...payForm, employeeId: empId});
-            }}>
+            <label className="text-[9px] font-black uppercase text-slate-400">Colaborador Beneficiario</label>
+            <select className="w-full border-2 p-3 rounded-xl bg-slate-50" onChange={e => setPayForm({...payForm, employeeId: e.target.value})}>
               <option value="">Seleccionar...</option>
-              {employees.filter(e => e.status === 'active').map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              {employees.filter(e => e.status === 'active').map(e => <option key={e.id} value={e.id}>{e.surname} {e.name}</option>)}
             </select>
-            {payForm.employeeId && (
-              <p className="mt-1 text-[9px] font-bold text-blue-600 uppercase">
-                Saldo pendiente este mes: ${getPendingBalance(payForm.employeeId, payForm.month!).toFixed(2)}
-              </p>
-            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-[9px] font-black uppercase text-slate-400">Concepto</label>
-              <select className="w-full border-2 p-3 rounded-xl bg-slate-50" onChange={e => setPayForm({...payForm, type: e.target.value as any})}>
+              <select className="w-full border-2 p-3 rounded-xl bg-slate-50" value={payForm.type} onChange={e => setPayForm({...payForm, type: e.target.value as any})}>
                 <option value="Salary">Sueldo / Abono</option>
+                <option value="ExtraHours">Horas Extras/Supl.</option>
+                <option value="Bonus">Bono / Comisiones</option>
                 <option value="Loan">Préstamo</option>
-                <option value="Bonus">Bono</option>
                 <option value="Settlement">Liquidación</option>
               </select>
             </div>
             <div>
-              <label className="text-[9px] font-black uppercase text-slate-400">Forma de Pago</label>
-              <select className="w-full border-2 p-3 rounded-xl bg-slate-50" onChange={e => setPayForm({...payForm, method: e.target.value as any})}>
-                <option value="Efectivo">Efectivo</option>
-                <option value="Transferencia">Transferencia</option>
-                <option value="Cheque">Cheque</option>
+              <label className="text-[9px] font-black uppercase text-slate-400">Mes Aplicable</label>
+              <select className="w-full border-2 p-3 rounded-xl bg-slate-50" value={payForm.month} onChange={e => setPayForm({...payForm, month: e.target.value})}>
+                {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
           </div>
-          {payForm.method === 'Transferencia' && (
-             <div>
-               <label className="text-[9px] font-black uppercase text-slate-400">Institución Financiera Origen</label>
-               <select className="w-full border-2 p-3 rounded-xl bg-slate-50" onChange={e => setPayForm({...payForm, bankSource: e.target.value as any})}>
-                  <option value="Banco del Austro">Banco del Austro</option>
-                  <option value="Banco Guayaquil">Banco Guayaquil</option>
-               </select>
-             </div>
-          )}
           <div>
-            <label className="text-[9px] font-black uppercase text-slate-400">Monto a Desembolsar ($)</label>
-            <input type="number" className="w-full border-2 p-3 rounded-xl bg-slate-50 font-black text-xl" onChange={e => setPayForm({...payForm, amount: Number(e.target.value)})} />
+            <label className="text-[9px] font-black uppercase text-slate-400">Monto ($)</label>
+            <input type="number" step="0.01" className="w-full border-2 p-3 rounded-xl bg-slate-50 font-black text-xl" onChange={e => setPayForm({...payForm, amount: Number(e.target.value)})} />
           </div>
           <div>
-            <label className="text-[9px] font-black uppercase text-slate-400">Detalle / Justificación</label>
-            <textarea className="w-full border-2 p-3 rounded-xl bg-slate-50 h-20" placeholder="Ej: Pago de quincena, Abono a saldo pendiente..." onChange={e => setPayForm({...payForm, concept: e.target.value})}></textarea>
+            <label className="text-[9px] font-black uppercase text-slate-400">Observación</label>
+            <textarea className="w-full border-2 p-3 rounded-xl bg-slate-50 h-20" onChange={e => setPayForm({...payForm, concept: e.target.value})}></textarea>
           </div>
-          <button onClick={handleCreate} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-xs shadow-xl">Registrar y Generar Comprobante</button>
+          <button onClick={handleCreate} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-xs shadow-xl active:scale-95 transition-all">Sincronizar Pago</button>
         </div>
       </Modal>
     </div>
