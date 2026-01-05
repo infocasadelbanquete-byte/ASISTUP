@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Employee, Payment, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
+import { db, doc, deleteDoc } from '../../firebase.ts';
 
 interface PaymentsModuleProps {
   employees: Employee[];
@@ -69,6 +70,18 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     setFeedback({ isOpen: true, title: "Anulado", message: "El registro ha sido invalidado.", type: "info" });
   };
 
+  const handleDeletePayment = async (id: string) => {
+    if (confirm("¿Está seguro de eliminar este registro de pago de forma permanente?")) {
+      try {
+        await deleteDoc(doc(db, "payments", id));
+        onUpdate(payments.filter(p => p.id !== id));
+        setFeedback({ isOpen: true, title: "Registro Eliminado", message: "El pago ha sido borrado del sistema.", type: "success" });
+      } catch (e) {
+        setFeedback({ isOpen: true, title: "Error", message: "No se pudo eliminar el registro.", type: "error" });
+      }
+    }
+  };
+
   const filteredPayments = payments.filter(p => {
     const emp = employees.find(e => e.id === p.employeeId);
     const searchStr = ((emp?.name || "") + " " + (emp?.surname || "") + " " + (emp?.identification || "") + " " + p.concept + " " + p.type).toLowerCase();
@@ -115,7 +128,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
             {filteredPayments.map(p => {
               const emp = employees.find(e => e.id === p.employeeId);
               return (
-                <tr key={p.id} className="text-xs hover:bg-slate-50/50">
+                <tr key={p.id} className="text-xs hover:bg-slate-50/50 transition-all">
                   <td className="px-8 py-4">
                     <p className="font-bold">{new Date(p.date).toLocaleDateString()}</p>
                     <p className="text-[9px] uppercase font-black text-slate-400">{p.month}</p>
@@ -132,7 +145,14 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${p.status === 'paid' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>{p.status === 'paid' ? 'Pagado' : 'Anulado'}</span>
                   </td>
                   <td className="px-8 py-4 text-right">
-                    {p.status === 'paid' && role === Role.SUPER_ADMIN && <button onClick={() => handleVoid(p.id)} className="text-red-500 font-black text-[10px] uppercase hover:underline">Anular</button>}
+                    <div className="flex justify-end gap-3">
+                      {p.status === 'paid' && role === Role.SUPER_ADMIN && (
+                        <button onClick={() => handleVoid(p.id)} className="text-amber-600 font-black text-[9px] uppercase hover:underline">Anular</button>
+                      )}
+                      {role === Role.SUPER_ADMIN && (
+                        <button onClick={() => handleDeletePayment(p.id)} className="text-red-600 font-black text-[9px] uppercase hover:underline">Eliminar</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -140,7 +160,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
           </tbody>
         </table>
       </div>
-      {/* ... (Modales sin cambios) ... */}
+
       <Modal isOpen={isPayOpen} onClose={() => setIsPayOpen(false)} title="Registro de Pago / Haber">
         <div className="space-y-4">
           <div>

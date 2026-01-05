@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings } from '../../types.ts';
-import { db, doc, setDoc, compressData } from '../../firebase.ts';
+import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
+import { db, doc, setDoc, deleteDoc, compressData } from '../../firebase.ts';
 import Modal from '../../components/Modal.tsx';
 
 interface ReportsModuleProps {
@@ -9,9 +9,10 @@ interface ReportsModuleProps {
   attendance: AttendanceRecord[];
   company: CompanyConfig | null;
   settings: GlobalSettings;
+  role: Role;
 }
 
-const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, attendance, company, settings }) => {
+const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, attendance, company, settings, role }) => {
   const [reportType, setReportType] = useState<'attendance' | 'payments' | 'validation'>('attendance');
   const [filterYear, setFilterYear] = useState('2026');
   const [filterEmp, setFilterEmp] = useState('');
@@ -29,6 +30,17 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
     
     await setDoc(doc(db, "attendance", record.id), { payload: compressData(updatedRecord), timestamp: record.timestamp });
     setFeedback({ isOpen: true, title: "Registro Actualizado", message: `El marcaje ha sido ${newStatus === 'confirmed' ? 'aprobado' : 'rechazado'} y sincronizado.`, type: 'success' });
+  };
+
+  const handleDeleteAttendance = async (id: string) => {
+    if (confirm("¿Desea eliminar este registro de asistencia permanentemente?")) {
+      try {
+        await deleteDoc(doc(db, "attendance", id));
+        setFeedback({ isOpen: true, title: "Eliminado", message: "Registro borrado correctamente.", type: 'success' });
+      } catch (e) {
+        setFeedback({ isOpen: true, title: "Error", message: "No se pudo eliminar el registro.", type: 'error' });
+      }
+    }
   };
 
   const filteredPending = pendingAttendance.filter(req => {
@@ -136,6 +148,46 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
                   </div>
                 )}
               </div>
+            ) : reportType === 'attendance' ? (
+               <div className="space-y-6">
+                  <div className="mb-10 text-center border-b-2 pb-8">
+                    <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">REGISTRO DE ASISTENCIA</h1>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 text-[9px] font-black uppercase">
+                        <tr>
+                          <th className="p-4">Fecha</th>
+                          <th className="p-4">Empleado</th>
+                          <th className="p-4">Tipo</th>
+                          <th className="p-4">Estado</th>
+                          <th className="p-4 text-right no-print">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-[10px] font-bold uppercase">
+                        {attendance.filter(a => {
+                          const emp = employees.find(e => e.id === a.employeeId);
+                          return (emp?.surname + " " + emp?.name).toLowerCase().includes(searchTerm.toLowerCase());
+                        }).sort((a,b) => b.timestamp.localeCompare(a.timestamp)).map(rec => {
+                          const emp = employees.find(e => e.id === rec.employeeId);
+                          return (
+                            <tr key={rec.id} className="border-b">
+                              <td className="p-4">{new Date(rec.timestamp).toLocaleString()}</td>
+                              <td className="p-4">{emp?.surname} {emp?.name}</td>
+                              <td className="p-4">{rec.type === 'in' ? 'Entrada' : 'Salida'}</td>
+                              <td className="p-4">{rec.status}</td>
+                              <td className="p-4 text-right no-print">
+                                {role === Role.SUPER_ADMIN && (
+                                  <button onClick={() => handleDeleteAttendance(rec.id)} className="text-red-600 text-[9px] uppercase hover:underline">Eliminar</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+               </div>
             ) : (
                <div>
                   <div className="mb-10 text-center border-b-2 pb-8">

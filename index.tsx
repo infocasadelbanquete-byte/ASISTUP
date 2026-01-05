@@ -16,6 +16,25 @@ const mount = () => {
   }, 1000);
 };
 
+// Registro de Service Worker para PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      console.log('SW registrado:', registration);
+    }).catch(error => {
+      console.log('SW error:', error);
+    });
+  });
+}
+
+// Captura de evento de instalación para permitir "descarga"
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Prevenir que el navegador muestre automáticamente el prompt
+  e.preventDefault();
+  // Guardar el evento para dispararlo manualmente cuando el usuario haga clic en un botón de instalación
+  (window as any).deferredPrompt = e;
+});
+
 if (document.readyState === 'complete') {
   mount();
 } else {

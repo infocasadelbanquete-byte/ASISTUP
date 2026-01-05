@@ -97,7 +97,7 @@ export interface Employee {
   pin: string; 
   pinChanged: boolean;
   pinNeedsReset: boolean;
-  status: 'active' | 'terminated';
+  status: 'active' | 'terminated' | 'archived';
   terminationDate?: string;
   terminationReason?: string;
   terminationDetails?: string;

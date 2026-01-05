@@ -70,7 +70,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       <main className="flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10 scroll-smooth custom-scroll">
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6 no-print pt-10 md:pt-0">
-          <h1 className="text-xl md:text-2xl font-[950] text-slate-900 tracking-tight uppercase">Panel Administrativo</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl md:text-2xl font-[950] text-slate-900 tracking-tight uppercase">Panel Administrativo</h1>
+            <div className="flex items-center gap-2 px-3 py-1 bg-white border rounded-full shadow-sm">
+               <div className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
+               <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">
+                 {isDbConnected ? 'Nube Sincronizada' : 'Sin Conexión'}
+               </span>
+            </div>
+          </div>
           <div className="flex gap-3">
              {role === Role.SUPER_ADMIN && (
                <button onClick={() => setShowInstallModal(true)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase border border-slate-200">Instalar Kiosco</button>

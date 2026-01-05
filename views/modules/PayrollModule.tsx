@@ -22,20 +22,22 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     const bonuses = monthlyPayments.filter(p => p.type === 'Bonus').reduce((sum, p) => sum + p.amount, 0);
     const extraHours = monthlyPayments.filter(p => p.type === 'ExtraHours').reduce((sum, p) => sum + p.amount, 0);
     const vacation = monthlyPayments.filter(p => p.type === 'Vacation').reduce((sum, p) => sum + p.amount, 0);
-    const backPay = monthlyPayments.filter(p => p.type === 'BackPay').reduce((sum, p) => sum + p.amount, 0);
     
-    // Sobre Sueldos Mensualizados
+    // Sobre Sueldos Mensualizados - Solo si está afiliado
     const isMonthly = emp.overSalaryType === 'monthly';
-    const monthly13th = isMonthly ? (baseSalary + extraHours + bonuses) / 12 : 0;
-    const monthly14th = isMonthly ? settings.sbu / 12 : 0;
-    const reserveFund = (emp.isAffiliated && (isMonthly || emp.overSalaryType === 'monthly')) ? ((baseSalary + extraHours) * settings.reserveRate) : 0;
+    const isAffiliated = emp.isAffiliated;
+    
+    const monthly13th = (isAffiliated && isMonthly) ? (baseSalary + extraHours + bonuses) / 12 : 0;
+    const monthly14th = (isAffiliated && isMonthly) ? settings.sbu / 12 : 0;
+    const reserveFund = (isAffiliated && isMonthly) ? ((baseSalary + extraHours) * settings.reserveRate) : 0;
     
     const totalOverSalaries = monthly13th + monthly14th + reserveFund;
     
-    const totalIncomes = baseSalary + totalOverSalaries + bonuses + extraHours + vacation + backPay;
+    // NOTA: Se excluye backPay del total de ingresos según requerimiento de visualización limpia de rol actual
+    const totalIncomes = baseSalary + totalOverSalaries + bonuses + extraHours + vacation;
 
     const taxableIncome = baseSalary + extraHours + bonuses;
-    const iessContribution = emp.isAffiliated ? (taxableIncome * settings.iessRate) : 0;
+    const iessContribution = isAffiliated ? (taxableIncome * settings.iessRate) : 0;
     const loans = monthlyPayments.filter(p => p.type === 'Loan' || p.type === 'Emergency').reduce((sum, p) => sum + p.amount, 0);
     
     const totalExpenses = iessContribution + loans;
@@ -43,7 +45,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     const voucherCode = `PN-${(index + 1).toString().padStart(8, '0')}`;
 
     return { 
-      baseSalary, reserveFund, bonuses, extraHours, vacation, backPay,
+      baseSalary, reserveFund, bonuses, extraHours, vacation,
       monthly13th, monthly14th, totalOverSalaries,
       iessContribution, loans,
       totalIncomes, totalExpenses, netToReceive: totalIncomes - totalExpenses,
@@ -83,7 +85,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     csv += `Sueldo Base,${d.baseSalary.toFixed(2)},Aporte IESS (9.45%),${d.iessContribution.toFixed(2)}\n`;
     csv += `Horas Extras,${d.extraHours.toFixed(2)},Préstamos/Anticipos,${d.loans.toFixed(2)}\n`;
     csv += `Bonificaciones,${d.bonuses.toFixed(2)},,\n`;
-    csv += `Saldos Atrasados,${d.backPay.toFixed(2)},,\n`;
     csv += `X Tercero (Mensual),${d.monthly13th.toFixed(2)},,\n`;
     csv += `X Cuarto (Mensual),${d.monthly14th.toFixed(2)},,\n`;
     csv += `Fondos Reserva,${d.reserveFund.toFixed(2)},,\n`;
@@ -197,8 +198,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
                         <div className="flex justify-between"><span>Sueldo Base</span> <span>${d.baseSalary.toFixed(2)}</span></div>
                         <div className="flex justify-between font-black text-blue-600"><span>Horas Extras/Supl.</span> <span>${d.extraHours.toFixed(2)}</span></div>
                         <div className="flex justify-between"><span>Bonificaciones</span> <span>${d.bonuses.toFixed(2)}</span></div>
-                        <div className="flex justify-between text-amber-600"><span>Saldos Atrasados</span> <span>${d.backPay.toFixed(2)}</span></div>
-                        {individualPayroll.overSalaryType === 'monthly' && (
+                        {individualPayroll.isAffiliated && individualPayroll.overSalaryType === 'monthly' && (
                           <>
                             <div className="flex justify-between text-amber-700"><span>X Tercero (Mensual)</span> <span>${d.monthly13th.toFixed(2)}</span></div>
                             <div className="flex justify-between text-amber-700"><span>X Cuarto (Mensual)</span> <span>${d.monthly14th.toFixed(2)}</span></div>
