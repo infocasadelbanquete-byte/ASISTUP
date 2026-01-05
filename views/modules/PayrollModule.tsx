@@ -23,7 +23,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     const extraHours = monthlyPayments.filter(p => p.type === 'ExtraHours').reduce((sum, p) => sum + p.amount, 0);
     const vacation = monthlyPayments.filter(p => p.type === 'Vacation').reduce((sum, p) => sum + p.amount, 0);
     
-    // Sobre Sueldos Mensualizados - Solo si está afiliado
     const isMonthly = emp.overSalaryType === 'monthly';
     const isAffiliated = emp.isAffiliated;
     
@@ -32,8 +31,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     const reserveFund = (isAffiliated && isMonthly) ? ((baseSalary + extraHours) * settings.reserveRate) : 0;
     
     const totalOverSalaries = monthly13th + monthly14th + reserveFund;
-    
-    // NOTA: Se excluye backPay del total de ingresos según requerimiento de visualización limpia de rol actual
     const totalIncomes = baseSalary + totalOverSalaries + bonuses + extraHours + vacation;
 
     const taxableIncome = baseSalary + extraHours + bonuses;
@@ -41,16 +38,47 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     const loans = monthlyPayments.filter(p => p.type === 'Loan' || p.type === 'Emergency').reduce((sum, p) => sum + p.amount, 0);
     
     const totalExpenses = iessContribution + loans;
-
+    const netToReceive = totalIncomes - totalExpenses;
     const voucherCode = `PN-${(index + 1).toString().padStart(8, '0')}`;
 
     return { 
       baseSalary, reserveFund, bonuses, extraHours, vacation,
       monthly13th, monthly14th, totalOverSalaries,
       iessContribution, loans,
-      totalIncomes, totalExpenses, netToReceive: totalIncomes - totalExpenses,
+      totalIncomes, totalExpenses, netToReceive,
       voucherCode
     };
+  };
+
+  const exportGeneralExcel = () => {
+    let csv = "Colaborador,Sueldo Base,Extras/Bonos,13ero Mens,14to Mens,Reserva,IESS 9.45%,Anticipos,Neto Recibir\n";
+    employees.filter(e => e.status === 'active').forEach((emp, idx) => {
+      const d = calculatePayrollData(emp, idx);
+      csv += `${emp.surname} ${emp.name},${d.baseSalary.toFixed(2)},${(d.extraHours+d.bonuses).toFixed(2)},${d.monthly13th.toFixed(2)},${d.monthly14th.toFixed(2)},${d.reserveFund.toFixed(2)},${d.iessContribution.toFixed(2)},${d.loans.toFixed(2)},${d.netToReceive.toFixed(2)}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ROL_GENERAL_${selectedMonth}_2026.csv`;
+    link.click();
+  };
+
+  const exportIndividualExcel = (emp: Employee) => {
+    const d = calculatePayrollData(emp, 0);
+    let csv = "Detalle,Ingresos,Egresos\n";
+    csv += `Sueldo Base,${d.baseSalary.toFixed(2)},0\n`;
+    csv += `Extras/Bonos,${(d.extraHours+d.bonuses).toFixed(2)},0\n`;
+    csv += `13ero Mensualizado,${d.monthly13th.toFixed(2)},0\n`;
+    csv += `14to Mensualizado,${d.monthly14th.toFixed(2)},0\n`;
+    csv += `Fondos Reserva,${d.reserveFund.toFixed(2)},0\n`;
+    csv += `Aporte IESS 9.45%,0,${d.iessContribution.toFixed(2)}\n`;
+    csv += `Préstamos/Anticipos,0,${d.loans.toFixed(2)}\n`;
+    csv += `NETO A RECIBIR,${d.netToReceive.toFixed(2)},0\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ROL_INDIVIDUAL_${emp.surname}_${selectedMonth}.csv`;
+    link.click();
   };
 
   const filteredEmployees = employees.filter(e => {
@@ -58,104 +86,60 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     return searchStr.includes(searchTerm.toLowerCase());
   });
 
-  const exportGeneralExcel = () => {
-    const headers = "Identificación,Empleado,Sueldo Base,H. Extras,Sobre Sueldos Mens.,Ingresos (+),Egresos (-),Neto a Recibir\n";
-    const rows = filteredEmployees.map((emp, idx) => {
-      const d = calculatePayrollData(emp, idx);
-      return `${emp.identification},${emp.surname} ${emp.name},${d.baseSalary.toFixed(2)},${d.extraHours.toFixed(2)},${d.totalOverSalaries.toFixed(2)},${d.totalIncomes.toFixed(2)},${d.totalExpenses.toFixed(2)},${d.netToReceive.toFixed(2)}`;
-    }).join("\n");
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Nomina_${selectedMonth}_2026.csv`;
-    link.click();
-  };
-
-  const exportIndividualExcel = (emp: Employee) => {
-    const empIdx = employees.findIndex(e => e.id === emp.id);
-    const d = calculatePayrollData(emp, empIdx);
-    
-    let csv = `ROL INDIVIDUAL DE PAGOS - ${company?.name || 'ASIST UP'}\n`;
-    csv += `Periodo: ${selectedMonth} 2026\n`;
-    csv += `Voucher: ${d.voucherCode}\n\n`;
-    csv += `Empleado: ${emp.surname} ${emp.name}\n`;
-    csv += `Identificación: ${emp.identification}\n`;
-    csv += `Cargo: ${emp.role}\n\n`;
-    csv += `INGRESOS,VALOR,EGRESOS,VALOR\n`;
-    csv += `Sueldo Base,${d.baseSalary.toFixed(2)},Aporte IESS (9.45%),${d.iessContribution.toFixed(2)}\n`;
-    csv += `Horas Extras,${d.extraHours.toFixed(2)},Préstamos/Anticipos,${d.loans.toFixed(2)}\n`;
-    csv += `Bonificaciones,${d.bonuses.toFixed(2)},,\n`;
-    csv += `X Tercero (Mensual),${d.monthly13th.toFixed(2)},,\n`;
-    csv += `X Cuarto (Mensual),${d.monthly14th.toFixed(2)},,\n`;
-    csv += `Fondos Reserva,${d.reserveFund.toFixed(2)},,\n`;
-    csv += `TOTAL INGRESOS,${d.totalIncomes.toFixed(2)},TOTAL EGRESOS,${d.totalExpenses.toFixed(2)}\n\n`;
-    csv += `NETO A RECIBIR,${d.netToReceive.toFixed(2)}\n`;
-    csv += `Método de Pago,${emp.bankInfo?.ifi === 'NO APLICA' ? 'EFECTIVO' : emp.bankInfo?.ifi}\n`;
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Rol_${emp.surname}_${selectedMonth}.csv`;
-    link.click();
-  };
-
   return (
     <div className="space-y-8 fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 no-print gap-6">
-        <div className="w-full md:w-auto">
-          <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Liquidación de Nómina Analítica</h2>
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mt-4">
-             <div className="flex items-center gap-3">
-                <p className="text-[10px] font-black text-slate-400 uppercase">Periodo Fiscal:</p>
-                <select className="p-2 border rounded-lg text-[10px] font-black uppercase" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-                    {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-             </div>
-             <input 
-               type="text" 
-               placeholder="Buscar empleado o CI..." 
-               className="p-2 border rounded-xl text-[10px] font-bold uppercase min-w-[200px]" 
-               value={searchTerm} 
-               onChange={e => setSearchTerm(e.target.value)}
-             />
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 no-print gap-6">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 uppercase">Gestión de Nómina 2026</h2>
+          <div className="flex gap-3 mt-4">
+             <select className="p-2 border rounded-xl text-[10px] font-black uppercase" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
+             </select>
+             <input type="text" placeholder="Buscar empleado..." className="p-2 border rounded-xl text-[10px] font-bold uppercase min-w-[200px]" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-           <button onClick={exportGeneralExcel} className="flex-1 md:flex-none px-6 py-4 bg-emerald-50 text-emerald-600 font-black rounded-2xl border border-emerald-100 uppercase text-[9px] tracking-widest">Exportar Excel</button>
-           <button onClick={() => window.print()} className="flex-1 md:flex-none px-6 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[9px] tracking-widest shadow-lg">Imprimir Todo</button>
+        <div className="flex gap-2">
+           <button onClick={exportGeneralExcel} className="px-6 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all">Exportar Excel General</button>
+           <button onClick={() => window.print()} className="px-6 py-3 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg active:scale-95 transition-all">Imprimir General</button>
         </div>
       </div>
 
       <div className="bg-white p-10 rounded-[3rem] shadow-sm overflow-x-auto border">
+        <div className="mb-8 text-center border-b pb-6 print-only">
+           <h1 className="text-3xl font-[950] text-slate-900 uppercase tracking-tighter">{company?.name || 'ROL DE PAGOS'}</h1>
+           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Nómina - {selectedMonth} 2026</p>
+        </div>
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-900 text-white text-[9px] font-black uppercase">
+          <thead className="bg-slate-900 text-white text-[8px] font-black uppercase">
             <tr>
-              <th className="p-4 rounded-tl-2xl">Identificación</th>
-              <th className="p-4">Colaborador</th>
-              <th className="p-4">Base</th>
-              <th className="p-4">H. Extras</th>
-              <th className="p-4">Sobre Sueldos Mens.</th>
-              <th className="p-4">Total Ingresos (+)</th>
-              <th className="p-4">Total Egresos (-)</th>
-              <th className="p-4">Neto Recibir</th>
-              <th className="p-4 no-print text-center rounded-tr-2xl">Acción</th>
+              <th className="p-4 rounded-tl-2xl">Empleado</th>
+              <th className="p-4 text-center">Sueldo Base</th>
+              <th className="p-4 text-center">Extra/Bono</th>
+              <th className="p-4 text-center">13ero Mens.</th>
+              <th className="p-4 text-center">14to Mens.</th>
+              <th className="p-4 text-center">Fondos Res.</th>
+              <th className="p-4 text-center">IESS 9.45%</th>
+              <th className="p-4 text-center">Descuentos</th>
+              <th className="p-4 text-center bg-blue-800 rounded-tr-2xl">Neto a Recibir</th>
+              <th className="p-4 text-center no-print">Acción</th>
             </tr>
           </thead>
-          <tbody className="text-[10px] uppercase font-bold text-slate-700">
+          <tbody className="text-[9px] uppercase font-bold text-slate-700 divide-y">
             {filteredEmployees.filter(e => e.status === 'active').map((emp, idx) => {
               const d = calculatePayrollData(emp, idx);
               return (
-                <tr key={emp.id} className="border-b hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-mono font-black text-blue-600">{emp.identification}</td>
+                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                   <td className="p-4 font-black text-slate-900">{emp.surname} {emp.name}</td>
-                  <td className="p-4">${d.baseSalary.toFixed(2)}</td>
-                  <td className="p-4 text-blue-600 font-black">${d.extraHours.toFixed(2)}</td>
-                  <td className="p-4 text-amber-600 font-black">${d.totalOverSalaries.toFixed(2)}</td>
-                  <td className="p-4 text-emerald-600 font-bold">+${d.totalIncomes.toFixed(2)}</td>
-                  <td className="p-4 text-red-600">-${d.totalExpenses.toFixed(2)}</td>
-                  <td className="p-4 font-[950] text-blue-700 text-xs shadow-inner bg-blue-50/20">${d.netToReceive.toFixed(2)}</td>
-                  <td className="p-4 no-print text-center">
-                     <button onClick={() => setIndividualPayroll(emp)} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-black hover:bg-blue-600 hover:text-white transition-all text-[9px] uppercase tracking-widest">Ver Detalle</button>
+                  <td className="p-4 text-center">${d.baseSalary.toFixed(2)}</td>
+                  <td className="p-4 text-center text-blue-600">${(d.extraHours + d.bonuses).toFixed(2)}</td>
+                  <td className="p-4 text-center text-emerald-600">${d.monthly13th.toFixed(2)}</td>
+                  <td className="p-4 text-center text-emerald-600">${d.monthly14th.toFixed(2)}</td>
+                  <td className="p-4 text-center text-emerald-600">${d.reserveFund.toFixed(2)}</td>
+                  <td className="p-4 text-center text-red-500">${d.iessContribution.toFixed(2)}</td>
+                  <td className="p-4 text-center text-red-500">${d.loans.toFixed(2)}</td>
+                  <td className="p-4 text-center font-[950] text-blue-700 bg-blue-50/20">${d.netToReceive.toFixed(2)}</td>
+                  <td className="p-4 text-center no-print">
+                     <button onClick={() => setIndividualPayroll(emp)} className="px-3 py-1 bg-blue-700 text-white rounded-lg text-[7px] font-black uppercase">Individual</button>
                   </td>
                 </tr>
               );
@@ -164,89 +148,54 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
         </table>
       </div>
 
-      <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol Individual de Pagos">
+      <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol de Pagos Individual">
         {individualPayroll && (() => {
-          const empIdx = employees.findIndex(e => e.id === individualPayroll.id);
-          const d = calculatePayrollData(individualPayroll, empIdx);
-          return (
-            <div className="p-4 space-y-8 print:p-0">
-               <header className="text-center border-b-2 border-slate-900 pb-6">
-                  <h3 className="text-2xl font-[950] tracking-tighter uppercase leading-none">{company?.name || 'ASIST UP CORPORATE'}</h3>
-                  <div className="flex justify-between items-center mt-4">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">COMPROBANTE ANALÍTICO - {selectedMonth}</p>
-                     <p className="text-[11px] font-[900] text-blue-600 font-mono tracking-widest">{d.voucherCode}</p>
-                  </div>
-               </header>
-               
-               <div className="grid grid-cols-2 gap-x-12 gap-y-4 text-[10px] font-black uppercase">
-                  <div>
-                     <p className="text-slate-400 mb-0.5">Beneficiario</p>
-                     <p className="text-slate-900">{individualPayroll.surname} {individualPayroll.name}</p>
-                     <p className="text-slate-500 font-bold">{individualPayroll.identification}</p>
-                  </div>
-                  <div className="text-right">
-                     <p className="text-slate-400 mb-0.5">Cargo / Rol</p>
-                     <p className="text-slate-900">{individualPayroll.role}</p>
-                     <p className="text-blue-600 italic">Fecha: {new Date().toLocaleDateString()}</p>
-                  </div>
+           const d = calculatePayrollData(individualPayroll, 0);
+           return (
+             <div className="p-6 space-y-8 bg-white" id="individual-role-print">
+               <div className="flex justify-between items-start border-b-2 pb-6">
+                  <div><h3 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">{company?.name || 'EMPRESA'}</h3><p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Identificación Tributaria: {company?.ruc || '0000000000001'}</p></div>
+                  <div className="text-right"><p className="text-[10px] font-black uppercase bg-slate-900 text-white px-4 py-2 rounded-2xl">COMPROBANTE INDIVIDUAL</p><p className="text-[9px] font-bold text-slate-500 uppercase mt-2">{selectedMonth} 2026</p></div>
                </div>
-
-               <div className="grid grid-cols-2 gap-8 border-t border-b py-6">
+               <div className="grid grid-cols-2 gap-8 text-[10px] font-bold uppercase">
+                  <div className="space-y-2"><p className="text-slate-400 font-black tracking-widest text-[8px]">Datos del Colaborador</p><p className="text-slate-900 text-base font-black">{individualPayroll.surname} {individualPayroll.name}</p><p className="text-slate-500">CI: {individualPayroll.identification}</p><p className="text-slate-500">Cargo: {individualPayroll.role}</p></div>
+                  <div className="space-y-2 text-right"><p className="text-slate-400 font-black tracking-widest text-[8px]">Cuenta de Pago</p><p className="text-slate-900">{individualPayroll.bankInfo?.ifi}</p><p className="text-slate-500">{individualPayroll.bankInfo?.type} - {individualPayroll.bankInfo?.account}</p></div>
+               </div>
+               <div className="grid grid-cols-2 gap-10">
                   <div className="space-y-4">
-                     <h4 className="text-[9px] font-black text-emerald-600 uppercase tracking-widest border-b border-emerald-50 pb-2">I. Ingresos y Extras</h4>
-                     <div className="space-y-2 text-[10px] font-bold">
-                        <div className="flex justify-between"><span>Sueldo Base</span> <span>${d.baseSalary.toFixed(2)}</span></div>
-                        <div className="flex justify-between font-black text-blue-600"><span>Horas Extras/Supl.</span> <span>${d.extraHours.toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span>Bonificaciones</span> <span>${d.bonuses.toFixed(2)}</span></div>
-                        {individualPayroll.isAffiliated && individualPayroll.overSalaryType === 'monthly' && (
-                          <>
-                            <div className="flex justify-between text-amber-700"><span>X Tercero (Mensual)</span> <span>${d.monthly13th.toFixed(2)}</span></div>
-                            <div className="flex justify-between text-amber-700"><span>X Cuarto (Mensual)</span> <span>${d.monthly14th.toFixed(2)}</span></div>
-                          </>
-                        )}
-                        <div className="flex justify-between"><span>Fondos Reserva</span> <span>${d.reserveFund.toFixed(2)}</span></div>
-                        <div className="flex justify-between pt-2 border-t font-black text-emerald-600 text-xs"><span>TOTAL INGRESOS</span> <span>${d.totalIncomes.toFixed(2)}</span></div>
+                     <h4 className="text-[9px] font-black uppercase text-emerald-600 tracking-[0.2em] border-b pb-2">I. Haberes / Ingresos</h4>
+                     <div className="space-y-2 text-[10px] font-bold uppercase">
+                        <div className="flex justify-between"><span>Sueldo Mensual</span><span>${d.baseSalary.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-blue-600"><span>Horas Extras y Bonos</span><span>${(d.extraHours+d.bonuses).toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>Décimo Tercero (Mens)</span><span>${d.monthly13th.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>Décimo Cuarto (Mens)</span><span>${d.monthly14th.toFixed(2)}</span></div>
+                        <div className="flex justify-between text-emerald-600"><span>Fondos Reserva (Mens)</span><span>${d.reserveFund.toFixed(2)}</span></div>
+                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>TOTAL INGRESOS</span><span>${d.totalIncomes.toFixed(2)}</span></div>
                      </div>
                   </div>
                   <div className="space-y-4">
-                     <h4 className="text-[9px] font-black text-red-600 uppercase tracking-widest border-b border-red-50 pb-2">II. Egresos</h4>
-                     <div className="space-y-2 text-[10px] font-bold">
-                        <div className="flex justify-between"><span>Aporte Personal IESS (9.45%)</span> <span>-${d.iessContribution.toFixed(2)}</span></div>
-                        <div className="flex justify-between"><span>Préstamos / Anticipos</span> <span>-${d.loans.toFixed(2)}</span></div>
-                        <div className="flex justify-between pt-2 border-t font-black text-red-600 text-xs"><span>TOTAL EGRESOS</span> <span>-${d.totalExpenses.toFixed(2)}</span></div>
+                     <h4 className="text-[9px] font-black uppercase text-red-600 tracking-[0.2em] border-b pb-2">II. Descuentos / Egresos</h4>
+                     <div className="space-y-2 text-[10px] font-bold uppercase">
+                        <div className="flex justify-between"><span>Aporte Personal IESS (9.45%)</span><span>${d.iessContribution.toFixed(2)}</span></div>
+                        <div className="flex justify-between"><span>Anticipos y Préstamos</span><span>${d.loans.toFixed(2)}</span></div>
+                        <div className="flex justify-between font-black border-t pt-2 text-slate-900"><span>TOTAL EGRESOS</span><span>${d.totalExpenses.toFixed(2)}</span></div>
                      </div>
                   </div>
                </div>
-
                <div className="bg-slate-900 p-8 rounded-[2rem] text-white flex justify-between items-center shadow-2xl">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Líquido a Recibir</p>
-                    {individualPayroll.bankInfo?.ifi === 'NO APLICA' ? (
-                       <p className="text-[10px] font-bold uppercase mt-1">PAGO EN EFECTIVO</p>
-                    ) : (
-                       <>
-                          <p className="text-[10px] font-bold uppercase mt-1">{individualPayroll.bankInfo?.ifi}</p>
-                          <p className="text-[10px] font-bold uppercase">Cuenta: {individualPayroll.bankInfo?.account}</p>
-                       </>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-4xl font-[950] tracking-tighter italic">${d.netToReceive.toFixed(2)}</p>
-                  </div>
+                  <div><p className="text-[8px] font-black uppercase tracking-[0.4em] opacity-60">Líquido a Percibir</p></div>
+                  <p className="text-4xl font-[950] tracking-tighter">${d.netToReceive.toFixed(2)}</p>
                </div>
-
-               <div className="pt-16 grid grid-cols-2 gap-20 text-center no-print-flex">
-                  <div className="border-t border-slate-300 pt-4"><p className="text-[8px] font-black uppercase text-slate-400">Autorizado Gerencia</p></div>
-                  <div className="border-t border-slate-300 pt-4"><p className="text-[8px] font-black uppercase text-slate-400">Firma Colaborador</p></div>
+               <div className="grid grid-cols-2 gap-20 pt-20 text-center no-print-section">
+                  <div className="border-t-2 pt-4"><p className="text-[8px] font-black uppercase">Recibí Conforme (Firma)</p></div>
+                  <div className="border-t-2 pt-4"><p className="text-[8px] font-black uppercase">Autorización Institucional</p></div>
                </div>
-
-               <div className="flex gap-4 pt-10 no-print">
-                  <button onClick={() => exportIndividualExcel(individualPayroll)} className="flex-1 py-5 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Descargar Excel</button>
-                  <button onClick={() => window.print()} className="flex-1 py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Imprimir</button>
-                  <button onClick={() => setIndividualPayroll(null)} className="flex-1 py-5 bg-slate-100 text-slate-500 font-black rounded-2xl uppercase text-[10px] tracking-widest">Cerrar</button>
+               <div className="flex gap-3 no-print">
+                  <button onClick={() => exportIndividualExcel(individualPayroll)} className="flex-1 py-4 bg-emerald-600 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Descargar Excel Individual</button>
+                  <button onClick={() => window.print()} className="flex-1 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Imprimir Rol Individual</button>
                </div>
-            </div>
-          );
+             </div>
+           );
         })()}
       </Modal>
     </div>

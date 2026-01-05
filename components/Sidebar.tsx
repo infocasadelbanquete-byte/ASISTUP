@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Role } from '../types.ts';
+import Modal from './Modal.tsx';
 
 interface SidebarProps {
   role: Role;
@@ -12,42 +13,31 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogout, companyName }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [showModeSelection, setShowModeSelection] = useState(false);
 
   useEffect(() => {
-    // Detectar si ya está instalada o en modo standalone
     if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
       setIsStandalone(true);
     }
   }, []);
 
-  const handleInstallClick = async () => {
+  const triggerPWAInstall = async () => {
     const deferredPrompt = (window as any).deferredPrompt;
-    
-    // 1. Caso: Navegador soporta prompt directo (Chrome, Edge, Android)
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         (window as any).deferredPrompt = null;
       }
-      return;
+    } else {
+      alert("Para instalar:\n1. Use Chrome/Edge en Android o PC.\n2. En iOS use Safari: 'Compartir' -> 'Añadir a pantalla de inicio'.");
     }
+    setShowModeSelection(false);
+  };
 
-    // 2. Caso: Ya está instalada
-    if (isStandalone) {
-      alert("La aplicación ya se encuentra instalada en su equipo como aplicación nativa.");
-      return;
-    }
-
-    // 3. Caso: iOS (Safari)
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    if (isIOS) {
-      alert("Instalación en iOS:\n\n1. Pulse el botón 'Compartir' (cuadrado con flecha) en la barra inferior de Safari.\n2. Busque y seleccione 'Añadir a la pantalla de inicio'.\n3. Pulse 'Añadir' en la esquina superior derecha.");
-      return;
-    }
-
-    // 4. Caso: Otros navegadores o evento aún no disparado
-    alert("Para instalar la aplicación:\n\n• Si usa Chrome o Edge: Busque el icono de 'Instalar' en la parte derecha de la barra de direcciones.\n• Asegúrese de estar usando una conexión segura (HTTPS).\n• Espere unos segundos a que el sistema reconozca la capacidad de instalación.");
+  const handleInstallProcess = (mode: 'full' | 'attendance') => {
+    localStorage.setItem('app_mode', mode);
+    triggerPWAInstall();
   };
 
   const menuItems = [
@@ -98,10 +88,10 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
             ))}
           </nav>
 
-          {!isStandalone && (
+          {!isStandalone && role === Role.SUPER_ADMIN && (
             <div className="mt-8 border-t border-white/10 pt-8">
               <button 
-                onClick={handleInstallClick}
+                onClick={() => setShowModeSelection(true)}
                 className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -120,6 +110,16 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
           </button>
         </div>
       </aside>
+
+      <Modal isOpen={showModeSelection} onClose={() => setShowModeSelection(false)} title="Configuración de Instalación" maxWidth="max-w-sm">
+         <div className="space-y-6">
+            <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">Solo el Super Administrador puede instalar el sistema en este equipo móvil.</p>
+            <div className="space-y-2">
+               <button onClick={() => handleInstallProcess('full')} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Sistema Administrativo</button>
+               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosko de Asistencia</button>
+            </div>
+         </div>
+      </Modal>
 
       {isOpen && <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-30 md:hidden" onClick={() => setIsOpen(false)}></div>}
     </>

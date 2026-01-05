@@ -49,8 +49,18 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    let baseMsg = type === 'in' ? MOTIVATIONAL_MESSAGES_START[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_START.length)] : MOTIVATIONAL_MESSAGES_END[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_END.length)];
-    if (type === 'half_day') baseMsg = "Media jornada registrada con éxito.";
+    // Verificación de Cumpleaños
+    const today = new Date();
+    const birth = new Date(currentEmp.birthDate);
+    const isBirthday = today.getMonth() === birth.getMonth() && today.getDate() === (birth.getDate() + 1); // +1 por desfase de zona horaria ISO usual
+
+    let baseMsg = "";
+    if (isBirthday) {
+      baseMsg = `¡FELIZ CUMPLEAÑOS ${currentEmp.name.toUpperCase()}! 🎂 Nuestra organización celebra tu vida y agradece tu valiosa entrega hoy. ¡Que sea un día excepcional!`;
+    } else {
+      baseMsg = type === 'in' ? MOTIVATIONAL_MESSAGES_START[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_START.length)] : MOTIVATIONAL_MESSAGES_END[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES_END.length)];
+      if (type === 'half_day') baseMsg = "Media jornada registrada con éxito.";
+    }
     
     setMotivationalMsg(baseMsg);
     setStatus('success');
@@ -113,9 +123,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
       {status === 'success' && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-3xl flex flex-col items-center justify-center fade-in">
-           <div className="w-24 h-24 bg-emerald-500 text-white rounded-[2rem] flex items-center justify-center text-4xl mb-8 shadow-2xl">✓</div>
-           <p className="text-white font-[950] text-3xl uppercase tracking-tighter text-center px-10 mb-8 max-w-2xl">{motivationalMsg}</p>
+        <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-3xl flex flex-col items-center justify-center fade-in text-center p-8">
+           <div className="w-24 h-24 bg-emerald-500 text-white rounded-[2.5rem] flex items-center justify-center text-4xl mb-8 shadow-[0_0_50px_rgba(16,185,129,0.3)] animate-bounce">✓</div>
+           <p className="text-white font-[950] text-3xl uppercase tracking-tighter text-center mb-8 max-w-2xl leading-tight">{motivationalMsg}</p>
         </div>
       )}
 
@@ -157,8 +167,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
         {status === 'confirm' && currentEmp && (
           <div className="text-center w-full animate-in zoom-in">
-            <div className="w-24 h-24 bg-blue-50 rounded-[2rem] mx-auto flex items-center justify-center text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-6">
-                 {currentEmp.name[0]}
+            <div className="w-24 h-24 bg-blue-50 rounded-[2rem] mx-auto flex items-center justify-center text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-6 overflow-hidden">
+                 {currentEmp.photo ? <img src={currentEmp.photo} className="w-full h-full object-cover" /> : <span>{currentEmp.name[0]}</span>}
             </div>
             <h2 className="text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
             <div className="grid grid-cols-2 gap-4 mt-8">
