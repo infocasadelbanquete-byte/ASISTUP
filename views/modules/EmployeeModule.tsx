@@ -88,7 +88,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         status: 'active' as const 
       } as Employee;
       updatedList = [...employees, newEmp];
-      setFeedback({ isOpen: true, title: "Éxito", message: `Colaborador registrado. PIN Inicial: ${autoPin}`, type: "success" });
+      setFeedback({ isOpen: true, title: "Registro Exitoso", message: `Colaborador registrado. PIN PROVISIONAL DE ACCESO: ${autoPin}. Entregue esta clave al empleado para su primera marcación.`, type: "success" });
     }
     onUpdate(updatedList);
     setIsModalOpen(false);
@@ -103,11 +103,13 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
       pinChanged: false 
     } : e);
     onUpdate(updated);
-    setViewingEmp({ ...emp, pinNeedsReset: true, pinResetRequested: false, pin: "000000" });
+    if (viewingEmp && viewingEmp.id === emp.id) {
+       setViewingEmp({ ...viewingEmp, pinNeedsReset: true, pinResetRequested: false, pin: "000000", pinChanged: false });
+    }
     setFeedback({ 
       isOpen: true, 
       title: "Reseteo Aprobado", 
-      message: `PIN reseteado para ${emp.name}. El empleado debe establecer su clave en el terminal.`, 
+      message: `PIN reseteado para ${emp.name}. El empleado debe establecer su clave en el terminal (PIN actual: 000000).`, 
       type: "success" 
     });
   };
@@ -133,13 +135,26 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     onUpdate(updated);
     setViewingEmp(null);
     setIsTermModalOpen(false);
-    setFeedback({ isOpen: true, title: "Desvinculación", message: "Estatus del colaborador actualizado.", type: "success" });
+    setFeedback({ isOpen: true, title: "Desvinculación", message: "Colaborador desvinculado. El registro ha sido movido al historial de personal.", type: "success" });
+  };
+
+  const handleDeletePermanent = () => {
+    if (!viewingEmp) return;
+    if (confirm(`¿Está absolutamente seguro de ELIMINAR PERMANENTEMENTE a ${viewingEmp.name} ${viewingEmp.surname}? Esta acción borrará todo el historial y no se puede deshacer.`)) {
+      const updated: Employee[] = employees.filter(e => e.id !== viewingEmp.id);
+      onUpdate(updated);
+      setViewingEmp(null);
+      setFeedback({ isOpen: true, title: "Registro Eliminado", message: "El colaborador ha sido borrado definitivamente de la base de datos.", type: "success" });
+    }
   };
 
   const filteredEmployees = employees.filter(e => {
     const searchString = `${e.name} ${e.surname} ${e.identification} ${e.role} ${e.email} ${e.phone}`.toLowerCase();
     const matchesSearch = searchString.includes(searchTerm.toLowerCase());
-    return showArchived ? matchesSearch && e.status === 'archived' : matchesSearch && e.status !== 'archived';
+    // Modificado para que los desvinculados no aparezcan en la lista activa (Talento Humano)
+    return showArchived 
+      ? matchesSearch && (e.status === 'archived' || e.status === 'terminated') 
+      : matchesSearch && e.status === 'active';
   });
 
   return (
@@ -149,7 +164,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           <h2 className="text-xl font-[950] text-slate-900 tracking-tighter uppercase leading-none">Gestión Humana</h2>
           <div className="flex gap-4 mt-2 justify-center md:justify-start">
             <button onClick={() => setShowArchived(false)} className={`text-[9px] font-black uppercase tracking-widest ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Activos</button>
-            <button onClick={() => setShowArchived(true)} className={`text-[9px] font-black uppercase tracking-widest ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Archivados</button>
+            <button onClick={() => setShowArchived(true)} className={`text-[9px] font-black uppercase tracking-widest ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Historial / Bajas</button>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
@@ -183,7 +198,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   <td className="px-6 py-3 text-blue-600 text-[9px]">{emp.role}</td>
                   <td className="px-6 py-3 text-center">
                     <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                      {emp.status === 'active' ? 'Activo' : 'Salida'}
+                      {emp.status === 'active' ? 'Activo' : emp.status === 'terminated' ? 'Desvinculado' : 'Archivado'}
                     </span>
                   </td>
                   <td className="px-6 py-3 text-right flex gap-2 justify-end">
@@ -221,6 +236,21 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   )}
                </div>
             </div>
+
+            {(role === Role.SUPER_ADMIN || role === Role.PARTIAL_ADMIN) && (
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                <div>
+                  <p className="text-blue-400 font-black text-[8px] uppercase tracking-widest mb-1">PIN de Acceso Actual</p>
+                  <p className="text-blue-900 font-black text-xl tracking-[0.2em]">{viewingEmp.pin}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`px-2 py-0.5 rounded text-[7px] font-black uppercase ${viewingEmp.pinChanged ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                    {viewingEmp.pinChanged ? 'PIN Personalizado' : 'PIN Provisional'}
+                  </span>
+                  <p className="text-[7px] text-slate-400 font-bold uppercase mt-1">Créditos de marcación</p>
+                </div>
+              </div>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-bold uppercase">
                <div className="p-4 bg-slate-50 rounded-2xl">
@@ -256,10 +286,17 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                </div>
             </section>
             
-            {viewingEmp.status === 'active' && role === Role.SUPER_ADMIN && (
-              <div className="pt-4 border-t grid grid-cols-1 sm:grid-cols-2 gap-3">
-                 <button onClick={() => handleApprovePinReset(viewingEmp)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase border border-slate-200">Resetear PIN</button>
-                 <button onClick={() => setIsTermModalOpen(true)} className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-[9px] font-black uppercase border border-red-200">Procesar Salida</button>
+            {role === Role.SUPER_ADMIN && (
+              <div className="pt-4 border-t space-y-3">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                   {viewingEmp.status === 'active' && (
+                     <>
+                       <button onClick={() => handleApprovePinReset(viewingEmp)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-[9px] font-black uppercase border border-slate-200">Resetear PIN</button>
+                       <button onClick={() => setIsTermModalOpen(true)} className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-[9px] font-black uppercase border border-red-200">Procesar Salida</button>
+                     </>
+                   )}
+                 </div>
+                 <button onClick={handleDeletePermanent} className="w-full py-3 bg-red-700 text-white rounded-xl text-[9px] font-black uppercase shadow-lg active:scale-95 transition-all">Eliminar Registro Definitivamente</button>
               </div>
             )}
           </div>

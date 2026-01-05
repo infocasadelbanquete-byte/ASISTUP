@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Role } from '../types.ts';
 import Modal from './Modal.tsx';
@@ -74,11 +75,19 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
       <aside className={`fixed inset-y-0 left-0 z-40 w-full max-w-[280px] md:max-w-[320px] gradient-blue text-white flex flex-col shadow-2xl transition-transform duration-500 md:translate-x-0 md:relative no-print ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 md:p-10 flex-1 overflow-y-auto custom-scroll">
           <div className="flex items-center gap-4 md:gap-6 mb-12 md:mb-16">
-            <div className="ring-container scale-[0.4] md:scale-[0.45]">
-                <div className="ring ring-1"></div>
-                <div className="ring ring-2"></div>
-                <div className="ring ring-3"></div>
-                <div className="w-12 h-12 bg-blue-600 rounded-full"></div>
+            <div className="w-12 h-12 flex-shrink-0">
+                <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]">
+                  <defs>
+                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style={{stopColor: '#3b82f6'}} />
+                      <stop offset="100%" style={{stopColor: '#1e3a8a'}} />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="url(#logoGradient)" strokeWidth="6" strokeDasharray="15 5" />
+                  <circle cx="50" cy="50" r="32" fill="none" stroke="url(#logoGradient)" strokeWidth="5" strokeDasharray="10 4" opacity="0.7" />
+                  <circle cx="50" cy="50" r="18" fill="none" stroke="url(#logoGradient)" strokeWidth="4" opacity="0.4" />
+                  <circle cx="50" cy="50" r="6" fill="#3b82f6" />
+                </svg>
             </div>
             <div>
               <h2 className="text-xl md:text-2xl font-[950] tracking-tighter leading-none uppercase">ASIST UP</h2>

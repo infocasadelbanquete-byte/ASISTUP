@@ -242,8 +242,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'notifications' && (
             <NotificationsModule 
               notifications={notifications} 
-              onToggleRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: !n.isRead } : n))}
-              onToggleProcessed={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, isProcessed: !n.isProcessed } : n))}
+              onToggleRead={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
+              onToggleProcessed={(id) => setNotifications(prev => prev.filter(n => n.id !== id))}
               onClearAll={() => setNotifications([])}
             />
           )}
