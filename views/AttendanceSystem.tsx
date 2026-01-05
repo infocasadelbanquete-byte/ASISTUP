@@ -193,7 +193,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               ))}
             </div>
             
-            {/* OPCIÓN VISIBLE PARA RESETEO DE PIN */}
+            {/* OPCIÓN VISIBLE PARA RESETEO DE PIN SOLICITADA */}
             <button 
               onClick={() => setStatus('forgotten_form')}
               className="w-full py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all"
