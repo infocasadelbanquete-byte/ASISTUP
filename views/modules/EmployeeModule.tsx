@@ -176,7 +176,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </table>
       </div>
 
-      {/* MODAL EXPEDIENTE */}
       <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Expediente de Personal">
         {viewingEmp && (
           <div className="space-y-6">
@@ -233,7 +232,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         )}
       </Modal>
 
-      {/* MODAL REGISTRO / EDICIÓN */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Colaborador" : "Nuevo Registro de Personal"}>
          <div className="space-y-6 max-h-[75vh] overflow-y-auto px-2 custom-scroll">
             <section className="border-b pb-4">
@@ -298,7 +296,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
          </div>
       </Modal>
 
-      {/* MODAL NOVEDAD */}
       <Modal isOpen={isAbsenceModalOpen} onClose={() => setIsAbsenceModalOpen(false)} title="Registrar Novedad" maxWidth="max-w-sm">
          <div className="space-y-4">
             <select className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={newAbsence.type} onChange={e => setNewAbsence({...newAbsence, type: e.target.value as any})}><option value="Falta">Falta</option><option value="Permiso">Permiso</option><option value="Atraso">Atraso</option></select>
@@ -309,7 +306,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
          </div>
       </Modal>
 
-      {/* MODAL SALIDA */}
       <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Salida de Personal" maxWidth="max-w-sm">
          <div className="space-y-4">
             <select className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={termData.reason} onChange={e => setTermData({...termData, reason: e.target.value as TerminationReason})}>{Object.values(TerminationReason).map(r => <option key={r} value={r}>{r}</option>)}</select>

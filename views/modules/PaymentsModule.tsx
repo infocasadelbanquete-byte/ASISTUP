@@ -127,7 +127,6 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         </table>
       </div>
 
-      {/* MODAL COMPROBANTE */}
       <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Pago">
         {selectedPayForPrint && (() => {
            const emp = employees.find(e => e.id === selectedPayForPrint.employeeId);
@@ -160,7 +159,6 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         })()}
       </Modal>
 
-      {/* MODAL ANULAR */}
       <Modal isOpen={isVoidModalOpen} onClose={() => setIsVoidModalOpen(false)} title="Anular Comprobante" maxWidth="max-w-sm">
          <div className="space-y-4 text-center">
             <p className="text-xs text-slate-500 font-bold uppercase">Ingrese la justificación para anular este pago:</p>
@@ -172,7 +170,6 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
          </div>
       </Modal>
 
-      {/* MODAL NUEVO PAGO */}
       <Modal isOpen={isPayOpen} onClose={() => setIsPayOpen(false)} title="Nuevo Registro de Pago">
         <div className="space-y-4">
           <select className="w-full border-2 p-3 rounded-xl bg-slate-50 text-[11px] font-black uppercase" onChange={e => setPayForm({...payForm, employeeId: e.target.value})}><option value="">Seleccionar Beneficiario...</option>{employees.filter(e => e.status === 'active').map(e => <option key={e.id} value={e.id}>{e.surname} {e.name}</option>)}</select>

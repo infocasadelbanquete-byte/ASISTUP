@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
@@ -13,7 +13,6 @@ const App: React.FC = () => {
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   
-  // Ref para evitar fugas de memoria en listeners
   const unsubscribesRef = useRef<(() => void)[]>([]);
 
   const [appMode, setAppMode] = useState<'full' | 'attendance'>(
@@ -60,7 +59,6 @@ const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleEsc);
     
-    // Iniciar listeners con limpieza
     cleanListeners();
 
     try {
@@ -155,9 +153,7 @@ const App: React.FC = () => {
             
             <div className="space-y-4">
               <button onClick={() => setView('attendance')} className="w-full py-6 bg-blue-700 text-white font-black rounded-[2.5rem] shadow-2xl hover:bg-blue-800 transition-all uppercase text-[11px] tracking-widest active:scale-95">Panel de Asistencia</button>
-              {appMode === 'full' && (
-                <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-5 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Consola Administrativa</button>
-              )}
+              <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-5 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Consola Administrativa</button>
             </div>
           </div>
 
