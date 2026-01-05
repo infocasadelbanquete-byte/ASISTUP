@@ -39,7 +39,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
         isCriticalLate = true;
         // Notificación de retraso crítico
         if (Notification.permission === "granted") {
-          new Notification("ALERTA DE RETRASO", {
+          new Notification("ALERTA DE ASISTENCIA", {
             body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha marcado con más de 15 minutos de retraso.`,
             icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
           });
@@ -148,7 +148,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       )}
 
       <div className={`w-full max-w-lg bg-white/95 backdrop-blur-3xl rounded-[3.5rem] shadow-2xl p-6 md:p-12 flex flex-col items-center relative overflow-hidden ${status === 'success' ? 'opacity-0' : 'fade-in'}`}>
-        <div className="mb-10 transform scale-[0.55] md:scale-[0.8]"><Clock /></div>
+        <div className="mb-10 transform scale-[0.6] md:scale-[0.8]"><Clock /></div>
 
         {status === 'idle' && (
           <div className="w-full text-center">
@@ -160,13 +160,17 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-3 max-w-[320px] mx-auto">
+            <div className="grid grid-cols-3 gap-3 max-w-[340px] mx-auto">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
-                <button key={btn} onClick={() => {
-                  if (btn === 'C') setPin('');
-                  else if (btn === '←') setPin(p => p.slice(0, -1));
-                  else if (pin.length < 6) setPin(p => p + btn);
-                }} className="h-14 md:h-18 bg-slate-50 hover:bg-blue-700 hover:text-white rounded-2xl text-xl font-black border border-slate-100 active:scale-90 transition-all">
+                <button 
+                  key={btn} 
+                  onClick={() => {
+                    if (btn === 'C') setPin('');
+                    else if (btn === '←') setPin(p => p.slice(0, -1));
+                    else if (pin.length < 6) setPin(p => p + btn);
+                  }} 
+                  className="h-16 md:h-18 bg-slate-50 hover:bg-blue-700 hover:text-white rounded-2xl text-2xl font-black border border-slate-100 active:scale-90 transition-all shadow-sm"
+                >
                   {btn}
                 </button>
               ))}
@@ -204,7 +208,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
         )}
       </div>
 
-      <button onClick={onBack} className="mt-10 text-white/30 hover:text-white font-black text-[11px] uppercase tracking-[0.6em]">Cerrar Sistema</button>
+      <button onClick={onBack} className="mt-10 text-white/30 hover:text-white font-black text-[11px] uppercase tracking-[0.6em] p-4">Cerrar Sistema</button>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
           <div className="text-center space-y-6">
