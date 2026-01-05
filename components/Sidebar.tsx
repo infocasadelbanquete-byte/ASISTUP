@@ -36,6 +36,16 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
     setShowModeSelection(false);
   };
 
+  const handleInstallClick = () => {
+    if (role === Role.SUPER_ADMIN) {
+      setShowModeSelection(true);
+    } else if (role === Role.PARTIAL_ADMIN) {
+      // Los administradores parciales solo instalan el sistema de asistencia
+      localStorage.setItem('app_mode', 'attendance');
+      triggerPWAInstall();
+    }
+  };
+
   const handleInstallProcess = (mode: 'full' | 'attendance') => {
     localStorage.setItem('app_mode', mode);
     triggerPWAInstall();
@@ -99,7 +109,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
           {!isStandalone && (role === Role.SUPER_ADMIN || role === Role.PARTIAL_ADMIN) && (
             <div className="mt-8 border-t border-white/10 pt-8">
               <button 
-                onClick={() => setShowModeSelection(true)}
+                onClick={handleInstallClick}
                 className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -124,7 +134,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
             <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest leading-relaxed">Solo el Administrador puede instalar el sistema en este equipo móvil.</p>
             <div className="space-y-2">
                <button onClick={() => handleInstallProcess('full')} className="w-full py-5 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Sistema Administrativo</button>
-               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosco de Asistencia</button>
+               <button onClick={() => handleInstallProcess('attendance')} className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest">Kiosko de Asistencia</button>
             </div>
          </div>
       </Modal>
