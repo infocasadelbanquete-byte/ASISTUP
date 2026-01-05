@@ -11,6 +11,7 @@ interface PaymentsModuleProps {
 
 const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, onUpdate, role }) => {
   const [isPayOpen, setIsPayOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
@@ -68,19 +69,34 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     setFeedback({ isOpen: true, title: "Anulado", message: "El registro ha sido invalidado.", type: "info" });
   };
 
+  const filteredPayments = payments.filter(p => {
+    const emp = employees.find(e => e.id === p.employeeId);
+    const searchStr = ((emp?.name || "") + " " + (emp?.surname || "") + " " + (emp?.identification || "") + " " + p.concept + " " + p.type).toLowerCase();
+    return searchStr.includes(searchTerm.toLowerCase());
+  });
+
   return (
     <div className="space-y-6 fade-in">
-      <div className="flex justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 gap-6">
         <h2 className="text-2xl font-black text-slate-900 uppercase">Tesorería y Gestión de Pagos</h2>
-        <button 
-          onClick={() => {
-            if (role === Role.PARTIAL_ADMIN || role === Role.SUPER_ADMIN) setIsPayOpen(true);
-            else setFeedback({ isOpen: true, title: "Permisos Insuficientes", message: "No tiene privilegios para registrar desembolsos.", type: "error" });
-          }} 
-          className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
-        >
-          Nuevo Pago / Novedad
-        </button>
+        <div className="flex gap-4 w-full md:w-auto">
+          <input 
+            type="text" 
+            placeholder="Filtrar por Empleado o Concepto..." 
+            className="flex-1 md:w-64 p-3 border rounded-xl text-[10px] font-bold uppercase" 
+            value={searchTerm} 
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+          <button 
+            onClick={() => {
+              if (role === Role.PARTIAL_ADMIN || role === Role.SUPER_ADMIN) setIsPayOpen(true);
+              else setFeedback({ isOpen: true, title: "Permisos Insuficientes", message: "No tiene privilegios para registrar desembolsos.", type: "error" });
+            }} 
+            className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl shadow-lg hover:bg-emerald-700 transition-all uppercase text-[10px] tracking-widest"
+          >
+            Nuevo Pago
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-[2rem] shadow-sm border overflow-hidden">
@@ -96,7 +112,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {payments.map(p => {
+            {filteredPayments.map(p => {
               const emp = employees.find(e => e.id === p.employeeId);
               return (
                 <tr key={p.id} className="text-xs hover:bg-slate-50/50">
@@ -124,7 +140,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
           </tbody>
         </table>
       </div>
-
+      {/* ... (Modales sin cambios) ... */}
       <Modal isOpen={isPayOpen} onClose={() => setIsPayOpen(false)} title="Registro de Pago / Haber">
         <div className="space-y-4">
           <div>

@@ -13,6 +13,7 @@ interface PayrollModuleProps {
 const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, company, settings, role }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toLocaleString('es-EC', {month: 'long'}).toUpperCase());
   const [individualPayroll, setIndividualPayroll] = useState<Employee | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const calculatePayrollData = (emp: Employee, index: number) => {
     const baseSalary = emp.salary;
@@ -20,14 +21,18 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     
     const bonuses = monthlyPayments.filter(p => p.type === 'Bonus').reduce((sum, p) => sum + p.amount, 0);
     const extraHours = monthlyPayments.filter(p => p.type === 'ExtraHours').reduce((sum, p) => sum + p.amount, 0);
-    const thirteenth = monthlyPayments.filter(p => p.type === 'Thirteenth').reduce((sum, p) => sum + p.amount, 0);
-    const fourteenth = monthlyPayments.filter(p => p.type === 'Fourteenth').reduce((sum, p) => sum + p.amount, 0);
     const vacation = monthlyPayments.filter(p => p.type === 'Vacation').reduce((sum, p) => sum + p.amount, 0);
     const backPay = monthlyPayments.filter(p => p.type === 'BackPay').reduce((sum, p) => sum + p.amount, 0);
     
-    const reserveFund = (emp.isAffiliated && emp.overSalaryType === 'monthly') ? ((baseSalary + extraHours) * settings.reserveRate) : 0;
+    // Sobre Sueldos Mensualizados
+    const isMonthly = emp.overSalaryType === 'monthly';
+    const monthly13th = isMonthly ? (baseSalary + extraHours + bonuses) / 12 : 0;
+    const monthly14th = isMonthly ? settings.sbu / 12 : 0;
+    const reserveFund = (emp.isAffiliated && (isMonthly || emp.overSalaryType === 'monthly')) ? ((baseSalary + extraHours) * settings.reserveRate) : 0;
     
-    const totalIncomes = baseSalary + reserveFund + bonuses + extraHours + thirteenth + fourteenth + vacation + backPay;
+    const totalOverSalaries = monthly13th + monthly14th + reserveFund;
+    
+    const totalIncomes = baseSalary + totalOverSalaries + bonuses + extraHours + vacation + backPay;
 
     const taxableIncome = baseSalary + extraHours + bonuses;
     const iessContribution = emp.isAffiliated ? (taxableIncome * settings.iessRate) : 0;
@@ -35,22 +40,27 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     
     const totalExpenses = iessContribution + loans;
 
-    // Código PN-XXXXXXXX estrictamente 8 dígitos secuenciales (Solo para el Rol Individual)
     const voucherCode = `PN-${(index + 1).toString().padStart(8, '0')}`;
 
     return { 
-      baseSalary, reserveFund, bonuses, extraHours, thirteenth, fourteenth, vacation, backPay,
+      baseSalary, reserveFund, bonuses, extraHours, vacation, backPay,
+      monthly13th, monthly14th, totalOverSalaries,
       iessContribution, loans,
       totalIncomes, totalExpenses, netToReceive: totalIncomes - totalExpenses,
       voucherCode
     };
   };
 
+  const filteredEmployees = employees.filter(e => {
+    const searchStr = (e.name + " " + e.surname + " " + e.identification).toLowerCase();
+    return searchStr.includes(searchTerm.toLowerCase());
+  });
+
   const exportGeneralExcel = () => {
-    const headers = "Identificación,Empleado,Sueldo Base,H. Extras,Ingresos (+),Egresos (-),Neto a Recibir\n";
-    const rows = employees.map((emp, idx) => {
+    const headers = "Identificación,Empleado,Sueldo Base,H. Extras,Sobre Sueldos Mens.,Ingresos (+),Egresos (-),Neto a Recibir\n";
+    const rows = filteredEmployees.map((emp, idx) => {
       const d = calculatePayrollData(emp, idx);
-      return `${emp.identification},${emp.surname} ${emp.name},${d.baseSalary.toFixed(2)},${d.extraHours.toFixed(2)},${d.totalIncomes.toFixed(2)},${d.totalExpenses.toFixed(2)},${d.netToReceive.toFixed(2)}`;
+      return `${emp.identification},${emp.surname} ${emp.name},${d.baseSalary.toFixed(2)},${d.extraHours.toFixed(2)},${d.totalOverSalaries.toFixed(2)},${d.totalIncomes.toFixed(2)},${d.totalExpenses.toFixed(2)},${d.netToReceive.toFixed(2)}`;
     }).join("\n");
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -74,6 +84,8 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
     csv += `Horas Extras,${d.extraHours.toFixed(2)},Préstamos/Anticipos,${d.loans.toFixed(2)}\n`;
     csv += `Bonificaciones,${d.bonuses.toFixed(2)},,\n`;
     csv += `Saldos Atrasados,${d.backPay.toFixed(2)},,\n`;
+    csv += `X Tercero (Mensual),${d.monthly13th.toFixed(2)},,\n`;
+    csv += `X Cuarto (Mensual),${d.monthly14th.toFixed(2)},,\n`;
     csv += `Fondos Reserva,${d.reserveFund.toFixed(2)},,\n`;
     csv += `TOTAL INGRESOS,${d.totalIncomes.toFixed(2)},TOTAL EGRESOS,${d.totalExpenses.toFixed(2)}\n\n`;
     csv += `NETO A RECIBIR,${d.netToReceive.toFixed(2)}\n`;
@@ -88,19 +100,28 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
 
   return (
     <div className="space-y-8 fade-in">
-      <div className="flex justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 no-print">
-        <div>
+      <div className="flex flex-col md:flex-row justify-between items-center bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 no-print gap-6">
+        <div className="w-full md:w-auto">
           <h2 className="text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Liquidación de Nómina Analítica</h2>
-          <div className="flex items-center gap-3 mt-2">
-             <p className="text-[10px] font-black text-slate-400 uppercase">Periodo Fiscal:</p>
-             <select className="p-2 border rounded-lg text-[10px] font-black uppercase" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-                {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
-             </select>
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mt-4">
+             <div className="flex items-center gap-3">
+                <p className="text-[10px] font-black text-slate-400 uppercase">Periodo Fiscal:</p>
+                <select className="p-2 border rounded-lg text-[10px] font-black uppercase" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                    {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+             </div>
+             <input 
+               type="text" 
+               placeholder="Buscar empleado o CI..." 
+               className="p-2 border rounded-xl text-[10px] font-bold uppercase min-w-[200px]" 
+               value={searchTerm} 
+               onChange={e => setSearchTerm(e.target.value)}
+             />
           </div>
         </div>
-        <div className="flex gap-3">
-           <button onClick={exportGeneralExcel} className="px-6 py-4 bg-emerald-50 text-emerald-600 font-black rounded-2xl border border-emerald-100 uppercase text-[9px] tracking-widest">Exportar Excel</button>
-           <button onClick={() => window.print()} className="px-6 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[9px] tracking-widest shadow-lg">Imprimir Todo</button>
+        <div className="flex gap-3 w-full md:w-auto">
+           <button onClick={exportGeneralExcel} className="flex-1 md:flex-none px-6 py-4 bg-emerald-50 text-emerald-600 font-black rounded-2xl border border-emerald-100 uppercase text-[9px] tracking-widest">Exportar Excel</button>
+           <button onClick={() => window.print()} className="flex-1 md:flex-none px-6 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[9px] tracking-widest shadow-lg">Imprimir Todo</button>
         </div>
       </div>
 
@@ -112,6 +133,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
               <th className="p-4">Colaborador</th>
               <th className="p-4">Base</th>
               <th className="p-4">H. Extras</th>
+              <th className="p-4">Sobre Sueldos Mens.</th>
               <th className="p-4">Total Ingresos (+)</th>
               <th className="p-4">Total Egresos (-)</th>
               <th className="p-4">Neto Recibir</th>
@@ -119,7 +141,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
             </tr>
           </thead>
           <tbody className="text-[10px] uppercase font-bold text-slate-700">
-            {employees.filter(e => e.status === 'active').map((emp, idx) => {
+            {filteredEmployees.filter(e => e.status === 'active').map((emp, idx) => {
               const d = calculatePayrollData(emp, idx);
               return (
                 <tr key={emp.id} className="border-b hover:bg-slate-50 transition-colors">
@@ -127,6 +149,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
                   <td className="p-4 font-black text-slate-900">{emp.surname} {emp.name}</td>
                   <td className="p-4">${d.baseSalary.toFixed(2)}</td>
                   <td className="p-4 text-blue-600 font-black">${d.extraHours.toFixed(2)}</td>
+                  <td className="p-4 text-amber-600 font-black">${d.totalOverSalaries.toFixed(2)}</td>
                   <td className="p-4 text-emerald-600 font-bold">+${d.totalIncomes.toFixed(2)}</td>
                   <td className="p-4 text-red-600">-${d.totalExpenses.toFixed(2)}</td>
                   <td className="p-4 font-[950] text-blue-700 text-xs shadow-inner bg-blue-50/20">${d.netToReceive.toFixed(2)}</td>
@@ -175,6 +198,12 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, comp
                         <div className="flex justify-between font-black text-blue-600"><span>Horas Extras/Supl.</span> <span>${d.extraHours.toFixed(2)}</span></div>
                         <div className="flex justify-between"><span>Bonificaciones</span> <span>${d.bonuses.toFixed(2)}</span></div>
                         <div className="flex justify-between text-amber-600"><span>Saldos Atrasados</span> <span>${d.backPay.toFixed(2)}</span></div>
+                        {individualPayroll.overSalaryType === 'monthly' && (
+                          <>
+                            <div className="flex justify-between text-amber-700"><span>X Tercero (Mensual)</span> <span>${d.monthly13th.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-amber-700"><span>X Cuarto (Mensual)</span> <span>${d.monthly14th.toFixed(2)}</span></div>
+                          </>
+                        )}
                         <div className="flex justify-between"><span>Fondos Reserva</span> <span>${d.reserveFund.toFixed(2)}</span></div>
                         <div className="flex justify-between pt-2 border-t font-black text-emerald-600 text-xs"><span>TOTAL INGRESOS</span> <span>${d.totalIncomes.toFixed(2)}</span></div>
                      </div>

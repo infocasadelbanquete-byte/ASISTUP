@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
@@ -8,7 +8,7 @@ import PaymentsModule from './modules/PaymentsModule.tsx';
 import SettingsModule from './modules/SettingsModule.tsx';
 import ReportsModule from './modules/ReportsModule.tsx';
 import Modal from '../components/Modal.tsx';
-import { DAILY_QUOTES } from '../constants.tsx';
+import { DAILY_QUOTES, ACTIVE_BREAKS } from '../constants.tsx';
 
 interface AdminDashboardProps {
   role: Role;
@@ -41,12 +41,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [today]);
 
   const dailyQuote = DAILY_QUOTES[dayOfYear % DAILY_QUOTES.length];
+  const activeBreak = ACTIVE_BREAKS[dayOfYear % ACTIVE_BREAKS.length];
+
+  const relaxingImages = [
+    "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=800&q=80"
+  ];
 
   const handlePurgeData = async () => {
     if (role !== Role.SUPER_ADMIN) return;
     onUpdateEmployees([]);
     onUpdatePayments([]);
-    // La limpieza de asistencia debe manejarse en el componente padre si persiste en DB
   };
 
   const allAppData = {
@@ -74,24 +80,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         <div className="animate-in fade-in duration-500">
           {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50">
-                  <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest mb-3">Reflexión Diaria</p>
-                  <h2 className="text-lg md:text-xl font-[800] text-slate-800 leading-snug">"{dailyQuote}"</h2>
+            <div className="space-y-12">
+              {/* Sección de Bienvenida y Quote */}
+              <div className="relative overflow-hidden bg-slate-900 rounded-[3rem] p-12 text-white shadow-2xl min-h-[300px] flex flex-col justify-center">
+                  <div className="absolute inset-0 opacity-40">
+                    <img src={relaxingImages[0]} className="w-full h-full object-cover" alt="Zen nature" />
+                  </div>
+                  <div className="relative z-10 max-w-2xl">
+                    <p className="text-blue-400 font-black text-[10px] uppercase tracking-[0.5em] mb-4">Inspiración para hoy</p>
+                    <h2 className="text-3xl md:text-5xl font-[900] leading-tight tracking-tighter italic">"{dailyQuote}"</h2>
+                  </div>
               </div>
-              <div className="grid grid-cols-3 gap-6">
-                 <div className="bg-blue-600 p-6 rounded-[2rem] text-white">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Personal Activo</p>
-                    <p className="text-4xl font-black mt-1">{employees.length}</p>
-                 </div>
-                 <div className="bg-slate-900 p-6 rounded-[2rem] text-white">
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">SBU 2026</p>
-                    <p className="text-4xl font-black mt-1">${settings.sbu}</p>
-                 </div>
-                 <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-                    <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest">Estatus DB</p>
-                    <p className="text-xl font-black mt-1 uppercase text-slate-900">{isDbConnected ? 'Sincronizado' : 'Offline'}</p>
-                 </div>
+
+              {/* Sección de Pausas Activas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <span className="text-5xl">{activeBreak.icon}</span>
+                    <div>
+                      <h3 className="text-xl font-black text-slate-900 uppercase">Pausa Activa del Día</h3>
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Bienestar Institucional</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-extrabold text-slate-800">{activeBreak.title}</h4>
+                    <p className="text-slate-500 leading-relaxed font-medium">{activeBreak.description}</p>
+                    <div className="pt-4 border-t border-slate-50">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tómate un minuto para ti.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[3rem] overflow-hidden shadow-sm border border-slate-100 relative group">
+                  <img src={relaxingImages[1]} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Relaxing landscape" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-8">
+                    <p className="text-white font-black text-xs uppercase tracking-widest">Conéctate con la tranquilidad.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Imágenes adicionales y mensajes cortos */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-emerald-50 p-8 rounded-[2.5rem] flex flex-col items-center text-center justify-center space-y-4">
+                  <span className="text-3xl">🌿</span>
+                  <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Mantén la calma y continúa.</p>
+                </div>
+                <div className="bg-blue-50 p-8 rounded-[2.5rem] flex flex-col items-center text-center justify-center space-y-4">
+                  <span className="text-3xl">⚡</span>
+                  <p className="text-blue-800 font-black text-[10px] uppercase tracking-widest">Tu energía es vital para el equipo.</p>
+                </div>
+                <div className="bg-amber-50 p-8 rounded-[2.5rem] flex flex-col items-center text-center justify-center space-y-4">
+                  <span className="text-3xl">✨</span>
+                  <p className="text-amber-800 font-black text-[10px] uppercase tracking-widest">Crea un ambiente positivo hoy.</p>
+                </div>
               </div>
             </div>
           )}

@@ -117,15 +117,20 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     setFeedback({ isOpen: true, title: "Confirmación", message: "Novedad registrada en el historial.", type: "success" });
   };
 
+  const filteredEmployees = employees.filter(e => {
+    const searchStr = (e.name + " " + e.surname + " " + e.identification).toLowerCase();
+    return searchStr.includes(searchTerm.toLowerCase());
+  });
+
   return (
     <div className="space-y-4 fade-in">
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex justify-between items-center no-print">
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center no-print gap-4">
         <h2 className="text-xl font-[950] text-slate-900 tracking-tighter uppercase">Gestión de Talento Humano</h2>
-        <div className="flex gap-3">
+        <div className="flex gap-3 w-full md:w-auto">
           <input 
             type="text" 
-            placeholder="Buscar por apellido..." 
-            className="p-3 border rounded-xl text-xs uppercase font-bold" 
+            placeholder="Buscar por Nombre, Apellido o CI..." 
+            className="flex-1 p-3 border rounded-xl text-xs uppercase font-bold min-w-[250px]" 
             value={searchTerm} 
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -145,7 +150,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 text-[11px] font-black uppercase">
-            {employees.filter(e => (e.surname + " " + e.name).toLowerCase().includes(searchTerm.toLowerCase())).map(emp => (
+            {filteredEmployees.map(emp => (
               <tr key={emp.id} className="hover:bg-blue-50/40 transition-colors">
                 <td className="px-6 py-3 font-black text-slate-900">
                   <div className="flex items-center gap-3">
@@ -246,6 +251,14 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                         {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
                      </select>
                   </div>
+                  <div>
+                     <label className="text-[9px] font-black text-slate-400 uppercase">Mensualización Sobre Sueldos</label>
+                     <select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.overSalaryType} onChange={e => setForm({...form, overSalaryType: e.target.value as any})}>
+                        <option value="monthly">Mensualizar (Recibir en rol)</option>
+                        <option value="accumulate">Acumular (Recibir en fechas legales)</option>
+                        <option value="none">Ninguno</option>
+                     </select>
+                  </div>
                   <div className="flex items-center gap-2 mt-4">
                      <input type="checkbox" className="w-4 h-4" checked={form.isAffiliated} onChange={e => setForm({...form, isAffiliated: e.target.checked})} />
                      <label className="text-[10px] font-black text-slate-600 uppercase">Afiliación IESS</label>
@@ -319,7 +332,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           </div>
       </Modal>
 
-      {/* Ver Ficha Detalle */}
       <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Ficha Técnica Institucional">
          {viewingEmp && (
             <div className="space-y-8 max-h-[85vh] overflow-y-auto px-4 custom-scroll">
@@ -365,7 +377,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
          )}
       </Modal>
 
-      {/* Modal Desvinculación */}
       <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Terminación Laboral" type="warning">
          <div className="space-y-4">
             <p className="text-xs text-slate-500 text-center font-medium italic">Se registrará la salida definitiva del colaborador.</p>
