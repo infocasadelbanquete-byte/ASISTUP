@@ -61,8 +61,8 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   };
 
   const handleSave = () => {
-    if (!form.name || !form.surname || !form.identification || !form.salary) {
-      setFeedback({ isOpen: true, title: "Error", message: "Nombres, apellidos, cédula y sueldo son obligatorios.", type: "error" });
+    if (!form.name || !form.surname || !form.identification || !form.salary || !form.role) {
+      setFeedback({ isOpen: true, title: "Error", message: "Nombres, apellidos, cédula, cargo y sueldo son obligatorios.", type: "error" });
       return;
     }
     const finalForm = { ...form };
@@ -262,6 +262,12 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
             <section className="border-b pb-4">
                <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">II. Configuración Laboral</h4>
                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase">Cargo / Rol*</label>
+                    <select className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.role} onChange={e => setForm({...form, role: e.target.value as Role})}>
+                      {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Fecha Ingreso</label><input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} /></div>
                   <div><label className="text-[9px] font-black text-slate-400 uppercase">Sueldo Base*</label><input type="number" step="0.01" className="w-full border-2 p-3 rounded-xl text-xs font-black" value={form.salary} onChange={e => setForm({...form, salary: Number(e.target.value)})} /></div>
                   <div className="flex items-center gap-2 pt-4">
