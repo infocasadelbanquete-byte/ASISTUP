@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Role } from '../types.ts';
 
 interface SidebarProps {
@@ -11,18 +11,43 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogout, companyName }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    // Detectar si ya está instalada o en modo standalone
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsStandalone(true);
+    }
+  }, []);
 
   const handleInstallClick = async () => {
     const deferredPrompt = (window as any).deferredPrompt;
+    
+    // 1. Caso: Navegador soporta prompt directo (Chrome, Edge, Android)
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         (window as any).deferredPrompt = null;
       }
-    } else {
-      alert("La aplicación ya está instalada o su navegador no soporta la instalación directa.");
+      return;
     }
+
+    // 2. Caso: Ya está instalada
+    if (isStandalone) {
+      alert("La aplicación ya se encuentra instalada en su equipo como aplicación nativa.");
+      return;
+    }
+
+    // 3. Caso: iOS (Safari)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    if (isIOS) {
+      alert("Instalación en iOS:\n\n1. Pulse el botón 'Compartir' (cuadrado con flecha) en la barra inferior de Safari.\n2. Busque y seleccione 'Añadir a la pantalla de inicio'.\n3. Pulse 'Añadir' en la esquina superior derecha.");
+      return;
+    }
+
+    // 4. Caso: Otros navegadores o evento aún no disparado
+    alert("Para instalar la aplicación:\n\n• Si usa Chrome o Edge: Busque el icono de 'Instalar' en la parte derecha de la barra de direcciones.\n• Asegúrese de estar usando una conexión segura (HTTPS).\n• Espere unos segundos a que el sistema reconozca la capacidad de instalación.");
   };
 
   const menuItems = [
@@ -73,15 +98,17 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
             ))}
           </nav>
 
-          <div className="mt-8 border-t border-white/10 pt-8">
-            <button 
-              onClick={handleInstallClick}
-              className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              <span>Descargar App</span>
-            </button>
-          </div>
+          {!isStandalone && (
+            <div className="mt-8 border-t border-white/10 pt-8">
+              <button 
+                onClick={handleInstallClick}
+                className="w-full flex items-center gap-4 px-6 py-4 bg-blue-600/20 text-blue-400 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <span>Instalar Aplicación</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="p-10 border-t border-white/5">

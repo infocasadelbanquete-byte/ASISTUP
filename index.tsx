@@ -31,8 +31,9 @@ if ('serviceWorker' in navigator) {
 window.addEventListener('beforeinstallprompt', (e) => {
   // Prevenir que el navegador muestre automáticamente el prompt
   e.preventDefault();
-  // Guardar el evento para dispararlo manualmente cuando el usuario haga clic en un botón de instalación
+  // Guardar el evento para dispararlo manualmente
   (window as any).deferredPrompt = e;
+  console.log('Evento beforeinstallprompt capturado y listo.');
 });
 
 if (document.readyState === 'complete') {
