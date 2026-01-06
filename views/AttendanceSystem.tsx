@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
@@ -42,22 +43,25 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     let isOffSchedule = false;
     let isCriticalLate = false;
 
-    if (day >= 1 && day <= 5) { // Lun-Vie
-      const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
-      const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
-      if (!in1 && !in2) isOffSchedule = true;
+    // Solo validamos horarios si no es "media jornada"
+    if (type !== 'half_day') {
+      if (day >= 1 && day <= 5) { // Lun-Vie
+        const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
+        const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
+        if (!in1 && !in2) isOffSchedule = true;
 
-      if (type === 'in') {
-        const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
-        const schedDate = new Date(now);
-        schedDate.setHours(schedH, schedM, 0, 0);
-        const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
-        if (diffMins > 15) isCriticalLate = true;
+        if (type === 'in') {
+          const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
+          const schedDate = new Date(now);
+          schedDate.setHours(schedH, schedM, 0, 0);
+          const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
+          if (diffMins > 15) isCriticalLate = true;
+        }
+      } else if (day === 6) { // Sáb
+        if (!isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out)) isOffSchedule = true;
+      } else {
+        isOffSchedule = true; // Dom
       }
-    } else if (day === 6) { // Sáb
-      if (!isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out)) isOffSchedule = true;
-    } else {
-      isOffSchedule = true; // Dom
     }
 
     if (isOffSchedule || isCriticalLate) {
@@ -91,9 +95,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    if (type === 'in') setSuccessMsg("INGRESO REGISTRADO CON ÉXITO");
-    else if (type === 'out') setSuccessMsg("SALIDA REGISTRADA CON ÉXITO");
-    else setSuccessMsg("MARCACIÓN REGISTRADA CON ÉXITO");
+    if (type === 'in') setSuccessMsg("INGRESO REGISTRADO");
+    else if (type === 'out') setSuccessMsg("SALIDA REGISTRADA");
+    else setSuccessMsg("MEDIA JORNADA REGISTRADA");
     
     setStatus('success');
     setPin('');
@@ -104,7 +108,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       setStatus('idle');
       setCurrentEmp(null);
       setIsProcessing(false);
-    }, 4000);
+    }, 3000);
   };
 
   const handleConfirmJustification = () => {
@@ -200,9 +204,12 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
       {status === 'success' && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-3xl flex flex-col items-center justify-center fade-in text-center p-6">
-           <div className="w-20 h-20 md:w-24 md:h-24 bg-emerald-500 text-white rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-center text-4xl md:text-5xl mb-8 md:mb-10 shadow-2xl animate-bounce">✓</div>
-           <p className="text-white font-[950] text-2xl md:text-4xl uppercase tracking-tighter text-center max-w-2xl leading-tight">{successMsg}</p>
+        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center fade-in p-6">
+           <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center text-center animate-in zoom-in max-w-sm">
+              <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center text-3xl mb-4 shadow-lg animate-bounce">✓</div>
+              <h2 className="text-slate-900 font-[950] text-xl uppercase tracking-tighter leading-none">{successMsg}</h2>
+              <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-2 italic">Sincronizado con RRHH</p>
+           </div>
         </div>
       )}
 
@@ -304,14 +311,35 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
         {status === 'confirm' && currentEmp && (
           <div className="text-center w-full animate-in zoom-in">
-            <div className="w-24 h-24 md:w-28 md:h-28 bg-slate-100 rounded-2xl md:rounded-[2.5rem] mx-auto flex items-center justify-center text-3xl md:text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-4 md:mb-6 overflow-hidden">
+            <div className="w-20 h-20 md:w-24 md:h-24 bg-slate-100 rounded-2xl md:rounded-[2rem] mx-auto flex items-center justify-center text-3xl md:text-4xl font-black text-blue-700 uppercase border-4 border-white shadow-xl mb-3 md:mb-4 overflow-hidden">
                  {currentEmp.photo ? <img src={currentEmp.photo} className="w-full h-full object-cover" /> : <span>{currentEmp.name[0]}</span>}
             </div>
-            <h2 className="text-2xl md:text-3xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
-            <p className="text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-8 md:mb-10">{currentEmp.role}</p>
-            <div className="grid grid-cols-1 gap-3 md:gap-4">
-              <button onClick={() => handleMark('in')} className="py-6 md:py-8 bg-blue-700 text-white rounded-2xl md:rounded-[2rem] font-black text-lg md:text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-blue-900">Ingreso</button>
-              <button onClick={() => handleMark('out')} className="py-6 md:py-8 bg-slate-900 text-white rounded-2xl md:rounded-[2rem] font-black text-lg md:text-xl uppercase shadow-2xl active:scale-95 transition-all border-b-4 border-black">Salida</button>
+            <h2 className="text-xl md:text-2xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
+            <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] mb-6 md:mb-8">{currentEmp.role}</p>
+            
+            <div className="space-y-4">
+              <section className="space-y-2">
+                <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest text-left">Primera Jornada (Mañana)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => handleMark('in')} className="py-4 bg-blue-700 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-blue-900">Ingreso</button>
+                  <button onClick={() => handleMark('out')} className="py-4 bg-slate-800 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-slate-950">Salida</button>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest text-left">Segunda Jornada (Tarde)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => handleMark('in')} className="py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-blue-800">Ingreso</button>
+                  <button onClick={() => handleMark('out')} className="py-4 bg-slate-700 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-slate-900">Salida</button>
+                </div>
+              </section>
+
+              <button 
+                onClick={() => handleMark('half_day')} 
+                className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-emerald-800 flex items-center justify-center gap-2"
+              >
+                <span>📅</span> Media Jornada Libre
+              </button>
             </div>
           </div>
         )}

@@ -1,9 +1,11 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
-import { db, collection, doc, onSnapshot, setDoc, addDoc, compressData, decompressData } from './firebase.ts';
+import { db, collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
@@ -69,6 +71,7 @@ const App: React.FC = () => {
       const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          // Fix: Ensure payload is processed safely. decompressData now handles unknown/any input.
           setCompany(data.payload ? decompressData(data.payload) : data as any);
         }
         setIsDbConnected(true);
@@ -79,6 +82,7 @@ const App: React.FC = () => {
       const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
           const raw = d.data();
+          // Fix: Removed unnecessary cast. decompressData handles the property access safely.
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Employee[]);
       });
@@ -87,6 +91,7 @@ const App: React.FC = () => {
       const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
         setAttendance(snapshot.docs.map(d => {
           const raw = d.data();
+          // Fix: Removed unnecessary cast for attendance records processing.
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as AttendanceRecord[]);
       });
@@ -95,6 +100,7 @@ const App: React.FC = () => {
       const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
         setPayments(snapshot.docs.map(d => {
           const raw = d.data();
+          // Fix: Removed unnecessary cast for payments processing.
           return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
         }) as Payment[]);
       });
@@ -135,6 +141,44 @@ const App: React.FC = () => {
     localStorage.removeItem('admin_logged_in');
     setView('selection');
     setShowLogoutFeedback(false);
+  };
+
+  const handleUpdateEmployees = async (emps: Employee[]) => {
+    const currentIds = new Set(emps.map(e => e.id));
+    const previousIds = new Set(employees.map(e => e.id));
+    
+    // Deletions
+    for (const id of previousIds) {
+      if (!currentIds.has(id)) {
+        await deleteDoc(doc(db, "employees", id));
+      }
+    }
+    
+    // Updates/Creations
+    for (const e of emps) {
+      await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
+    }
+  };
+
+  const handleUpdatePayments = async (pys: Payment[]) => {
+    const currentIds = new Set(pys.map(p => p.id));
+    const previousIds = new Set(payments.map(p => p.id));
+    
+    // Deletions
+    for (const id of previousIds) {
+      if (!currentIds.has(id)) {
+        await deleteDoc(doc(db, "payments", id));
+      }
+    }
+
+    // Updates/Creations
+    for (const p of pys) {
+      if (p.id.length > 15) {
+        await addDoc(collection(db, "payments"), { payload: compressData(p) });
+      } else {
+        await setDoc(doc(db, "payments", p.id), { payload: compressData(p) });
+      }
+    }
   };
 
   if (isLoadingData) return null;
@@ -178,7 +222,7 @@ const App: React.FC = () => {
           onBack={() => setView('selection')} 
           settings={settings} 
           onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }); }} 
-          onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }} 
+          onUpdateEmployees={handleUpdateEmployees} 
         />
       )}
 
@@ -190,10 +234,10 @@ const App: React.FC = () => {
           company={company}
           onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
           employees={employees}
-          onUpdateEmployees={async (emps) => { for (const e of emps) { await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }); } }}
+          onUpdateEmployees={handleUpdateEmployees}
           attendance={attendance}
           payments={payments}
-          onUpdatePayments={async (pys) => { for (const p of pys) { if (p.id.length > 15) await addDoc(collection(db, "payments"), { payload: compressData(p) }); else await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }); } }}
+          onUpdatePayments={handleUpdatePayments}
           settings={settings}
           onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}

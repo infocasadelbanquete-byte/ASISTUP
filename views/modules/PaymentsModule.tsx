@@ -1,9 +1,7 @@
-
 import React, { useState } from 'react';
 import { Employee, Payment, Role, CompanyConfig } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 
-// Added company to interface props
 interface PaymentsModuleProps {
   employees: Employee[];
   payments: Payment[];
@@ -53,6 +51,14 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     setVoidPay(null);
     setVoidJustification('');
     setFeedback({ isOpen: true, title: "Pago Anulado", message: "El comprobante ha sido invalidado.", type: "success" });
+  };
+
+  const handleDeletePermanent = (id: string) => {
+    if (confirm("¿Está seguro de eliminar este registro permanentemente de la tesorería? Esta acción borrará el registro de la base de datos de forma irreversible.")) {
+      const updated = payments.filter(p => p.id !== id);
+      onUpdate(updated);
+      setFeedback({ isOpen: true, title: "Eliminado", message: "Registro borrado permanentemente.", type: "success" });
+    }
   };
 
   const exportAllExcel = () => {
@@ -123,10 +129,13 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                     <td className="px-8 py-4 text-center"><p className="text-[10px] font-black uppercase text-slate-500">{p.type}</p><p className="text-[8px] font-bold text-slate-400 truncate max-w-[150px]">{p.concept}</p></td>
                     <td className="px-8 py-4 font-black text-blue-700">${p.amount.toFixed(2)}</td>
                     <td className="px-8 py-4"><span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase ${p.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>{p.status === 'paid' ? 'Efectivo' : 'Anulado'}</span></td>
-                    <td className="px-8 py-4 text-right flex gap-3 justify-end">
-                      <button onClick={() => setSelectedPayForPrint(p)} className="px-3 py-1.5 bg-blue-50 text-blue-600 font-black rounded-lg text-[8px] uppercase active:scale-95 shadow-sm">Ver Comprobante</button>
+                    <td className="px-8 py-4 text-right flex gap-2 justify-end">
+                      <button onClick={() => setSelectedPayForPrint(p)} className="px-2 py-1.5 bg-blue-50 text-blue-600 font-black rounded-lg text-[8px] uppercase active:scale-95 shadow-sm">Ver</button>
                       {p.status === 'paid' && role === Role.SUPER_ADMIN && (
-                        <button onClick={() => { setVoidPay(p); setIsVoidModalOpen(true); }} className="px-3 py-1.5 bg-red-50 text-red-600 font-black rounded-lg text-[8px] uppercase active:scale-95 shadow-sm">Anular</button>
+                        <button onClick={() => { setVoidPay(p); setIsVoidModalOpen(true); }} className="px-2 py-1.5 bg-red-50 text-red-600 font-black rounded-lg text-[8px] uppercase active:scale-95 shadow-sm">Anular</button>
+                      )}
+                      {role === Role.SUPER_ADMIN && (
+                        <button onClick={() => handleDeletePermanent(p.id)} className="px-2 py-1.5 bg-red-700 text-white font-black rounded-lg text-[8px] uppercase active:scale-95 shadow-sm">Borrar</button>
                       )}
                     </td>
                   </tr>
@@ -145,7 +154,6 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
            const emp = employees.find(e => e.id === selectedPayForPrint.employeeId);
            return (
              <div className="p-10 space-y-10 bg-white" id="payment-voucher-print">
-                {/* Fixed "Cannot find name company" by using company from props */}
                 <div className="text-center border-b-4 border-slate-900 pb-8"><h3 className="text-3xl font-[950] text-slate-900 uppercase tracking-tighter italic">{company?.name || 'EMPRESA'}</h3><p className="text-[11px] font-black text-slate-400 mt-2 uppercase tracking-widest">EGRESO DE TESORERÍA - COMPROBANTE NO. {selectedPayForPrint.id.substr(0,10).toUpperCase()}</p></div>
                 <div className="grid grid-cols-2 gap-10 text-[11px] font-bold uppercase">
                    <div className="space-y-6">

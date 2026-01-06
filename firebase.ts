@@ -1,3 +1,4 @@
+
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, 
@@ -53,9 +54,10 @@ export const compressData = (data: any): string => {
   }
 };
 
-export const decompressData = (compressed: string): any => {
+// Fix: Changed signature from string to any to handle unknown data from Firestore safely
+export const decompressData = (compressed: any): any => {
   try {
-    if (!compressed) return null;
+    if (!compressed || typeof compressed !== 'string') return null;
     const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
     return decompressed ? JSON.parse(decompressed) : null;
   } catch (e) {

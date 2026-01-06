@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Employee, AttendanceRecord, Payment, Role } from '../../types.ts';
@@ -20,6 +21,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
     setResponse('');
 
     try {
+      // Fix: Initialize GoogleGenAI with named parameter apiKey as per guidelines
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const activeEmps = employees.filter(e => e.status === 'active').length;
       const totalPayments = payments.reduce((acc, p) => acc + (p.status === 'paid' ? p.amount : 0), 0);
@@ -34,18 +36,21 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
         Pregunta del administrador: ${prompt}
       `;
 
+      // Fix: Using gemini-3-pro-preview for complex reasoning tasks as per guidelines
       const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: context,
         config: {
-          systemInstruction: "Proporciona respuestas profesionales, concisas y basadas en mejores prácticas de RRHH. Si la pregunta es sobre leyes ecuatorianas, menciona que es una guía general.",
+          systemInstruction: "Proporciona respuestas profesionales, concisas y basadas en mejores prácticas de RRHH en Ecuador. Si la pregunta es sobre leyes ecuatorianas, menciona que es una guía general.",
           temperature: 0.7,
         }
       });
 
+      // Fix: Access .text property instead of calling .text() as per guidelines
       setResponse(result.text || "No pude generar una respuesta en este momento.");
     } catch (error) {
-      setResponse("Error al conectar con la inteligencia artificial. Verifique su conexión.");
+      console.error("Gemini Error:", error);
+      setResponse("Error al conectar con la inteligencia artificial. Verifique su conexión y configuración de API.");
     } finally {
       setIsTyping(false);
     }
@@ -59,7 +64,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-2xl animate-pulse">✨</div>
             <div>
               <h2 className="text-2xl font-[950] uppercase tracking-tighter italic">Asistente IA Estratégico</h2>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">Powered by Gemini 3 Flash</p>
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">Powered by Gemini 3 Pro</p>
             </div>
           </div>
           <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8">
@@ -90,7 +95,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
         <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 animate-in slide-in-from-bottom-4">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-2 h-8 bg-blue-600 rounded-full"></div>
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Respuesta de la IA</h3>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Análisis de Estrategia</h3>
           </div>
           <div className="prose prose-slate max-w-none">
             <p className="text-slate-700 text-sm leading-8 font-medium whitespace-pre-wrap">
