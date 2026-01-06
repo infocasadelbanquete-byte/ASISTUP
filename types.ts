@@ -68,14 +68,26 @@ export interface Payment {
   date: string;
   month: string;
   year: string;
-  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours' | 'BackPay';
-  method: 'Efectivo' | 'Transferencia' | 'Cheque';
+  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours' | 'BackPay' | 'SalaryBalance' | 'Advance';
+  method: 'Efectivo' | 'Transferencia' | 'Cheque' | 'Dual';
   concept: string;
   status: 'paid' | 'void';
-  balanceAfter?: number;
-  isPartial?: boolean;
-  voidJustification?: string;
+  voucherCode?: string;
   bankSource?: 'Banco del Austro' | 'Banco Guayaquil';
+  checkDetails?: {
+    client: string;
+    bank: string;
+    number: string;
+    value: number;
+  };
+  dualDetails?: {
+    method1: 'Efectivo' | 'Transferencia' | 'Cheque';
+    value1: number;
+    method2: 'Efectivo' | 'Transferencia' | 'Cheque';
+    value2: number;
+    bankSource?: 'Banco del Austro' | 'Banco Guayaquil';
+  };
+  voidJustification?: string;
 }
 
 export interface Employee {
