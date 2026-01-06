@@ -1,11 +1,11 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
 import { db, collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
+
+const APP_ICON_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233b82f6;'/%3E%3Cstop offset='100%25' style='stop-color:%231e3a8a;'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='url(%23g)' stroke-width='6' stroke-dasharray='15 5'/%3E%3Ccircle cx='50' cy='50' r='32' fill='none' stroke='url(%23g)' stroke-width='5' stroke-dasharray='10 4' opacity='0.7'/%3E%3Ccircle cx='50' cy='50' r='18' fill='none' stroke='url(%23g)' stroke-width='4' opacity='0.4'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%233b82f6'/%3E%3C/svg%3E";
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
@@ -71,8 +71,7 @@ const App: React.FC = () => {
       const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          // Fix: Ensure payload is processed safely. decompressData now handles unknown/any input.
-          setCompany(data.payload ? decompressData(data.payload) : data as any);
+          setCompany(data.payload ? decompressData(data.payload as string) : data as any);
         }
         setIsDbConnected(true);
         setIsLoadingData(false);
@@ -82,8 +81,7 @@ const App: React.FC = () => {
       const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
           const raw = d.data();
-          // Fix: Removed unnecessary cast. decompressData handles the property access safely.
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
         }) as Employee[]);
       });
       unsubscribesRef.current.push(unsubEmployees);
@@ -91,8 +89,7 @@ const App: React.FC = () => {
       const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
         setAttendance(snapshot.docs.map(d => {
           const raw = d.data();
-          // Fix: Removed unnecessary cast for attendance records processing.
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
         }) as AttendanceRecord[]);
       });
       unsubscribesRef.current.push(unsubAttendance);
@@ -100,8 +97,7 @@ const App: React.FC = () => {
       const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
         setPayments(snapshot.docs.map(d => {
           const raw = d.data();
-          // Fix: Removed unnecessary cast for payments processing.
-          return raw.payload ? { ...decompressData(raw.payload), id: d.id } : { ...raw, id: d.id };
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
         }) as Payment[]);
       });
       unsubscribesRef.current.push(unsubPayments);
@@ -144,34 +140,30 @@ const App: React.FC = () => {
   };
 
   const handleUpdateEmployees = async (emps: Employee[]) => {
-    const currentIds = new Set(emps.map(e => e.id));
-    const previousIds = new Set(employees.map(e => e.id));
+    const currentIds = new Set<string>(emps.map(e => e.id));
+    const previousIds = new Set<string>(employees.map(e => e.id));
     
-    // Deletions
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
         await deleteDoc(doc(db, "employees", id));
       }
     }
     
-    // Updates/Creations
     for (const e of emps) {
       await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
     }
   };
 
   const handleUpdatePayments = async (pys: Payment[]) => {
-    const currentIds = new Set(pys.map(p => p.id));
-    const previousIds = new Set(payments.map(p => p.id));
+    const currentIds = new Set<string>(pys.map(p => p.id));
+    const previousIds = new Set<string>(payments.map(p => p.id));
     
-    // Deletions
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
         await deleteDoc(doc(db, "payments", id));
       }
     }
 
-    // Updates/Creations
     for (const p of pys) {
       if (p.id.length > 15) {
         await addDoc(collection(db, "payments"), { payload: compressData(p) });

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
 import { db, doc, setDoc, deleteDoc, compressData } from '../../firebase.ts';
@@ -13,12 +12,12 @@ interface ReportsModuleProps {
   role: Role;
 }
 
-const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, attendance, company, settings, role }) => {
+const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, attendance = [], company, settings, role }) => {
   const [reportType, setReportType] = useState<'attendance' | 'payments' | 'validation'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
 
-  const pendingAttendance = attendance.filter(a => a.status === 'pending_approval');
+  const pendingAttendance = (attendance || []).filter(a => a.status === 'pending_approval');
   
   const handleValidate = async (record: AttendanceRecord, newStatus: 'confirmed' | 'rejected') => {
     const updatedRecord = { 
@@ -50,7 +49,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
 
   const exportAttendanceExcel = () => {
     let csv = "\uFEFFFecha,Hora,Colaborador,Identificación,Cargo,Tipo Marcación,Estado,Atraso,Justificación\n";
-    attendance.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).forEach(rec => {
+    (attendance || []).sort((a, b) => b.timestamp.localeCompare(a.timestamp)).forEach(rec => {
       const emp = employees.find(e => e.id === rec.employeeId);
       const date = new Date(rec.timestamp);
       csv += `"${date.toLocaleDateString()}","${date.toLocaleTimeString()}","${emp?.surname} ${emp?.name}","${emp?.identification}","${emp?.role}","${rec.type === 'in' ? 'Entrada' : 'Salida'}","${rec.status}","${rec.isLate ? 'SI' : 'NO'}","${rec.justification || ''}"\n`;
@@ -62,7 +61,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
     link.click();
   };
 
-  const attendanceToDisplay = attendance.filter(a => {
+  const attendanceToDisplay = (attendance || []).filter(a => {
     const emp = employees.find(e => e.id === a.employeeId);
     const searchStr = `${emp?.surname} ${emp?.name} ${emp?.identification} ${a.justification || ""} ${a.status} ${a.type}`.toLowerCase();
     return searchStr.includes(searchTerm.toLowerCase());
@@ -72,7 +71,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
     <div className="space-y-6 md:space-y-8 fade-in">
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 md:p-8 rounded-3xl md:rounded-[2rem] shadow-sm border border-slate-100 gap-6 no-print">
         <div className="w-full">
-          <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Módulo de Reportes</h2>
+          <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Reportes Institucionales</h2>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
             <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 scroll-smooth no-scrollbar">
               <button onClick={() => {setReportType('attendance'); setSearchTerm('');}} className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${reportType === 'attendance' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Registros de Asistencia</button>
@@ -83,7 +82,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
             </div>
             <input 
               type="text" 
-              placeholder="Búsqueda avanzada de registros..." 
+              placeholder="Filtrar registros..." 
               className="flex-1 p-2.5 border rounded-xl text-[10px] font-bold uppercase outline-none focus:border-blue-500 shadow-sm" 
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
@@ -92,19 +91,29 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
         </div>
         <div className="flex gap-2 w-full md:w-auto">
           <button onClick={exportAttendanceExcel} className="flex-1 md:flex-none px-6 py-4 bg-emerald-600 text-white font-black rounded-xl shadow-lg uppercase text-[9px] active:scale-95 transition-all">Excel Completo</button>
-          <button onClick={() => window.print()} className="flex-1 md:flex-none px-6 py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase text-[9px] active:scale-95 transition-all">PDF Reporte</button>
+          <button onClick={() => window.print()} className="flex-1 md:flex-none px-6 py-4 bg-slate-900 text-white font-black rounded-xl shadow-lg uppercase text-[9px] active:scale-95 transition-all">Imprimir PDF</button>
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl md:rounded-[2rem] shadow-sm border overflow-hidden min-h-[450px]">
+      <div className="bg-white rounded-3xl md:rounded-[2rem] shadow-sm border overflow-hidden min-h-[450px]" id="reports-printable-area">
+         <div className="hidden print:block text-center border-b-2 border-slate-900 pb-6 mb-8 px-10 pt-10">
+           <h1 className="text-2xl font-[950] text-slate-900 uppercase italic leading-none">{company?.name || 'ASIST UP - HR ENTERPRISE'}</h1>
+           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Reporte de {reportType === 'attendance' ? 'Asistencia Diaria' : 'Validaciones Pendientes'} - 2026</p>
+           <div className="grid grid-cols-2 gap-4 mt-3 max-w-xl mx-auto text-[9px] font-bold uppercase text-slate-600">
+             <p className="text-left border-l-4 border-slate-900 pl-3">RUC: {company?.ruc || '0000000000001'}</p>
+             <p className="text-right border-r-4 border-slate-900 pr-3">Representante: {company?.legalRep || 'ADMINISTRACIÓN'}</p>
+           </div>
+           <p className="text-[7px] text-slate-400 mt-2 uppercase font-bold italic text-right">Generado: {new Date().toLocaleString()}</p>
+         </div>
+
          <div className="p-6 md:p-10">
             {reportType === 'validation' ? (
               <div className="space-y-6">
-                <h3 className="text-lg font-[950] text-slate-900 uppercase tracking-tighter border-b pb-4">Validaciones Pendientes por Revisar</h3>
+                <h3 className="text-lg font-[950] text-slate-900 uppercase tracking-tighter border-b pb-4 no-print">Validaciones Pendientes por Revisar</h3>
                 {filteredPending.length === 0 ? (
                   <div className="py-24 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                     <span className="text-5xl opacity-20">✅</span>
-                    <p className="text-slate-400 font-black uppercase text-[11px] tracking-widest mt-6">No existen justificaciones pendientes</p>
+                    <p className="text-slate-400 font-black uppercase text-[10px] tracking-widest mt-6">No existen justificaciones pendientes</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -115,17 +124,17 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="font-[950] text-slate-900 uppercase text-sm tracking-tight">{emp?.surname} {emp?.name}</p>
-                              <p className="text-slate-400 font-black text-[8px] uppercase mt-1">C.I.: {emp?.identification} | {new Date(req.timestamp).toLocaleString()}</p>
+                              <p className="text-slate-400 font-black text-[8px] uppercase mt-1">CI: {emp?.identification} | {new Date(req.timestamp).toLocaleString()}</p>
                             </div>
                             <span className={`px-2 py-1 text-[8px] font-black rounded-lg uppercase ${req.type === 'in' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>{req.type === 'in' ? 'Ingreso' : 'Salida'}</span>
                           </div>
                           <div className="space-y-2">
-                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Motivo de Excepción</p>
-                             <p className="text-[11px] text-slate-600 font-bold bg-slate-50 p-4 rounded-2xl border leading-relaxed shadow-inner">"{req.justification}"</p>
+                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Justificación del Colaborador</p>
+                             <p className="text-[11px] text-slate-600 font-bold bg-slate-50 p-4 rounded-2xl border leading-relaxed shadow-inner italic">"{req.justification}"</p>
                           </div>
-                          <div className="grid grid-cols-2 gap-3 pt-2">
+                          <div className="grid grid-cols-2 gap-3 pt-2 no-print">
                              <button onClick={() => handleValidate(req, 'rejected')} className="py-3 bg-red-50 text-red-600 font-black text-[9px] uppercase rounded-xl hover:bg-red-100 transition-all active:scale-95">Rechazar</button>
-                             <button onClick={() => handleValidate(req, 'confirmed')} className="py-3 bg-emerald-600 text-white font-black text-[9px] uppercase rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95">Aprobar</button>
+                             <button onClick={() => handleValidate(req, 'confirmed')} className="py-3 bg-emerald-600 text-white font-black text-[9px] uppercase rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95">Validar</button>
                           </div>
                         </div>
                       );
@@ -135,8 +144,8 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
               </div>
             ) : (
                <div className="table-responsive">
-                  <table className="w-full text-left min-w-[750px]">
-                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b tracking-widest">
+                  <table className="w-full text-left min-w-[750px] print:min-w-0 print:table-auto">
+                    <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b tracking-widest print:bg-slate-900 print:text-white">
                       <tr>
                         <th className="p-4">Fecha / Hora</th>
                         <th className="p-4">Colaborador / Identificación</th>
@@ -146,7 +155,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
                         <th className="p-4 text-right no-print">Acción</th>
                       </tr>
                     </thead>
-                    <tbody className="text-[10px] font-bold uppercase divide-y text-slate-600">
+                    <tbody className="text-[9px] md:text-[10px] font-bold uppercase divide-y text-slate-600 print:text-slate-950">
                       {attendanceToDisplay.map(rec => {
                         const emp = employees.find(e => e.id === rec.employeeId);
                         return (
@@ -156,29 +165,36 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments, atte
                                <p className="font-black text-slate-900">{emp?.surname} {emp?.name}</p>
                                <p className="text-[8px] font-bold text-slate-400">{emp?.identification}</p>
                             </td>
-                            <td className="p-4 font-black">{rec.type === 'in' ? 'Entrada' : 'Salida'}</td>
+                            <td className="p-4 font-black">{rec.type === 'in' ? 'Ingreso' : rec.type === 'out' ? 'Salida' : 'Media Jornada'}</td>
                             <td className="p-4 text-center">
-                               {rec.isLate ? <span className="text-red-600 font-black">SI</span> : <span className="text-emerald-600">NO</span>}
+                               {rec.isLate ? <span className="text-red-600 font-black">SÍ (Crítico)</span> : <span className="text-emerald-600">NO</span>}
                             </td>
                             <td className="p-4">
                               <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase shadow-sm ${rec.status === 'confirmed' ? 'bg-emerald-50 text-emerald-600' : rec.status === 'pending_approval' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>{rec.status}</span>
                             </td>
                             <td className="p-4 text-right no-print">
                               {role === Role.SUPER_ADMIN && (
-                                <button onClick={() => handleDeleteAttendance(rec.id)} className="px-2 py-1.5 bg-red-50 text-red-600 text-[8px] font-black uppercase rounded-lg hover:bg-red-600 hover:text-white transition-all">Eliminar</button>
+                                <button onClick={() => handleDeleteAttendance(rec.id)} className="px-2 py-1.5 bg-red-50 text-red-600 text-[8px] font-black uppercase rounded-lg hover:bg-red-600 hover:text-white transition-all">Borrar</button>
                               )}
                             </td>
                           </tr>
                         );
                       })}
-                      {attendanceToDisplay.length === 0 && (
-                        <tr><td colSpan={6} className="p-10 text-center text-slate-300 font-black uppercase">No se encontraron registros en el período</td></tr>
-                      )}
                     </tbody>
                   </table>
                </div>
             )}
          </div>
+
+         <div className="hidden print:grid grid-cols-2 gap-10 mt-20 p-10 pt-20 border-t-2 border-slate-100">
+           <div className="text-center">
+              <div className="border-t-2 border-slate-900 pt-3 text-[10px] font-black uppercase">Firma RRHH / Supervisión</div>
+              <p className="text-[7px] text-slate-400 mt-1 uppercase font-bold">Responsable de Auditoría</p>
+           </div>
+           <div className="text-center">
+              <div className="border-t-2 border-slate-900 pt-3 text-[10px] font-black uppercase">Sello de Recepción</div>
+           </div>
+        </div>
       </div>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>

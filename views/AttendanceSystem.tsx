@@ -1,8 +1,9 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
 import Modal from '../components/Modal.tsx';
+
+const APP_ICON_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233b82f6;'/%3E%3Cstop offset='100%25' style='stop-color:%231e3a8a;'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='url(%23g)' stroke-width='6' stroke-dasharray='15 5'/%3E%3Ccircle cx='50' cy='50' r='32' fill='none' stroke='url(%23g)' stroke-width='5' stroke-dasharray='10 4' opacity='0.7'/%3E%3Ccircle cx='50' cy='50' r='18' fill='none' stroke='url(%23g)' stroke-width='4' opacity='0.4'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%233b82f6'/%3E%3C/svg%3E";
 
 interface AttendanceSystemProps {
   employees: Employee[];
@@ -43,9 +44,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     let isOffSchedule = false;
     let isCriticalLate = false;
 
-    // Solo validamos horarios si no es "media jornada"
     if (type !== 'half_day') {
-      if (day >= 1 && day <= 5) { // Lun-Vie
+      if (day >= 1 && day <= 5) {
         const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
         const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
         if (!in1 && !in2) isOffSchedule = true;
@@ -57,10 +57,10 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
           const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
           if (diffMins > 15) isCriticalLate = true;
         }
-      } else if (day === 6) { // Sáb
+      } else if (day === 6) {
         if (!isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out)) isOffSchedule = true;
       } else {
-        isOffSchedule = true; // Dom
+        isOffSchedule = true;
       }
     }
 
@@ -79,7 +79,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     if (isLate && Notification.permission === "granted") {
       new Notification("ALERTA DE ASISTENCIA", {
         body: `El colaborador ${currentEmp?.name} ${currentEmp?.surname} ha marcado con más de 15 minutos de retraso.`,
-        icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
+        icon: APP_ICON_SVG
       });
     }
 
@@ -151,7 +151,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       if (Notification.permission === "granted") {
         new Notification("SOLICITUD DE ACCESO", {
           body: `El colaborador ${emp.name} solicita resetear su PIN de asistencia.`,
-          icon: "https://cdn-icons-png.flaticon.com/512/3844/3844724.png"
+          icon: APP_ICON_SVG
         });
       }
       
@@ -286,7 +286,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             />
             <div className="grid grid-cols-2 gap-2 md:gap-3">
               <button onClick={() => setStatus('idle')} className="w-full py-3 md:py-4 bg-slate-100 text-slate-600 font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95">Cancelar</button>
-              <button onClick={handleRequestPinReset} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Enviar</button>
+              <button onClick={handleRequestPinReset} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Enviar</button>
             </div>
           </div>
         )}
@@ -358,7 +358,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
           <div className="text-center space-y-4 md:space-y-6">
               <p className="text-slate-600 font-bold uppercase text-[11px] md:text-[12px] leading-relaxed">{feedback.message}</p>
-              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest active:scale-95">Aceptar</button>
+              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Aceptar</button>
           </div>
       </Modal>
     </div>

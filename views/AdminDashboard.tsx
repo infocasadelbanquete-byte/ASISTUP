@@ -43,7 +43,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const currentYear = today.getFullYear();
 
   const addNotification = (title: string, message: string, type: 'info' | 'alert' | 'critical') => {
-    // Generamos un ID estable basado en el contenido para poder persistir el descarte
     const contentId = `notif-${title}-${message}`.replace(/\s/g, '-');
     
     if (dismissedNotificationIds.has(contentId)) return;
@@ -56,7 +55,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   useEffect(() => {
     const activeEmployees = employees.filter(e => e.status === 'active');
-    const markedTodayIds = new Set(attendance
+    const markedTodayIds = new Set((attendance || [])
       .filter(a => a.timestamp.includes(todayDateStr))
       .map(a => a.employeeId));
     
@@ -141,15 +140,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'dashboard' && (
             <div className="space-y-4 md:space-y-6">
               
-              <div className="relative overflow-hidden bg-slate-900 rounded-3xl p-6 text-white shadow-xl min-h-[100px] flex items-center bg-cover bg-center" style={{ backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.7)), url(${currentRelaxingImage})` }}>
+              <div className="relative overflow-hidden bg-slate-900 rounded-3xl p-5 md:p-6 text-white shadow-xl min-h-[100px] flex items-center bg-cover bg-center" style={{ backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.7)), url(${currentRelaxingImage})` }}>
                   <div className="relative z-10 w-full text-center md:text-left">
                     <p className="text-blue-400 font-black text-[7px] uppercase tracking-[0.4em] mb-2">Mensaje del día</p>
-                    <h2 className="text-base md:text-xl font-[800] leading-tight tracking-tight italic">"{dailyQuote}"</h2>
+                    <h2 className="text-base md:text-lg font-[800] leading-tight tracking-tight italic">"{dailyQuote}"</h2>
                   </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-                <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div className="lg:col-span-2 bg-white p-5 md:p-6 rounded-3xl border border-slate-100 shadow-sm">
                    <div className="flex justify-between items-center mb-4">
                       <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest leading-none">Calendario Corporativo</h3>
                       <div className="flex gap-2">
@@ -181,25 +180,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    </div>
                 </div>
 
-                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                <div className="bg-slate-50 p-5 md:p-6 rounded-3xl border border-slate-100 space-y-4">
                    <h3 className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-2">Próximos Eventos</h3>
-                   <div className="space-y-3 max-h-[220px] overflow-y-auto custom-scroll pr-1">
+                   <div className="space-y-3 max-h-[200px] overflow-y-auto custom-scroll pr-1">
                       {monthHolidays.map((h, i) => (
-                         <div key={i} className="flex gap-3 items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                            <span className="text-base">📅</span>
+                         <div key={i} className="flex gap-3 items-center bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
+                            <span className="text-sm">📅</span>
                             <div>
-                               <p className="text-[8px] font-black text-slate-900 uppercase leading-none truncate max-w-[120px]">{h.name}</p>
+                               <p className="text-[8px] font-black text-slate-900 uppercase leading-none truncate max-w-[100px]">{h.name}</p>
                                <p className="text-[6px] font-bold text-blue-500 uppercase mt-1">Día {h.day}</p>
                             </div>
                          </div>
                       ))}
                       {monthBirthdays.map((e, i) => (
-                         <div key={i} className="flex gap-3 items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                            <div className="w-7 h-7 rounded-lg overflow-hidden border bg-slate-50 flex items-center justify-center text-[8px] font-black uppercase text-slate-300">
+                         <div key={i} className="flex gap-3 items-center bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
+                            <div className="w-6 h-6 rounded-lg overflow-hidden border bg-slate-100 flex items-center justify-center text-[8px] font-black uppercase text-slate-300">
                                {e.photo ? <img src={e.photo} className="w-full h-full object-cover" /> : <span>{e.name[0]}</span>}
                             </div>
                             <div>
-                               <p className="text-[8px] font-black text-slate-900 uppercase leading-none truncate max-w-[120px]">{e.surname} {e.name}</p>
+                               <p className="text-[8px] font-black text-slate-900 uppercase leading-none truncate max-w-[100px]">{e.surname} {e.name}</p>
                                <p className="text-[6px] font-bold text-emerald-500 uppercase mt-1">Día {new Date(e.birthDate).getDate()}</p>
                             </div>
                          </div>
@@ -212,21 +211,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 items-stretch">
-                <div className="bg-white p-6 rounded-3xl border border-slate-100 flex flex-col justify-center">
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-3xl">{activeBreak.icon}</span>
+                <div className="bg-white p-5 md:p-6 rounded-3xl border border-slate-100 flex flex-col justify-center">
+                  <div className="flex items-center gap-4 mb-3">
+                    <span className="text-2xl">{activeBreak.icon}</span>
                     <div>
-                      <h3 className="text-xs font-black text-slate-900 uppercase leading-none">Salud Ocupacional</h3>
+                      <h3 className="text-[10px] font-black text-slate-900 uppercase leading-none">Salud Ocupacional</h3>
                       <p className="text-[7px] font-black text-blue-600 uppercase tracking-widest mt-1">Sugerencia Preventiva</p>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <h4 className="text-[10px] font-[900] text-slate-800 uppercase tracking-tight">{activeBreak.title}</h4>
-                    <p className="text-slate-500 text-[10px] leading-relaxed font-medium">{activeBreak.description}</p>
+                  <div className="space-y-1">
+                    <h4 className="text-[9px] font-[900] text-slate-800 uppercase tracking-tight">{activeBreak.title}</h4>
+                    <p className="text-slate-500 text-[9px] leading-relaxed font-medium">{activeBreak.description}</p>
                   </div>
                 </div>
 
-                <div className="relative overflow-hidden bg-white rounded-3xl shadow-lg border border-slate-100 min-h-[140px] md:min-h-[180px]">
+                <div className="relative overflow-hidden bg-white rounded-3xl shadow-lg border border-slate-100 min-h-[120px] md:min-h-[150px]">
                    <img 
                      src={currentRelaxingImage} 
                      alt="Relajación" 
@@ -255,7 +254,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
           {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
-          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} company={company} settings={settings} role={role} />}
+          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} company={company} />}
           {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} onPurge={handlePurgeData} allData={{ company, employees, attendance, payments, settings }} />}
           {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} />}
