@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { GlobalSettings, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
@@ -35,6 +36,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
     }
   };
 
+  const handleResetDeviceConfig = () => {
+    localStorage.removeItem('app_mode');
+    window.location.reload();
+  };
+
   const handleSave = () => {
     if (role !== Role.SUPER_ADMIN) {
         setFeedback({ isOpen: true, title: "Acceso Denegado", message: "Solo el Super Administrador puede modificar los parámetros maestros.", type: "error" });
@@ -62,13 +68,11 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
            </div>
         </section>
 
-        {/* Sección de Horario Laboral */}
         <section className="p-10 bg-slate-50 rounded-[3rem] border border-slate-200 space-y-8">
            <div className="flex justify-between items-center border-b pb-4">
               <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Jornada Laboral y Horarios de Marcación</h3>
               <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[9px] font-black uppercase">Vigente</span>
            </div>
-           
            <div className="space-y-6">
               <div className="space-y-4">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lunes a Viernes</p>
@@ -91,7 +95,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
                     </div>
                  </div>
               </div>
-
               <div className="space-y-4 border-t pt-6">
                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sábados</p>
                  <div className="grid grid-cols-2 gap-4">
@@ -108,20 +111,23 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
            </div>
         </section>
 
-        {/* Sección de Respaldo y Mantenimiento */}
         {role === Role.SUPER_ADMIN && (
           <section className="p-10 border-2 border-dashed border-slate-200 rounded-[3rem] bg-slate-50 space-y-8">
              <div className="flex justify-between items-center border-b pb-4">
-                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Seguridad y Purga de Datos</h3>
+                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Seguridad y Mantenimiento de Equipo</h3>
              </div>
-             <div className="grid grid-cols-2 gap-4">
-                <button onClick={handleBackup} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-blue-500 transition-all group">
-                   <span className="text-4xl group-hover:scale-110 transition-transform">📦</span>
-                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600">Respaldo Mensual (.zip)</span>
+             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button onClick={handleBackup} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-blue-500 transition-all group shadow-sm">
+                   <span className="text-3xl group-hover:scale-110 transition-transform">📦</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600">Respaldo Mensual</span>
                 </button>
-                <button onClick={() => setShowPurgeConfirm(true)} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-red-500 transition-all group">
-                   <span className="text-4xl group-hover:scale-110 transition-transform">🧹</span>
-                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-500 group-hover:text-red-600">Reiniciar Base de Datos</span>
+                <button onClick={handleResetDeviceConfig} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-yellow-600 transition-all group shadow-sm">
+                   <span className="text-3xl group-hover:scale-110 transition-transform">⚙️</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-yellow-600">Resetear Terminal</span>
+                </button>
+                <button onClick={() => setShowPurgeConfirm(true)} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-red-500 transition-all group shadow-sm">
+                   <span className="text-3xl group-hover:scale-110 transition-transform">🧹</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-red-600">Vaciar Base de Datos</span>
                 </button>
              </div>
           </section>

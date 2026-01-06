@@ -6,11 +6,9 @@ import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
 import { db, collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
 
-const APP_ICON_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233b82f6;'/%3E%3Cstop offset='100%25' style='stop-color:%231e3a8a;'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='url(%23g)' stroke-width='6' stroke-dasharray='15 5'/%3E%3Ccircle cx='50' cy='50' r='32' fill='none' stroke='url(%23g)' stroke-width='5' stroke-dasharray='10 4' opacity='0.7'/%3E%3Ccircle cx='50' cy='50' r='18' fill='none' stroke='url(%23g)' stroke-width='4' opacity='0.4'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%233b82f6'/%3E%3C/svg%3E";
-
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
-  const [view, setView] = useState<'selection' | 'admin' | 'attendance'>('selection');
+  const [view, setView] = useState<'selection' | 'admin' | 'attendance' | 'setup'>('selection');
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [isDbConnected, setIsDbConnected] = useState(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
@@ -18,8 +16,8 @@ const App: React.FC = () => {
   
   const unsubscribesRef = useRef<(() => void)[]>([]);
 
-  const [appMode, setAppMode] = useState<'full' | 'attendance'>(
-    (localStorage.getItem('app_mode') as 'full' | 'attendance') || 'full'
+  const [appMode, setAppMode] = useState<'full' | 'attendance' | null>(
+    (localStorage.getItem('app_mode') as 'full' | 'attendance') || null
   );
 
   const [showWelcome, setShowWelcome] = useState(false);
@@ -42,6 +40,19 @@ const App: React.FC = () => {
       halfDayOff: 'Miércoles tarde'
     }
   });
+
+  useEffect(() => {
+    // Si no hay modo configurado, forzar vista de setup
+    if (!appMode) {
+      setView('setup');
+    }
+  }, [appMode]);
+
+  const handleSetDeviceMode = (mode: 'full' | 'attendance') => {
+    localStorage.setItem('app_mode', mode);
+    setAppMode(mode);
+    setView('selection');
+  };
 
   const showAlert = (title: string, message: string, type: 'info' | 'success' | 'error' = 'info') => {
     setModalAlert({ isOpen: true, title, message, type });
@@ -127,8 +138,6 @@ const App: React.FC = () => {
       setShowWelcome(true);
       setView('admin');
       setIsAdminLoginModalOpen(false);
-      
-      // Auto-cerrar mensaje de bienvenida después de 1.5 segundos
       setTimeout(() => setShowWelcome(false), 1500);
     } else {
       showAlert("Error de Acceso", "Credencial no válida o sin privilegios.", "error");
@@ -143,7 +152,6 @@ const App: React.FC = () => {
     setShowLogoutFeedback(false);
   };
 
-  // Efecto para auto-finalizar el logout cuando se activa la señal de salida
   useEffect(() => {
     if (showLogoutFeedback) {
       const timer = setTimeout(() => {
@@ -156,13 +164,11 @@ const App: React.FC = () => {
   const handleUpdateEmployees = async (emps: Employee[]) => {
     const currentIds = new Set<string>(emps.map(e => e.id));
     const previousIds = new Set<string>(employees.map(e => e.id));
-    
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
         await deleteDoc(doc(db, "employees", id));
       }
     }
-    
     for (const e of emps) {
       await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
     }
@@ -171,13 +177,11 @@ const App: React.FC = () => {
   const handleUpdatePayments = async (pys: Payment[]) => {
     const currentIds = new Set<string>(pys.map(p => p.id));
     const previousIds = new Set<string>(payments.map(p => p.id));
-    
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
         await deleteDoc(doc(db, "payments", id));
       }
     }
-
     for (const p of pys) {
       if (p.id.length > 15) {
         await addDoc(collection(db, "payments"), { payload: compressData(p) });
@@ -191,6 +195,41 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
+      {view === 'setup' && (
+        <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
+          <div className="w-full max-w-lg bg-white/95 backdrop-blur-3xl p-10 md:p-16 rounded-[4rem] shadow-2xl text-center border border-white/20 fade-in">
+            <h2 className="text-3xl font-[950] text-slate-900 mb-2 tracking-tighter uppercase leading-none">CONFIGURACIÓN INICIAL</h2>
+            <p className="text-blue-600 font-black uppercase tracking-[0.4em] text-[9px] mb-12">Defina el tipo de instalación para este equipo</p>
+            
+            <div className="space-y-4">
+              <button 
+                onClick={() => handleSetDeviceMode('full')}
+                className="w-full group p-6 border-2 border-slate-100 hover:border-blue-600 rounded-[2.5rem] bg-slate-50 transition-all text-left flex items-center gap-5 active:scale-95"
+              >
+                <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">🖥️</div>
+                <div>
+                   <p className="font-black text-slate-900 text-xs uppercase tracking-tight">Administración Completa</p>
+                   <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Acceso a todos los módulos y reportes.</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => handleSetDeviceMode('attendance')}
+                className="w-full group p-6 border-2 border-slate-100 hover:border-emerald-600 rounded-[2.5rem] bg-slate-50 transition-all text-left flex items-center gap-5 active:scale-95"
+              >
+                <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">🕒</div>
+                <div>
+                   <p className="font-black text-slate-900 text-xs uppercase tracking-tight">Terminal de Asistencia (Kiosco)</p>
+                   <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Solo marcación. Sin funciones administrativas.</p>
+                </div>
+              </button>
+            </div>
+            
+            <p className="text-[8px] text-slate-300 font-black uppercase mt-12 tracking-widest italic">Esta configuración podrá ser reseteada por un Super Administrador.</p>
+          </div>
+        </div>
+      )}
+
       {view === 'selection' && (
         <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-lg bg-white/95 backdrop-blur-3xl p-10 md:p-16 rounded-[4.5rem] shadow-2xl text-center border border-white/20">
@@ -199,7 +238,10 @@ const App: React.FC = () => {
             
             <div className="space-y-4">
               <button onClick={() => setView('attendance')} className="w-full py-6 bg-blue-700 text-white font-black rounded-[2.5rem] shadow-2xl hover:bg-blue-800 transition-all uppercase text-[11px] tracking-widest active:scale-95">Panel de Asistencia</button>
-              <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-5 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Consola Administrativa</button>
+              
+              {appMode === 'full' && (
+                <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-5 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Consola Administrativa</button>
+              )}
             </div>
           </div>
 
@@ -232,7 +274,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {view === 'admin' && currentUserRole && (
+      {view === 'admin' && currentUserRole && appMode === 'full' && (
         <AdminDashboard 
           role={currentUserRole} 
           isDbConnected={isDbConnected}
