@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Employee, Role, BloodType, Gender, CivilStatus, AbsenceRecord, TerminationReason } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
@@ -12,7 +11,7 @@ interface EmployeeModuleProps {
   company: any;
 }
 
-const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, role }) => {
+const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, role, company }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
   const [viewingEmp, setViewingEmp] = useState<Employee | null>(null);
@@ -23,6 +22,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
   const [isTermModalOpen, setIsTermModalOpen] = useState(false);
   const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] = useState(false);
+  const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
   
   const [newAbsence, setNewAbsence] = useState<Partial<AbsenceRecord>>({ type: 'Falta', justified: false, date: new Date().toISOString().split('T')[0], reason: '' });
   const [termData, setTermData] = useState({ reason: TerminationReason.VOLUNTARY, details: '', date: new Date().toISOString().split('T')[0] });
@@ -97,23 +97,25 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   };
 
   const handleApprovePinReset = (emp: Employee) => {
+    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     const updated: Employee[] = employees.map(e => e.id === emp.id ? { 
       ...e, 
-      pin: "000000", 
+      pin: randomPin, 
       pinNeedsReset: true, 
       pinResetRequested: false,
       pinChanged: false 
     } : e);
     onUpdate(updated);
     if (viewingEmp && viewingEmp.id === emp.id) {
-       setViewingEmp({ ...viewingEmp, pinNeedsReset: true, pinResetRequested: false, pin: "000000", pinChanged: false });
+       setViewingEmp({ ...viewingEmp, pinNeedsReset: true, pinResetRequested: false, pin: randomPin, pinChanged: false });
     }
     setFeedback({ 
       isOpen: true, 
-      title: "Reseteo Aprobado", 
-      message: `PIN reseteado. El empleado debe establecer su clave en el terminal (PIN: 000000).`, 
+      title: "Reseteo Aplicado", 
+      message: `PIN restablecido exitosamente. El nuevo PIN PROVISIONAL es: ${randomPin}. El empleado deberá cambiarlo obligatoriamente en su próxima marcación.`, 
       type: "success" 
     });
+    setIsResetConfirmModalOpen(false);
   };
 
   const handleAddAbsence = () => {
@@ -211,12 +213,9 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </div>
 
-      {/* Formulario de Registro / Edición */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Editar Expediente" : "Nuevo Registro Maestro"} maxWidth="max-w-4xl">
         <div className="space-y-8 max-h-[75vh] overflow-y-auto pr-2 custom-scroll">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            
-            {/* DATOS PERSONALES */}
             <section className="space-y-4 col-span-1 lg:col-span-2">
               <h4 className="text-[10px] font-black uppercase text-blue-600 border-b pb-1">1. Datos Personales Primarios</h4>
               <div className="flex flex-col sm:flex-row gap-6">
@@ -264,8 +263,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                 </div>
               </div>
             </section>
-
-            {/* CONTACTO */}
             <section className="space-y-4 bg-slate-50 p-4 rounded-2xl border">
               <h4 className="text-[10px] font-black uppercase text-slate-900 border-b pb-1">2. Contacto</h4>
               <div className="space-y-3">
@@ -354,7 +351,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
               )}
             </section>
           </div>
-          
           <div className="pt-6 border-t flex flex-col sm:flex-row gap-3">
             <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl uppercase text-[10px]">Cerrar</button>
             <button onClick={handleSave} className="flex-[2] py-4 bg-blue-700 text-white font-[950] rounded-2xl uppercase text-[11px] tracking-widest shadow-xl active:scale-95 transition-all">Sincronizar Expediente Maestro</button>
@@ -362,92 +358,144 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </Modal>
 
-      {/* Expediente Maestro (Vista Detallada) */}
+      {/* Expediente Maestro (Vista Detallada e Imprimible) */}
       <Modal isOpen={!!viewingEmp} onClose={() => setViewingEmp(null)} title="Expediente Maestro de Personal" maxWidth="max-w-4xl">
         {viewingEmp && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-6 items-center border-b pb-6 text-center sm:text-left bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100">
-               <div className="w-28 h-28 rounded-3xl overflow-hidden border-4 border-white bg-slate-100 flex items-center justify-center shadow-xl shrink-0">
-                  {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <span className="text-5xl">👤</span>}
-               </div>
-               <div className="flex-1 space-y-1">
-                  <h3 className="text-2xl md:text-3xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">{viewingEmp.surname} {viewingEmp.name}</h3>
-                  <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em]">{viewingEmp.role} | CI: {viewingEmp.identification}</p>
-                  <div className="flex flex-wrap gap-2 pt-2 justify-center sm:justify-start">
-                     <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${viewingEmp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{viewingEmp.status === 'active' ? 'Activo' : 'Desvinculado'}</span>
-                     <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-full border">Ingreso: {new Date(viewingEmp.startDate).toLocaleDateString()}</span>
-                     {viewingEmp.pinResetRequested && <span className="px-3 py-1 bg-yellow-400 text-yellow-900 text-[9px] font-black uppercase rounded-full animate-pulse shadow-sm">Reset PIN Pendiente</span>}
-                  </div>
-               </div>
-            </div>
+            <div id="employee-file-print" className="bg-white p-0 print:p-8">
+              {/* Encabezado Institucional exclusivo para Impresión */}
+              <div className="hidden print:flex justify-between items-center border-b-2 border-slate-900 pb-6 mb-8">
+                <div>
+                   <h3 className="text-2xl font-[950] text-slate-900 uppercase italic leading-none">{company?.name || 'ASIST UP - HR ENTERPRISE'}</h3>
+                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">Ficha Maestro de Personal / Expediente Individual</p>
+                </div>
+                <div className="text-right">
+                   <p className="text-[9px] font-black uppercase text-slate-400">RUC: {company?.ruc || '—'}</p>
+                   <p className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Fecha Generación: {new Date().toLocaleDateString()}</p>
+                </div>
+              </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 no-print">
-               <button onClick={() => { setForm(viewingEmp); setEditingEmp(viewingEmp); setIsModalOpen(true); }} className="p-4 bg-blue-50 text-blue-700 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-600 hover:text-white transition-all border border-blue-100 shadow-sm active:scale-95 group">
-                  <span className="text-2xl group-hover:scale-110 transition-transform">📝</span>
-                  <span className="text-[8px] font-black uppercase">Editar Datos</span>
-               </button>
-               <button onClick={() => setIsAbsenceModalOpen(true)} className="p-4 bg-slate-50 text-slate-700 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-900 hover:text-white transition-all border border-slate-100 shadow-sm active:scale-95 group">
-                  <span className="text-2xl group-hover:scale-110 transition-transform">📌</span>
-                  <span className="text-[8px] font-black uppercase">Nueva Novedad</span>
-               </button>
-               {viewingEmp.pinResetRequested && (
-                 <button onClick={() => handleApprovePinReset(viewingEmp)} className="p-4 bg-yellow-50 text-yellow-700 rounded-2xl flex flex-col items-center gap-2 border border-yellow-200 shadow-sm active:scale-95 group animate-pulse">
-                    <span className="text-2xl group-hover:scale-110 transition-transform">🔑</span>
-                    <span className="text-[8px] font-black uppercase">Aprobar PIN</span>
-                 </button>
-               )}
-               {viewingEmp.status === 'active' && (
-                  <button onClick={() => setIsTermModalOpen(true)} className="p-4 bg-red-50 text-red-700 rounded-2xl flex flex-col items-center gap-2 border border-red-100 shadow-sm hover:bg-red-600 hover:text-white transition-all active:scale-95 group">
-                    <span className="text-2xl group-hover:scale-110 transition-transform">🚪</span>
-                    <span className="text-[8px] font-black uppercase">Dar de Baja</span>
-                  </button>
-               )}
-               {role === Role.SUPER_ADMIN && (
-                 <button onClick={() => setIsDeleteConfirmModalOpen(true)} className="p-4 bg-red-700 text-white rounded-2xl flex flex-col items-center gap-2 shadow-lg active:scale-95 group">
-                    <span className="text-2xl group-hover:scale-110 transition-transform">🗑️</span>
-                    <span className="text-[8px] font-black uppercase">Eliminar Def.</span>
-                 </button>
-               )}
-            </div>
+              <div className="flex flex-col sm:flex-row gap-6 items-center border-b pb-6 text-center sm:text-left bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 print:bg-white print:border-none print:p-0">
+                 <div className="w-28 h-28 rounded-3xl overflow-hidden border-4 border-white bg-slate-100 flex items-center justify-center shadow-xl shrink-0 print:shadow-none print:border-2">
+                    {viewingEmp.photo ? <img src={viewingEmp.photo} className="w-full h-full object-cover" /> : <span className="text-5xl">👤</span>}
+                 </div>
+                 <div className="flex-1 space-y-1">
+                    <h3 className="text-2xl md:text-3xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">{viewingEmp.surname} {viewingEmp.name}</h3>
+                    <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.3em]">{viewingEmp.role} | CI: {viewingEmp.identification}</p>
+                    <div className="flex flex-wrap gap-2 pt-2 justify-center sm:justify-start">
+                       <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${viewingEmp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>{viewingEmp.status === 'active' ? 'Activo' : 'Desvinculado'}</span>
+                       <span className="px-3 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase rounded-full border">Ingreso: {new Date(viewingEmp.startDate).toLocaleDateString()}</span>
+                       {viewingEmp.pinResetRequested && <span className="px-3 py-1 bg-yellow-400 text-yellow-900 text-[9px] font-black uppercase rounded-full animate-pulse shadow-sm no-print">Reset PIN Pendiente</span>}
+                    </div>
+                 </div>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-              <div className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1">Perfil Financiero</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-[8px] font-black text-slate-400 uppercase">Sueldo Base</p>
-                    <p className="text-lg font-black text-slate-900">${viewingEmp.salary.toFixed(2)}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 no-print mt-6">
+                 <button onClick={() => { setForm(viewingEmp); setEditingEmp(viewingEmp); setIsModalOpen(true); }} className="p-4 bg-blue-50 text-blue-700 rounded-2xl flex flex-col items-center gap-2 hover:bg-blue-600 hover:text-white transition-all border border-blue-100 shadow-sm active:scale-95 group">
+                    <span className="text-2xl group-hover:scale-110 transition-transform">📝</span>
+                    <span className="text-[8px] font-black uppercase">Editar Datos</span>
+                 </button>
+                 <button onClick={() => setIsAbsenceModalOpen(true)} className="p-4 bg-slate-50 text-slate-700 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-900 hover:text-white transition-all border border-slate-100 shadow-sm active:scale-95 group">
+                    <span className="text-2xl group-hover:scale-110 transition-transform">📌</span>
+                    <span className="text-[8px] font-black uppercase">Nueva Novedad</span>
+                 </button>
+                 <button onClick={() => window.print()} className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl flex flex-col items-center gap-2 hover:bg-emerald-600 hover:text-white transition-all border border-emerald-100 shadow-sm active:scale-95 group">
+                    <span className="text-2xl group-hover:scale-110 transition-transform">🖨️</span>
+                    <span className="text-[8px] font-black uppercase">Imprimir Ficha</span>
+                 </button>
+                 {viewingEmp.status === 'active' && (
+                    <button onClick={() => setIsResetConfirmModalOpen(true)} className="p-4 bg-yellow-50 text-yellow-700 rounded-2xl flex flex-col items-center gap-2 border border-yellow-200 shadow-sm hover:bg-yellow-500 hover:text-white transition-all active:scale-95 group">
+                      <span className="text-2xl group-hover:scale-110 transition-transform">🔑</span>
+                      <span className="text-[8px] font-black uppercase">{viewingEmp.pinResetRequested ? 'Aprobar PIN' : 'Resetear PIN'}</span>
+                    </button>
+                 )}
+                 {viewingEmp.status === 'active' && (
+                    <button onClick={() => setIsTermModalOpen(true)} className="p-4 bg-red-50 text-red-700 rounded-2xl flex flex-col items-center gap-2 border border-red-100 shadow-sm hover:bg-red-600 hover:text-white transition-all active:scale-95 group">
+                      <span className="text-2xl group-hover:scale-110 transition-transform">🚪</span>
+                      <span className="text-[8px] font-black uppercase">Dar de Baja</span>
+                    </button>
+                 )}
+                 {role === Role.SUPER_ADMIN && (
+                   <button onClick={() => setIsDeleteConfirmModalOpen(true)} className="p-4 bg-red-700 text-white rounded-2xl flex flex-col items-center gap-2 shadow-lg active:scale-95 group">
+                      <span className="text-2xl group-hover:scale-110 transition-transform">🗑️</span>
+                      <span className="text-[8px] font-black uppercase">Eliminar Def.</span>
+                   </button>
+                 )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8 print:pt-4">
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1 print:text-slate-900 print:border-slate-900">Datos Personales</h4>
+                  <div className="grid grid-cols-2 gap-3 text-[10px] font-bold uppercase">
+                    <div className="space-y-1">
+                      <p className="text-[8px] text-slate-400">Género / Sangre</p>
+                      <p className="text-slate-900">{viewingEmp.gender} | {viewingEmp.bloodType}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[8px] text-slate-400">Estado Civil</p>
+                      <p className="text-slate-900">{viewingEmp.civilStatus}</p>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <p className="text-[8px] text-slate-400">Contacto Directo</p>
+                      <p className="text-slate-900">{viewingEmp.phone} | {viewingEmp.email}</p>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <p className="text-[8px] text-slate-400">Emergencia</p>
+                      <p className="text-slate-900">{viewingEmp.emergencyContact?.name} ({viewingEmp.emergencyContact?.phone})</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <p className="text-[8px] font-black text-slate-400 uppercase">Seguro IESS</p>
-                    <p className="text-[10px] font-black text-blue-600 uppercase">{viewingEmp.isAffiliated ? 'Afiliado' : 'No Afiliado'}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1 print:text-slate-900 print:border-slate-900">Perfil Laboral y Financiero</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 print:bg-white print:border-slate-200">
+                      <p className="text-[8px] font-black text-slate-400 uppercase">Sueldo Base</p>
+                      <p className="text-lg font-black text-slate-900">${viewingEmp.salary.toFixed(2)}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 print:bg-white print:border-slate-200">
+                      <p className="text-[8px] font-black text-slate-400 uppercase">Seguro IESS</p>
+                      <p className="text-[10px] font-black text-blue-600 uppercase print:text-slate-900">{viewingEmp.isAffiliated ? 'Afiliado' : 'No Afiliado'}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2 print:bg-white print:border-slate-200">
+                      <p className="text-[8px] font-black text-slate-400 uppercase">Información Bancaria</p>
+                      <p className="text-[10px] font-black text-slate-700 uppercase print:text-slate-950">{viewingEmp.bankInfo?.ifi} | {viewingEmp.bankInfo?.type} | {viewingEmp.bankInfo?.account}</p>
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
-                    <p className="text-[8px] font-black text-slate-400 uppercase">Información Bancaria</p>
-                    <p className="text-[10px] font-black text-slate-700 uppercase">{viewingEmp.bankInfo?.ifi} | {viewingEmp.bankInfo?.type} | {viewingEmp.bankInfo?.account}</p>
+                </div>
+
+                <div className="space-y-4 col-span-1 md:col-span-2 mt-4">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1 print:text-slate-900 print:border-slate-900">Historial de Novedades Registradas</h4>
+                  <div className="space-y-2">
+                      {viewingEmp.absences?.length ? [...viewingEmp.absences].reverse().map(abs => (
+                         <div key={abs.id} className="p-3 bg-white rounded-xl border border-slate-100 flex justify-between items-center shadow-sm print:shadow-none print:border-slate-200">
+                            <div>
+                               <p className="text-[9px] font-black text-slate-900 uppercase">{abs.type} — {new Date(abs.date).toLocaleDateString()}</p>
+                               <p className="text-[8px] font-bold text-slate-500 italic">"{abs.reason}"</p>
+                            </div>
+                            {abs.justified && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 print:bg-white print:border-slate-900 print:text-slate-900">VALIDADO</span>}
+                         </div>
+                      )) : <p className="text-center py-6 text-[9px] text-slate-300 font-black uppercase">Sin registros de novedades</p>}
                   </div>
                 </div>
               </div>
-              <div className="space-y-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1">Historial de Novedades (Últimas 5)</h4>
-                <div className="space-y-2 max-h-48 overflow-y-auto custom-scroll pr-2">
-                    {viewingEmp.absences?.length ? [...viewingEmp.absences].reverse().slice(0, 5).map(abs => (
-                       <div key={abs.id} className="p-3 bg-white rounded-xl border border-slate-100 flex justify-between items-center shadow-sm">
-                          <div>
-                             <p className="text-[9px] font-black text-slate-900 uppercase">{abs.type} - {new Date(abs.date).toLocaleDateString()}</p>
-                             <p className="text-[8px] font-bold text-slate-500 italic max-w-[150px] truncate">"{abs.reason}"</p>
-                          </div>
-                          {abs.justified && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">VALIDADO</span>}
-                       </div>
-                    )) : <p className="text-center py-10 text-[9px] text-slate-300 font-black uppercase">Sin registros</p>}
-                </div>
+
+              {/* Sección de Firmas para Impresión */}
+              <div className="hidden print:grid grid-cols-2 gap-20 mt-24 text-center">
+                 <div className="border-t-2 border-slate-900 pt-3">
+                    <p className="text-[9px] font-black uppercase text-slate-900">Firma del Colaborador</p>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Declaro veracidad de la información</p>
+                 </div>
+                 <div className="border-t-2 border-slate-900 pt-3">
+                    <p className="text-[9px] font-black uppercase text-slate-900">Auditoría / RRHH</p>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">Sello Institucional</p>
+                 </div>
               </div>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* MODAL PARA NOVEDADES */}
       <Modal isOpen={isAbsenceModalOpen} onClose={() => setIsAbsenceModalOpen(false)} title="Registrar Novedad" maxWidth="max-w-sm">
          <div className="space-y-4">
             <div className="space-y-1">
@@ -470,7 +518,18 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
          </div>
       </Modal>
 
-      {/* MODAL PARA BAJA */}
+      <Modal isOpen={isResetConfirmModalOpen} onClose={() => setIsResetConfirmModalOpen(false)} title="Seguridad de Acceso" type="warning" maxWidth="max-w-sm">
+        <div className="space-y-6 text-center">
+          <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-3xl mx-auto">🔑</div>
+          <p className="text-xs font-black text-yellow-600 uppercase italic">Confirmar Reseteo de PIN</p>
+          <p className="text-[11px] text-slate-500 font-medium leading-relaxed">¿Confirma que desea restablecer el PIN de este colaborador? Se generará un nuevo PIN provisional aleatorio y el sistema obligará al cambio en la próxima marcación.</p>
+          <div className="flex gap-3">
+            <button onClick={() => setIsResetConfirmModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl uppercase text-[9px]">Cancelar</button>
+            <button onClick={() => viewingEmp && handleApprovePinReset(viewingEmp)} className="flex-1 py-4 bg-yellow-600 text-white font-black rounded-xl uppercase text-[9px] shadow-lg active:scale-95 transition-all">Confirmar Reseteo</button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal isOpen={isTermModalOpen} onClose={() => setIsTermModalOpen(false)} title="Salida de Personal / Desvinculación" maxWidth="max-w-sm">
          <div className="space-y-4">
             <div className="space-y-1">
@@ -493,7 +552,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
          </div>
       </Modal>
 
-      {/* MODAL PARA ELIMINACIÓN PERMANENTE */}
       <Modal isOpen={isDeleteConfirmModalOpen} onClose={() => setIsDeleteConfirmModalOpen(false)} title="ELIMINACIÓN DE REGISTRO MAESTRO" type="error" maxWidth="max-w-sm">
         <div className="space-y-6 text-center">
           <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-3xl mx-auto animate-pulse">🗑️</div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
@@ -126,6 +127,9 @@ const App: React.FC = () => {
       setShowWelcome(true);
       setView('admin');
       setIsAdminLoginModalOpen(false);
+      
+      // Auto-cerrar mensaje de bienvenida después de 1.5 segundos
+      setTimeout(() => setShowWelcome(false), 1500);
     } else {
       showAlert("Error de Acceso", "Credencial no válida o sin privilegios.", "error");
     }
@@ -138,6 +142,16 @@ const App: React.FC = () => {
     setView('selection');
     setShowLogoutFeedback(false);
   };
+
+  // Efecto para auto-finalizar el logout cuando se activa la señal de salida
+  useEffect(() => {
+    if (showLogoutFeedback) {
+      const timer = setTimeout(() => {
+        finalizeLogout();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [showLogoutFeedback]);
 
   const handleUpdateEmployees = async (emps: Employee[]) => {
     const currentIds = new Set<string>(emps.map(e => e.id));
@@ -238,16 +252,18 @@ const App: React.FC = () => {
       )}
 
       <Modal isOpen={showWelcome} onClose={() => setShowWelcome(false)} title="Autorizado" type="success" maxWidth="max-w-[280px]">
-         <div className="text-center space-y-6 p-2">
-            <h2 className="text-xl font-[950] text-slate-900 uppercase tracking-tight leading-none">Bienvenido</h2>
-            <button onClick={() => setShowWelcome(false)} className="w-full py-4 bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Acceder</button>
+         <div className="text-center space-y-4 p-4">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto animate-bounce">✓</div>
+            <h2 className="text-xl font-[950] text-slate-900 uppercase tracking-tight leading-none">Acceso Exitoso</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando panel de control...</p>
          </div>
       </Modal>
 
-      <Modal isOpen={showLogoutFeedback} onClose={finalizeLogout} title="Salida" type="success" maxWidth="max-w-[280px]">
+      <Modal isOpen={showLogoutFeedback} onClose={() => {}} title="Salida" type="success" maxWidth="max-w-[280px]">
          <div className="text-center space-y-6 p-2">
-            <h3 className="text-xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">Sincronizado</h3>
-            <button onClick={finalizeLogout} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest active:scale-95 transition-all">Finalizar</button>
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto animate-pulse">🔒</div>
+            <h3 className="text-xl font-[950] text-slate-900 uppercase tracking-tighter leading-none">Cerrando Sesión</h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando datos finales...</p>
          </div>
       </Modal>
 

@@ -14,7 +14,7 @@ interface ReportsModuleProps {
 }
 
 const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role }) => {
-  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'validation'>('attendance');
+  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'validation' | 'history'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null}>({ isOpen: false, id: null });
@@ -75,6 +75,11 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
           const emp = employees.find(e => e.id === p.employeeId);
           csv += `"${p.voucherCode}","${new Date(p.date).toLocaleDateString()}","${emp?.surname} ${emp?.name}","${emp?.identification}","${p.type}","${p.concept}","${p.method}","${p.amount.toFixed(2)}"\n`;
         });
+    } else if (reportType === 'history') {
+        csv = "\uFEFFColaborador,Identificación,Cargo,F. Ingreso,F. Salida,Motivo,Novedades,Estado\n";
+        historyToDisplay.forEach(emp => {
+          csv += `"${emp.surname} ${emp.name}","${emp.identification}","${emp.role}","${emp.startDate}","${emp.terminationDate || 'N/A'}","${emp.terminationReason || 'N/A'}","${emp.absences?.length || 0}","${emp.status}"\n`;
+        });
     } else {
         csv = "\uFEFFFecha,Hora,Colaborador,Identificación,Cargo,Tipo Marcación,Estado,Atraso,Justificación\n";
         attendanceToDisplay.forEach(rec => {
@@ -102,6 +107,11 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     return searchStr.includes(searchTerm.toLowerCase());
   }).sort((a,b) => b.date.localeCompare(a.date));
 
+  const historyToDisplay = employees.filter(e => {
+    const searchStr = `${e.name} ${e.surname} ${e.identification} ${e.role} ${e.status}`.toLowerCase();
+    return searchStr.includes(searchTerm.toLowerCase());
+  }).sort((a,b) => b.startDate.localeCompare(a.startDate));
+
   return (
     <div className="space-y-6 md:space-y-8 fade-in">
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 md:p-8 rounded-3xl md:rounded-[2rem] shadow-sm border border-slate-100 gap-6 no-print">
@@ -111,6 +121,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
             <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 scroll-smooth no-scrollbar">
               <button onClick={() => {setReportType('attendance'); setSearchTerm('');}} className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${reportType === 'attendance' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Registros de Asistencia</button>
               <button onClick={() => {setReportType('payments'); setSearchTerm('');}} className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${reportType === 'payments' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Reporte de Egresos</button>
+              <button onClick={() => {setReportType('history'); setSearchTerm('');}} className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${reportType === 'history' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Historial Laboral</button>
               <button onClick={() => {setReportType('validation'); setSearchTerm('');}} className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest relative transition-all ${reportType === 'validation' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
                 Validaciones
                 {pendingAttendance.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] rounded-full flex items-center justify-center font-black animate-pulse shadow-md">{pendingAttendance.length}</span>}
@@ -134,7 +145,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
       <div className="bg-white rounded-3xl md:rounded-[2rem] shadow-sm border overflow-hidden min-h-[450px]" id="reports-printable-area">
          <div className="hidden print:block text-center border-b-2 border-slate-900 pb-6 mb-8 px-10 pt-10">
            <h1 className="text-2xl font-[950] text-slate-900 uppercase italic leading-none">{company?.name || 'ASIST UP - HR ENTERPRISE'}</h1>
-           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Reporte de {reportType === 'attendance' ? 'Asistencia Diaria' : reportType === 'payments' ? 'Egresos y Pagos Detallados' : 'Validaciones Pendientes'} - 2026</p>
+           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Reporte de {reportType === 'attendance' ? 'Asistencia Diaria' : reportType === 'payments' ? 'Egresos y Pagos Detallados' : reportType === 'history' ? 'Historial Laboral del Personal' : 'Validaciones Pendientes'} - 2026</p>
            <div className="grid grid-cols-2 gap-4 mt-3 max-w-xl mx-auto text-[9px] font-bold uppercase text-slate-600">
              <p className="text-left border-l-4 border-slate-900 pl-3">RUC: {company?.ruc || '0000000000001'}</p>
              <p className="text-right border-r-4 border-slate-900 pr-3">Representante: {company?.legalRep || 'ADMINISTRACIÓN'}</p>
@@ -216,9 +227,42 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                             })}
                         </tbody>
                     </table>
-                    {paymentsToDisplay.length === 0 && (
-                        <div className="py-12 text-center text-slate-300 font-black uppercase text-[10px]">Sin registros de egresos</div>
-                    )}
+                </div>
+            ) : reportType === 'history' ? (
+                <div className="table-responsive">
+                    <table className="w-full text-left min-w-[950px] print:min-w-0 print:table-auto">
+                        <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400 border-b tracking-widest print:bg-slate-900 print:text-white">
+                            <tr>
+                                <th className="p-4">Colaborador / CI</th>
+                                <th className="p-4">Cargo</th>
+                                <th className="p-4">F. Ingreso</th>
+                                <th className="p-4">F. Salida</th>
+                                <th className="p-4">Motivo Cese</th>
+                                <th className="p-4 text-center">Novedades</th>
+                                <th className="p-4 text-right">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-[9px] md:text-[10px] font-bold uppercase divide-y text-slate-600 print:text-slate-950">
+                            {historyToDisplay.map(emp => (
+                                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="p-4">
+                                        <p className="font-black text-slate-900">{emp.surname} {emp.name}</p>
+                                        <p className="text-[8px] font-bold text-slate-400">{emp.identification}</p>
+                                    </td>
+                                    <td className="p-4">{emp.role}</td>
+                                    <td className="p-4">{new Date(emp.startDate).toLocaleDateString()}</td>
+                                    <td className="p-4">{emp.terminationDate ? new Date(emp.terminationDate).toLocaleDateString() : '—'}</td>
+                                    <td className="p-4 text-[8px] max-w-[150px] truncate">{emp.terminationReason || '—'}</td>
+                                    <td className="p-4 text-center">
+                                       <span className="bg-slate-100 px-2 py-1 rounded-lg border">{emp.absences?.length || 0}</span>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>{emp.status}</span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             ) : (
                <div className="table-responsive">
@@ -278,7 +322,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         </div>
       </div>
 
-      {/* Modal de Edición de Asistencia */}
+      {/* Modales de soporte permanecen iguales */}
       <Modal isOpen={!!editingAttendance} onClose={() => setEditingAttendance(null)} title="Editar Marcación de Asistencia" maxWidth="max-w-md">
         {editingAttendance && (
           <div className="space-y-4">
@@ -331,7 +375,6 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         )}
       </Modal>
 
-      {/* Modal de Advertencia y Confirmación de Edición */}
       <Modal isOpen={showConfirmEdit} onClose={() => setShowConfirmEdit(false)} title="Confirmar Modificación" type="warning" maxWidth="max-w-sm">
         <div className="space-y-6 text-center">
           <p className="text-xs font-black text-yellow-600 uppercase italic">Advertencia de Seguridad</p>
@@ -343,7 +386,6 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         </div>
       </Modal>
 
-      {/* Modal de Confirmación de Borrado */}
       <Modal isOpen={deleteConfirm.isOpen} onClose={() => setDeleteConfirm({ isOpen: false, id: null })} title="Confirmar Eliminación" type="error" maxWidth="max-w-sm">
         <div className="space-y-6 text-center">
           <p className="text-xs font-black text-red-600 uppercase italic">Atención: Acción Irreversible</p>
