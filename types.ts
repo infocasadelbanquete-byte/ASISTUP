@@ -143,6 +143,7 @@ export interface GlobalSettings {
   sbu: number; 
   iessRate: number;
   reserveRate: number;
+  holidays: string[];
   schedule: {
     monFri: { in1: string; out1: string; in2: string; out2: string };
     sat: { in: string; out: string };

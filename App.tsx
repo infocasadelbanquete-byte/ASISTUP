@@ -14,6 +14,11 @@ const App: React.FC = () => {
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   
+  // Estados para recuperación de emergencia
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [recoveryRuc, setRecoveryRuc] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
+
   const unsubscribesRef = useRef<(() => void)[]>([]);
 
   const [appMode, setAppMode] = useState<'full' | 'attendance' | null>(
@@ -30,19 +35,22 @@ const App: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [settings, setSettings] = useState<GlobalSettings>({
+
+  const defaultSettings: GlobalSettings = {
     sbu: 482.00,
     iessRate: 0.0945,
     reserveRate: 0.0833,
+    holidays: [],
     schedule: {
       monFri: { in1: '08:30', out1: '13:00', in2: '15:00', out2: '18:00' },
       sat: { in: '08:30', out: '13:00' },
       halfDayOff: 'Miércoles tarde'
     }
-  });
+  };
+
+  const [settings, setSettings] = useState<GlobalSettings>(defaultSettings);
 
   useEffect(() => {
-    // Si no hay modo configurado, forzar vista de setup
     if (!appMode) {
       setView('setup');
     }
@@ -71,6 +79,7 @@ const App: React.FC = () => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsAdminLoginModalOpen(false);
+        setIsRecoveryMode(false);
         setShowWelcome(false);
         setModalAlert(prev => ({ ...prev, isOpen: false }));
       }
@@ -89,6 +98,31 @@ const App: React.FC = () => {
         setIsLoadingData(false);
       }, () => setIsDbConnected(false));
       unsubscribesRef.current.push(unsubCompany);
+
+      const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
+          // Solución al error in1: Merge profundo con valores por defecto
+          setSettings({
+            ...defaultSettings,
+            ...dbSettings,
+            schedule: {
+              ...defaultSettings.schedule,
+              ...(dbSettings.schedule || {}),
+              monFri: {
+                ...defaultSettings.schedule.monFri,
+                ...(dbSettings.schedule?.monFri || {})
+              },
+              sat: {
+                ...defaultSettings.schedule.sat,
+                ...(dbSettings.schedule?.sat || {})
+              }
+            }
+          });
+        }
+      });
+      unsubscribesRef.current.push(unsubSettings);
 
       const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
         setEmployees(snapshot.docs.map(d => {
@@ -143,6 +177,24 @@ const App: React.FC = () => {
       showAlert("Error de Acceso", "Credencial no válida o sin privilegios.", "error");
     }
     setAdminPassInput('');
+  };
+
+  const handleEmergencyRecovery = () => {
+    // Llave maestra de emergencia hardcoded para recuperación absoluta
+    const MASTER_RECOVERY_KEY = "ASISTUP-MASTER-ACCESS-2026";
+    if (recoveryRuc === company?.ruc && recoveryKey === MASTER_RECOVERY_KEY) {
+      setCurrentUserRole(Role.SUPER_ADMIN);
+      localStorage.setItem('admin_logged_in', 'true');
+      setShowWelcome(true);
+      setView('admin');
+      setIsAdminLoginModalOpen(false);
+      setIsRecoveryMode(false);
+      setRecoveryRuc('');
+      setRecoveryKey('');
+      setTimeout(() => setShowWelcome(false), 1500);
+    } else {
+      showAlert("Fallo de Autenticación", "Los datos de recuperación de emergencia son incorrectos.", "error");
+    }
   };
 
   const finalizeLogout = () => {
@@ -245,20 +297,50 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <Modal isOpen={isAdminLoginModalOpen} onClose={() => setIsAdminLoginModalOpen(false)} title="Autorización" maxWidth="max-w-[280px]">
-            <div className="space-y-6 p-2 text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña o PIN</p>
-              <input 
-                type="password"
-                value={adminPassInput} 
-                onChange={e => setAdminPassInput(e.target.value)} 
-                onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
-                className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none bg-slate-50" 
-                placeholder="••••••" 
-                autoFocus 
-              />
-              <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Ingresar</button>
-            </div>
+          <Modal isOpen={isAdminLoginModalOpen} onClose={() => { setIsAdminLoginModalOpen(false); setIsRecoveryMode(false); }} title={isRecoveryMode ? "Acceso de Emergencia" : "Autorización"} maxWidth="max-w-[320px]">
+            {!isRecoveryMode ? (
+              <div className="space-y-6 p-2 text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña o PIN</p>
+                <input 
+                  type="password"
+                  value={adminPassInput} 
+                  onChange={e => setAdminPassInput(e.target.value)} 
+                  onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
+                  className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none bg-slate-50" 
+                  placeholder="••••••" 
+                  autoFocus 
+                />
+                <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Ingresar</button>
+                <button onClick={() => setIsRecoveryMode(true)} className="text-[9px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest mt-6 flex items-center justify-center gap-2">
+                  <span className="text-sm">🛡️</span> Candado de Recuperación
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-5 p-2 text-center">
+                <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Protocolo de Emergencia</p>
+                <div className="space-y-3">
+                  <input 
+                    type="text" 
+                    placeholder="RUC INSTITUCIONAL" 
+                    className="w-full p-4 border-2 rounded-xl text-[11px] font-black uppercase text-center focus:border-red-600 outline-none"
+                    value={recoveryRuc}
+                    onChange={e => setRecoveryRuc(e.target.value)}
+                  />
+                  <input 
+                    type="password" 
+                    placeholder="LLAVE MAESTRA DE SEGURIDAD" 
+                    className="w-full p-4 border-2 rounded-xl text-[11px] font-black uppercase text-center focus:border-red-600 outline-none"
+                    value={recoveryKey}
+                    onChange={e => setRecoveryKey(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button onClick={handleEmergencyRecovery} className="w-full py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Recuperar Acceso</button>
+                  <button onClick={() => setIsRecoveryMode(false)} className="w-full py-3 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px] tracking-widest">Volver</button>
+                </div>
+                <p className="text-[8px] text-slate-400 font-medium italic mt-2">Este acceso otorga privilegios de Super Administrador para restablecer credenciales perdidas.</p>
+              </div>
+            )}
           </Modal>
         </div>
       )}

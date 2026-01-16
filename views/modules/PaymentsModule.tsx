@@ -15,14 +15,14 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
   const [selectedPayForPrint, setSelectedPayForPrint] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Estados para el formulario de pago
+  // Estados para el formulario de pago inicializados en FEBRERO 2026
   const [payForm, setPayForm] = useState<Partial<Payment>>({
     type: 'Salary',
     amount: 0,
     method: 'Efectivo',
     concept: '',
     date: new Date().toISOString().split('T')[0],
-    month: new Date().toLocaleString('es-EC', {month: 'long'}).toUpperCase(),
+    month: 'FEBRERO',
     year: '2026',
     status: 'paid'
   });
@@ -82,11 +82,11 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
     setIsPayOpen(false);
     setFeedback({ isOpen: true, title: "Pago Registrado", message: `Egreso procesado exitosamente. Código: ${newPay.voucherCode}`, type: "success" });
     
-    // Reset forms
+    // Reset forms manteniendo FEBRERO como mes base
     setPayForm({
       type: 'Salary', amount: 0, method: 'Efectivo', concept: '', 
       date: new Date().toISOString().split('T')[0],
-      month: new Date().toLocaleString('es-EC', {month: 'long'}).toUpperCase(), 
+      month: 'FEBRERO', 
       year: '2026', status: 'paid'
     });
   };

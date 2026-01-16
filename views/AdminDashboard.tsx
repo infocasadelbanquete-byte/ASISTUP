@@ -43,19 +43,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const currentMonth = today.getMonth();
   const currentYear = today.getFullYear();
 
-  const addNotification = (title: string, message: string, type: 'info' | 'alert' | 'critical') => {
-    const contentId = `notif-${title}-${message}`.replace(/\s/g, '-');
-    
-    if (dismissedNotificationIds.has(contentId)) return;
+  const addNotification = (id: string, title: string, message: string, type: 'info' | 'alert' | 'critical') => {
+    if (dismissedNotificationIds.has(id)) return;
 
     setNotifications(prev => {
-      if (prev.some(n => n.id === contentId)) return prev;
-      return [{ id: contentId, title, message, timestamp: new Date().toISOString(), type, isRead: false, isProcessed: false }, ...prev];
+      if (prev.some(n => n.id === id)) return prev;
+      return [{ id, title, message, timestamp: new Date().toISOString(), type, isRead: false, isProcessed: false }, ...prev];
     });
   };
   
   useEffect(() => {
+    // Solo notificar si ya estamos en Febrero 2026 o superior
+    if (currentYear < 2026 || (currentYear === 2026 && currentMonth < 1)) return;
+
     const activeEmployees = employees.filter(e => e.status === 'active');
+    
+    // Alertas de Asistencia
     const markedTodayIds = new Set((attendance || [])
       .filter(a => a.timestamp.includes(todayDateStr))
       .map(a => a.employeeId));
@@ -63,12 +66,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const missingAttendanceCount = activeEmployees.filter(e => !markedTodayIds.has(e.id)).length;
     if (missingAttendanceCount > 0 && activeTab === 'dashboard') {
       addNotification(
-        "Pendiente de Ingreso", 
-        `Hay ${missingAttendanceCount} colaboradores que aún no han registrado su marcación hoy.`, 
+        `missing-attendance-${todayDateStr}`,
+        "Marcaciones Pendientes", 
+        `Hoy faltan ${missingAttendanceCount} registros de ingreso por completar.`, 
         'alert'
       );
     }
-  }, [employees, attendance, todayDateStr, activeTab, dismissedNotificationIds]);
+
+    // Alertas de Cumpleaños del Mes
+    activeEmployees.forEach(emp => {
+      if (emp.birthDate) {
+        const bDate = new Date(emp.birthDate);
+        if (bDate.getMonth() === currentMonth) {
+          addNotification(
+            `birthday-remind-${emp.id}-${currentMonth}`,
+            `Cumpleañero del Mes 🎂🎈`,
+            `${emp.name} ${emp.surname} cumple años el ${bDate.getDate() + 1} de ${new Intl.DateTimeFormat('es-EC', {month: 'long'}).format(bDate)}.`,
+            'info'
+          );
+        }
+      }
+    });
+  }, [employees, attendance, todayDateStr, activeTab, dismissedNotificationIds, currentMonth, currentYear]);
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -98,7 +117,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return days;
   }, [currentMonth, currentYear]);
 
-  const monthHolidays = ECUADOR_HOLIDAYS.filter(h => h.month === currentMonth);
+  // Se unifican feriados nacionales con los feriados configurados en el módulo de ajustes
+  const monthHolidays = useMemo(() => {
+    // Feriados estándar desde constantes
+    const standard = ECUADOR_HOLIDAYS.filter(h => h.month === currentMonth).map(h => ({ day: h.day, name: h.name }));
+    
+    // Feriados personalizados desde GlobalSettings
+    const custom = (settings.holidays || [])
+      .filter(dateStr => {
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      })
+      .map(dateStr => ({
+        day: new Date(dateStr + 'T00:00:00').getDate(),
+        name: "Feriado Institucional"
+      }));
+      
+    return [...standard, ...custom].sort((a, b) => a.day - b.day);
+  }, [currentMonth, currentYear, settings.holidays]);
+
   const monthBirthdays = employees.filter(e => {
     if (!e.birthDate || e.status !== 'active') return false;
     return new Date(e.birthDate).getMonth() === currentMonth;
@@ -151,7 +188,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Grid de Fichas Proporcionales */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* Ficha 1: Calendario (Menos intrusivo) */}
+                {/* Ficha 1: Calendario (Integrando feriados personalizados) */}
                 <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col min-h-[360px]">
                    <div className="flex justify-between items-center mb-6">
                       <div>
@@ -169,7 +206,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       ))}
                       {calendarDays.map((day, i) => {
                         const isHoliday = day && monthHolidays.some(h => h.day === day);
-                        const isBirthday = day && monthBirthdays.some(e => new Date(e.birthDate).getDate() === day);
+                        const isBirthday = day && monthBirthdays.some(e => new Date(e.birthDate).getDate() + 1 === day);
                         const isToday = day === today.getDate();
                         
                         return (
@@ -188,7 +225,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    </div>
                 </div>
 
-                {/* Ficha 2: Agenda de Novedades */}
+                {/* Ficha 2: Agenda de Novedades (Incluye feriados de ajustes) */}
                 <div className="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 flex flex-col min-h-[360px]">
                    <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-3 mb-4">Agenda Próxima</h3>
                    <div className="space-y-2 overflow-y-auto custom-scroll flex-1 pr-1">
@@ -208,7 +245,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                             <div>
                                <p className="text-[9px] font-black text-slate-900 uppercase leading-none">{e.surname} {e.name}</p>
-                               <p className="text-[6px] font-black text-emerald-500 uppercase mt-1">Natalicio • Día {new Date(e.birthDate).getDate()}</p>
+                               <p className="text-[6px] font-black text-emerald-500 uppercase mt-1">Natalicio • Día {new Date(e.birthDate).getDate() + 1}</p>
                             </div>
                          </div>
                       ))}
@@ -263,8 +300,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'notifications' && (
             <NotificationsModule 
               notifications={notifications} 
-              onToggleRead={handleDismissNotification}
-              onToggleProcessed={handleDismissNotification}
+              onToggleRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: !n.isRead} : n))}
+              onToggleProcessed={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isProcessed: !n.isProcessed} : n))}
               onClearAll={() => {
                 const allIds = notifications.map(n => n.id);
                 setDismissedNotificationIds(prev => new Set([...prev, ...allIds]));

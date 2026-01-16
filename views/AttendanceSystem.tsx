@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
@@ -24,9 +25,25 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   const [newPin, setNewPin] = useState('');
   const [forgotCi, setForgotCi] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isBirthdaySuccess, setIsBirthdaySuccess] = useState(false);
   const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'success'
   });
+
+  const today = useMemo(() => new Date(), []);
+  const currentMonth = today.getMonth();
+  const currentDay = today.getDate();
+
+  const monthBirthdays = useMemo(() => {
+    return employees.filter(e => {
+      if (!e.birthDate || e.status !== 'active') return false;
+      return new Date(e.birthDate).getMonth() === currentMonth;
+    }).sort((a, b) => {
+      const dayA = new Date(a.birthDate).getDate();
+      const dayB = new Date(b.birthDate).getDate();
+      return dayA - dayB;
+    });
+  }, [employees, currentMonth]);
 
   const isWithinRange = (now: Date, startStr: string, endStr: string) => {
     const [sh, sm] = startStr.split(':').map(Number);
@@ -95,10 +112,22 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    if (type === 'in') setSuccessMsg("INGRESO REGISTRADO");
-    else if (type === 'out') setSuccessMsg("SALIDA REGISTRADA");
-    else setSuccessMsg("MEDIA JORNADA REGISTRADA");
+    // Detección de cumpleaños hoy
+    let msg = "";
+    const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
+    const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
     
+    if (isTodayBirthday) {
+       msg = "¡FELIZ CUMPLEAÑOS! 🎂🎈";
+       setIsBirthdaySuccess(true);
+    } else {
+       if (type === 'in') msg = "INGRESO REGISTRADO";
+       else if (type === 'out') msg = "SALIDA REGISTRADA";
+       else msg = "MEDIA JORNADA REGISTRADA";
+       setIsBirthdaySuccess(false);
+    }
+
+    setSuccessMsg(msg);
     setStatus('success');
     setPin('');
     setJustificationText('');
@@ -108,7 +137,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       setStatus('idle');
       setCurrentEmp(null);
       setIsProcessing(false);
-    }, 3000);
+      setIsBirthdaySuccess(false);
+    }, isTodayBirthday ? 5000 : 3000);
   };
 
   const handleConfirmJustification = () => {
@@ -205,19 +235,40 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
       {status === 'success' && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center fade-in p-6">
-           <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center text-center animate-in zoom-in max-w-sm">
-              <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center text-3xl mb-4 shadow-lg animate-bounce">✓</div>
-              <h2 className="text-slate-900 font-[950] text-xl uppercase tracking-tighter leading-none">{successMsg}</h2>
+           <div className={`p-10 rounded-[2.5rem] shadow-2xl flex flex-col items-center text-center animate-in zoom-in max-w-sm ${isBirthdaySuccess ? 'bg-gradient-to-br from-yellow-100 to-white' : 'bg-white'}`}>
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-4 shadow-lg animate-bounce ${isBirthdaySuccess ? 'bg-yellow-400 text-white' : 'bg-emerald-500 text-white'}`}>
+                {isBirthdaySuccess ? '🎂' : '✓'}
+              </div>
+              <h2 className={`font-[950] text-xl uppercase tracking-tighter leading-none ${isBirthdaySuccess ? 'text-yellow-600 animate-pulse' : 'text-slate-900'}`}>{successMsg}</h2>
+              {isBirthdaySuccess && <p className="text-xl mt-2 animate-bounce">🎈🎊🎁</p>}
               <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-2 italic">Sincronizado con RRHH</p>
            </div>
         </div>
       )}
 
       <div className={`w-full max-w-lg bg-white/95 backdrop-blur-3xl rounded-3xl md:rounded-[3.5rem] shadow-2xl p-6 md:p-12 flex flex-col items-center relative overflow-hidden ${status === 'success' ? 'opacity-0' : 'fade-in'}`}>
-        <div className="mb-6 md:mb-8 transform scale-[0.6] sm:scale-[0.8]"><Clock /></div>
+        <div className="mb-4 md:mb-6 transform scale-[0.6] sm:scale-[0.8]"><Clock /></div>
 
         {status === 'idle' && (
           <div className="w-full text-center">
+            {/* Recordatorio de Cumpleañeros del Mes */}
+            {monthBirthdays.length > 0 && (
+              <div className="mb-6 p-4 bg-yellow-50/50 border border-yellow-100 rounded-2xl animate-in slide-in-from-top-4 duration-1000">
+                <p className="text-[8px] font-black text-yellow-600 uppercase tracking-widest mb-2 flex items-center justify-center gap-2">
+                  <span>🎂</span> Celebramos a nuestros cumpleañeros <span>🎈</span>
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {monthBirthdays.slice(0, 3).map(e => (
+                    <div key={e.id} className="bg-white px-3 py-1 rounded-full shadow-sm border border-yellow-100 flex items-center gap-2">
+                      <span className="text-[9px] font-black text-slate-700 uppercase">{e.name} {e.surname}</span>
+                      <span className="text-[7px] font-bold text-yellow-600 bg-yellow-50 px-1.5 rounded-full">{new Date(e.birthDate).getDate() + 1}/{currentMonth + 1}</span>
+                    </div>
+                  ))}
+                  {monthBirthdays.length > 3 && <span className="text-[8px] font-black text-slate-400 flex items-center">+{monthBirthdays.length - 3}</span>}
+                </div>
+              </div>
+            )}
+
             <h2 className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 md:mb-6">Ingresar PIN de 6 dígitos</h2>
             <div className="flex gap-1.5 md:gap-2 justify-center mb-8 md:mb-10">
               {[...Array(6)].map((_, i) => (

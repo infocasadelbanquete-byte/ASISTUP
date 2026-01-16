@@ -13,8 +13,21 @@ interface SettingsModuleProps {
 }
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role, onPurge, allData }) => {
-  const [local, setLocal] = useState<GlobalSettings>({ ...settings });
+  // Aseguramos que todas las propiedades existan al inicializar el estado local para evitar errores 'undefined'
+  const [local, setLocal] = useState<GlobalSettings>({ 
+    ...settings, 
+    holidays: settings.holidays || [],
+    schedule: {
+      ...(settings.schedule || {
+        monFri: { in1: '08:30', out1: '13:00', in2: '15:00', out2: '18:00' },
+        sat: { in: '08:30', out: '13:00' },
+        halfDayOff: 'Miércoles tarde'
+      })
+    }
+  });
+
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [newHolidayDate, setNewHolidayDate] = useState('');
   const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
@@ -41,13 +54,28 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
     window.location.reload();
   };
 
+  const handleAddHoliday = () => {
+    if (!newHolidayDate) return;
+    if (local.holidays.includes(newHolidayDate)) {
+      setFeedback({ isOpen: true, title: "Fecha Duplicada", message: "Este día ya está marcado como feriado.", type: "error" });
+      return;
+    }
+    const updatedHolidays = [...local.holidays, newHolidayDate].sort();
+    setLocal({ ...local, holidays: updatedHolidays });
+    setNewHolidayDate('');
+  };
+
+  const handleRemoveHoliday = (date: string) => {
+    setLocal({ ...local, holidays: local.holidays.filter(d => d !== date) });
+  };
+
   const handleSave = () => {
     if (role !== Role.SUPER_ADMIN) {
         setFeedback({ isOpen: true, title: "Acceso Denegado", message: "Solo el Super Administrador puede modificar los parámetros maestros.", type: "error" });
         return;
     }
     onUpdate(local);
-    setFeedback({ isOpen: true, title: "Sincronizado", message: "Parámetros globales actualizados correctamente.", type: "success" });
+    setFeedback({ isOpen: true, title: "Sincronizado", message: "Parámetros globales y calendario de feriados actualizados correctamente.", type: "success" });
   };
 
   return (
@@ -57,6 +85,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
           <h2 className="text-3xl font-[900] text-slate-900 tracking-tighter uppercase italic">Configuración Maestra 2026</h2>
         </header>
 
+        {/* PARÁMETROS FINANCIEROS */}
         <section className="grid grid-cols-2 gap-10">
            <div className="space-y-4">
               <label className="text-[11px] font-black text-blue-700 uppercase tracking-widest">Sueldo Básico Unificado (SBU)</label>
@@ -68,6 +97,41 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
            </div>
         </section>
 
+        {/* GESTIÓN DE FERIADOS (NUEVA SECCIÓN) */}
+        <section className="p-10 bg-emerald-50/50 rounded-[3rem] border border-emerald-100 space-y-8">
+           <div className="flex justify-between items-center border-b border-emerald-200 pb-4">
+              <h3 className="text-[11px] font-black text-emerald-900 uppercase tracking-widest">Calendario de Feriados Institucionales</h3>
+              <span className="px-3 py-1 bg-emerald-600 text-white rounded-full text-[8px] font-black uppercase shadow-sm">Recargo 100%</span>
+           </div>
+           <div className="flex gap-4">
+              <input 
+                type="date" 
+                className="flex-1 p-4 border-2 rounded-2xl text-xs font-black focus:border-emerald-500 outline-none uppercase" 
+                value={newHolidayDate}
+                onChange={e => setNewHolidayDate(e.target.value)}
+              />
+              <button 
+                onClick={handleAddHoliday}
+                className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 shadow-md"
+              >
+                Agregar Feriado
+              </button>
+           </div>
+           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {local.holidays.map(date => (
+                <div key={date} className="bg-white border border-emerald-100 p-3 rounded-xl flex justify-between items-center group shadow-sm">
+                   <span className="text-[10px] font-black text-slate-700">{new Date(date + 'T00:00:00').toLocaleDateString('es-EC', { day: '2-digit', month: 'short' }).toUpperCase()}</span>
+                   <button onClick={() => handleRemoveHoliday(date)} className="text-red-400 hover:text-red-600 font-black text-xs transition-colors">✕</button>
+                </div>
+              ))}
+              {local.holidays.length === 0 && (
+                <p className="col-span-4 text-center text-[9px] text-slate-400 font-black uppercase italic py-4">No se han registrado feriados especiales.</p>
+              )}
+           </div>
+           <p className="text-[8px] font-black text-emerald-600 uppercase leading-relaxed text-center italic">Nota: Las horas trabajadas en estas fechas se liquidarán con el 100% de recargo en nómina.</p>
+        </section>
+
+        {/* HORARIOS LABORALES */}
         <section className="p-10 bg-slate-50 rounded-[3rem] border border-slate-200 space-y-8">
            <div className="flex justify-between items-center border-b pb-4">
               <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Jornada Laboral y Horarios de Marcación</h3>

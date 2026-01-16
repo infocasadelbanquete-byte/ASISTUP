@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Employee, Payment, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
@@ -15,21 +14,21 @@ interface PayrollModuleProps {
 }
 
 const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUpdatePayments, onUpdateEmployees, attendance = [], company, settings, role }) => {
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toLocaleString('es-EC', {month: 'long'}).toUpperCase());
+  // El sistema inicia estrictamente en Febrero 2026
+  const [selectedMonth, setSelectedMonth] = useState('FEBRERO');
   const [individualPayroll, setIndividualPayroll] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
   const [showConfirmPayrollEdit, setShowConfirmPayrollEdit] = useState(false);
 
-  // States para ajustes manuales detallados en el rol de todos los rubros
   const [adjustments, setAdjustments] = useState({
     extraHours: 0,
     bonuses: 0,
     vacation: 0,
     incomeConcept: '',
     loans: 0,
-    backPay: 0, // Multas/Descuentos
+    backPay: 0,
     expenseConcept: '',
     thirteenth: 0,
     fourteenth: 0,
@@ -41,7 +40,15 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     'JULIO': 6, 'AGOSTO': 7, 'SEPTIEMBRE': 8, 'OCTUBRE': 9, 'NOVIEMBRE': 10, 'DICIEMBRE': 11
   };
 
+  const isJanuary2026 = selectedMonth === 'ENERO';
+
   const calculatePayrollData = (emp: Employee, index: number) => {
+    if (isJanuary2026) return {
+      baseSalary: 0, holidaySurcharge: 0, reserveFund: 0, bonuses: 0, extraHours: 0, vacation: 0,
+      monthly13th: 0, monthly14th: 0, totalOverSalaries: 0, iessContribution: 0, loans: 0, backPay: 0,
+      totalIncomes: 0, totalExpenses: 0, netToReceive: 0, workedDays: 0, expectedDays: 0
+    };
+
     const monthIndex = monthMap[selectedMonth] ?? 0;
     const year = 2026;
 
@@ -61,18 +68,30 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
              a.status === 'confirmed';
     });
 
-    const attendanceByDate: { [key: string]: { ins: number, half: number } } = {};
+    const attendanceByDate: { [key: string]: { ins: number, half: number, isHoliday: boolean } } = {};
     empAttendance.forEach(a => {
       const dateStr = a.timestamp.split('T')[0];
-      if (!attendanceByDate[dateStr]) attendanceByDate[dateStr] = { ins: 0, half: 0 };
+      if (!attendanceByDate[dateStr]) {
+        attendanceByDate[dateStr] = { 
+          ins: 0, 
+          half: 0, 
+          isHoliday: (settings.holidays || []).includes(dateStr)
+        };
+      }
       if (a.type === 'in') attendanceByDate[dateStr].ins++;
       if (a.type === 'half_day') attendanceByDate[dateStr].half++;
     });
 
     let workedDays = 0;
-    Object.values(attendanceByDate).forEach(day => {
-      if (day.ins >= 2) workedDays += 1.0;
-      else if (day.ins === 1 || day.half > 0) workedDays += 0.5;
+    let holidayDaysWorked = 0;
+
+    Object.entries(attendanceByDate).forEach(([dateStr, day]) => {
+      let dayVal = 0;
+      if (day.ins >= 2) dayVal = 1.0;
+      else if (day.ins === 1 || day.half > 0) dayVal = 0.5;
+      
+      workedDays += dayVal;
+      if (day.isHoliday) holidayDaysWorked += dayVal;
     });
 
     const justifiedAbsences = (emp.absences || []).filter(a => {
@@ -85,14 +104,15 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const attendanceProportion = expectedDays > 0 ? workedDays / expectedDays : 0;
     const earnedBase = emp.salary * attendanceProportion;
 
+    // Cálculo de Recargo Feriado (100% de recargo por cada hora trabajada)
+    const holidaySurcharge = (emp.salary / 30) * holidayDaysWorked;
+
     const monthlyPayments = payments.filter(p => p.employeeId === emp.id && p.month === selectedMonth && p.status === 'paid');
     
-    // Rubros de Ingresos
     const bonuses = monthlyPayments.filter(p => p.type === 'Bonus').reduce((sum, p) => sum + p.amount, 0);
     const extraHours = monthlyPayments.filter(p => p.type === 'ExtraHours').reduce((sum, p) => sum + p.amount, 0);
     const vacation = monthlyPayments.filter(p => p.type === 'Vacation').reduce((sum, p) => sum + p.amount, 0);
     
-    // Beneficios Sociales (Cálculo base + ajustes manuales guardados como pagos)
     const adj13 = monthlyPayments.filter(p => p.type === 'Thirteenth').reduce((sum, p) => sum + p.amount, 0);
     const adj14 = monthlyPayments.filter(p => p.type === 'Fourteenth').reduce((sum, p) => sum + p.amount, 0);
     const adjRes = monthlyPayments.filter(p => p.type === 'Salary' && p.concept.includes('RESERVA')).reduce((sum, p) => sum + p.amount, 0);
@@ -100,16 +120,15 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const isMonthly = emp.overSalaryType === 'monthly';
     const isAffiliated = emp.isAffiliated;
     
-    const taxableIncome = earnedBase + extraHours + bonuses;
+    const taxableIncome = earnedBase + extraHours + bonuses + holidaySurcharge;
 
     const monthly13th = ((isAffiliated && isMonthly) ? (taxableIncome) / 12 : 0) + adj13;
     const monthly14th = ((isAffiliated && isMonthly) ? (settings.sbu / 12) * attendanceProportion : 0) + adj14;
     const reserveFund = ((isAffiliated && isMonthly) ? (taxableIncome * settings.reserveRate) : 0) + adjRes;
     
     const totalOverSalaries = monthly13th + monthly14th + reserveFund;
-    const totalIncomes = earnedBase + totalOverSalaries + bonuses + extraHours + vacation;
+    const totalIncomes = earnedBase + totalOverSalaries + bonuses + extraHours + vacation + holidaySurcharge;
 
-    // Deducciones
     const iessContribution = isAffiliated ? (taxableIncome * settings.iessRate) : 0;
     const loans = monthlyPayments.filter(p => p.type === 'Loan' || p.type === 'Emergency').reduce((sum, p) => sum + p.amount, 0);
     const backPay = monthlyPayments.filter(p => p.type === 'BackPay').reduce((sum, p) => sum + p.amount, 0);
@@ -119,6 +138,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
 
     return { 
       baseSalary: earnedBase,
+      holidaySurcharge,
       reserveFund, bonuses, extraHours, vacation,
       monthly13th, monthly14th, totalOverSalaries,
       iessContribution, loans, backPay,
@@ -131,11 +151,9 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
   const handleUpdatePayrollValues = () => {
     if (!editingEmployee || !onUpdateEmployees) return;
     
-    // Actualizar datos base del empleado (Sueldo, Afiliación, etc.)
     const updatedEmployees = employees.map(e => e.id === editingEmployee.id ? editingEmployee : e);
     onUpdateEmployees(updatedEmployees);
 
-    // Generar registros de pagos de ajuste para este mes
     if (onUpdatePayments) {
       const newPayments: Payment[] = [];
       const commonData = {
@@ -189,59 +207,68 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
         </div>
       </div>
 
-      <div className="bg-white p-4 md:p-8 rounded-3xl md:rounded-[2.5rem] shadow-sm border overflow-hidden">
-        <div className="table-responsive overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1200px] print:min-w-0 print:table-auto">
-            <thead className="bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest">
-              <tr>
-                <th className="p-3">Empleado / CI</th>
-                <th className="p-3 text-center">Días</th>
-                <th className="p-3 text-center">Sueldo Ganado</th>
-                <th className="p-3 text-center">Extras/Bonos</th>
-                <th className="p-3 text-center">13ero Mens.</th>
-                <th className="p-3 text-center">14to Mens.</th>
-                <th className="p-3 text-center">Reserva</th>
-                <th className="p-3 text-center">Tot. Ingresos</th>
-                <th className="p-3 text-center">IESS 9.45%</th>
-                <th className="p-3 text-center">Prést/Ant/Multas</th>
-                <th className="p-3 text-center">Tot. Egresos</th>
-                <th className="p-3 text-center bg-blue-800 text-white font-black">Neto Recibir</th>
-                <th className="p-3 text-center no-print">Acción</th>
-              </tr>
-            </thead>
-            <tbody className="text-[8px] md:text-[9px] uppercase font-bold text-slate-700 divide-y">
-              {filteredEmployees.filter(e => e.status === 'active').map((emp, idx) => {
-                const d = calculatePayrollData(emp, idx);
-                return (
-                  <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 whitespace-nowrap">
-                       <p className="font-black text-slate-900">{emp.surname} {emp.name}</p>
-                       <p className="text-[7px] text-slate-400">{emp.identification}</p>
-                    </td>
-                    <td className="p-3 text-center font-black text-blue-600">{d.workedDays}</td>
-                    <td className="p-3 text-center">${d.baseSalary.toFixed(2)}</td>
-                    <td className="p-3 text-center text-blue-600">${(d.extraHours+d.bonuses+d.vacation).toFixed(2)}</td>
-                    <td className="p-3 text-center text-emerald-600">${d.monthly13th.toFixed(2)}</td>
-                    <td className="p-3 text-center text-emerald-600">${d.monthly14th.toFixed(2)}</td>
-                    <td className="p-3 text-center text-emerald-600">${d.reserveFund.toFixed(2)}</td>
-                    <td className="p-3 text-center font-black bg-emerald-50/20">${d.totalIncomes.toFixed(2)}</td>
-                    <td className="p-3 text-center text-red-500">${d.iessContribution.toFixed(2)}</td>
-                    <td className="p-3 text-center text-red-500">${(d.loans + d.backPay).toFixed(2)}</td>
-                    <td className="p-3 text-center font-black text-red-700 bg-red-50/20">${d.totalExpenses.toFixed(2)}</td>
-                    <td className="p-3 text-center font-[950] text-blue-700 bg-blue-50/30">${d.netToReceive.toFixed(2)}</td>
-                    <td className="p-3 text-center no-print space-x-1">
-                       <button onClick={() => { setEditingEmployee(emp); setAdjustments({ extraHours: 0, bonuses: 0, vacation: 0, incomeConcept: '', loans: 0, backPay: 0, expenseConcept: '', thirteenth: 0, fourteenth: 0, reserve: 0 }); }} className="px-2 py-1 bg-slate-900 text-white rounded-lg text-[7px] font-black uppercase active:scale-95 shadow-sm">Modificar</button>
-                       <button onClick={() => setIndividualPayroll(emp)} className="px-2 py-1 bg-blue-700 text-white rounded-lg text-[7px] font-black uppercase active:scale-95 shadow-md">Detalle</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {isJanuary2026 ? (
+        <div className="bg-white p-20 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
+          <span className="text-5xl opacity-30">⏳</span>
+          <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter mt-6">Periodo No Habilitado</h3>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-2 leading-relaxed">El sistema ASIST UP iniciará sus operaciones <br/>estrictamente el 01 de Febrero del 2026.</p>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white p-4 md:p-8 rounded-3xl md:rounded-[2.5rem] shadow-sm border overflow-hidden">
+          <div className="table-responsive overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1350px] print:min-w-0 print:table-auto">
+              <thead className="bg-slate-900 text-white text-[7px] font-black uppercase tracking-widest">
+                <tr>
+                  <th className="p-3">Empleado / CI</th>
+                  <th className="p-3 text-center">Días</th>
+                  <th className="p-3 text-center">Sueldo Ganado</th>
+                  <th className="p-3 text-center">Extras/Bonos</th>
+                  <th className="p-3 text-center bg-red-800">Rec. Feriado</th>
+                  <th className="p-3 text-center">13ero Mens.</th>
+                  <th className="p-3 text-center">14to Mens.</th>
+                  <th className="p-3 text-center">Reserva</th>
+                  <th className="p-3 text-center">Tot. Ingresos</th>
+                  <th className="p-3 text-center">IESS 9.45%</th>
+                  <th className="p-3 text-center">Prést/Ant/Multas</th>
+                  <th className="p-3 text-center">Tot. Egresos</th>
+                  <th className="p-3 text-center bg-blue-800 text-white font-black">Neto Recibir</th>
+                  <th className="p-3 text-center no-print">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="text-[8px] md:text-[9px] uppercase font-bold text-slate-700 divide-y">
+                {filteredEmployees.filter(e => e.status === 'active').map((emp, idx) => {
+                  const d = calculatePayrollData(emp, idx);
+                  return (
+                    <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 whitespace-nowrap">
+                         <p className="font-black text-slate-900">{emp.surname} {emp.name}</p>
+                         <p className="text-[7px] text-slate-400">{emp.identification}</p>
+                      </td>
+                      <td className="p-3 text-center font-black text-blue-600">{d.workedDays}</td>
+                      <td className="p-3 text-center">${d.baseSalary.toFixed(2)}</td>
+                      <td className="p-3 text-center text-blue-600">${(d.extraHours+d.bonuses+d.vacation).toFixed(2)}</td>
+                      <td className="p-3 text-center font-black text-red-600 bg-red-50/10">${d.holidaySurcharge.toFixed(2)}</td>
+                      <td className="p-3 text-center text-emerald-600">${d.monthly13th.toFixed(2)}</td>
+                      <td className="p-3 text-center text-emerald-600">${d.monthly14th.toFixed(2)}</td>
+                      <td className="p-3 text-center text-emerald-600">${d.reserveFund.toFixed(2)}</td>
+                      <td className="p-3 text-center font-black bg-emerald-50/20">${d.totalIncomes.toFixed(2)}</td>
+                      <td className="p-3 text-center text-red-500">${d.iessContribution.toFixed(2)}</td>
+                      <td className="p-3 text-center text-red-500">${(d.loans + d.backPay).toFixed(2)}</td>
+                      <td className="p-3 text-center font-black text-red-700 bg-red-50/20">${d.totalExpenses.toFixed(2)}</td>
+                      <td className="p-3 text-center font-[950] text-blue-700 bg-blue-50/30">${d.netToReceive.toFixed(2)}</td>
+                      <td className="p-3 text-center no-print space-x-1">
+                         <button onClick={() => { setEditingEmployee(emp); setAdjustments({ extraHours: 0, bonuses: 0, vacation: 0, incomeConcept: '', loans: 0, backPay: 0, expenseConcept: '', thirteenth: 0, fourteenth: 0, reserve: 0 }); }} className="px-2 py-1 bg-slate-900 text-white rounded-lg text-[7px] font-black uppercase active:scale-95 shadow-sm">Modificar</button>
+                         <button onClick={() => setIndividualPayroll(emp)} className="px-2 py-1 bg-blue-700 text-white rounded-lg text-[7px] font-black uppercase active:scale-95 shadow-md">Detalle</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-      {/* Modal para Modificar TODOS los Detalles del Rol */}
       <Modal isOpen={!!editingEmployee} onClose={() => setEditingEmployee(null)} title="Edición Integral de Nómina Mensual">
         {editingEmployee && (
           <div className="space-y-6">
@@ -279,9 +306,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
                      <div><label className="text-[8px] font-black text-slate-400 uppercase">Préstamos / Anticipos</label><input type="number" step="0.01" className="w-full border p-2 rounded-lg text-xs font-bold" value={adjustments.loans} onChange={e => setAdjustments({...adjustments, loans: Number(e.target.value)})} /></div>
                      <div><label className="text-[8px] font-black text-slate-400 uppercase">Multas / Descuentos / Concepto</label><div className="flex gap-2"><input type="number" step="0.01" className="w-24 border p-2 rounded-lg text-xs font-bold" value={adjustments.backPay} onChange={e => setAdjustments({...adjustments, backPay: Number(e.target.value)})} /><input type="text" placeholder="Concepto..." className="flex-1 border p-2 rounded-lg text-[9px] uppercase font-bold" value={adjustments.expenseConcept} onChange={e => setAdjustments({...adjustments, expenseConcept: e.target.value})} /></div></div>
                   </div>
-                  <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-                     <p className="text-[8px] font-black text-red-700 uppercase leading-relaxed">Nota: Los descuentos se ingresan como valores positivos y el sistema los restará automáticamente del total.</p>
-                  </div>
                </div>
             </div>
 
@@ -292,7 +316,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
         )}
       </Modal>
 
-      {/* Modal de Advertencia de Modificación Crítica */}
       <Modal isOpen={showConfirmPayrollEdit} onClose={() => setShowConfirmPayrollEdit(false)} title="Confirmar Alteración de Nómina" type="warning" maxWidth="max-w-sm">
         <div className="space-y-6 text-center">
           <div className="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-3xl mx-auto animate-pulse">⚠️</div>
@@ -305,7 +328,6 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
         </div>
       </Modal>
 
-      {/* Modal de Rol Individual */}
       <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol de Pagos Individual">
         {individualPayroll && (() => {
            const d = calculatePayrollData(individualPayroll, 0);
@@ -326,6 +348,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
                      <div className="space-y-1.5 text-[11px]">
                         <div className="flex justify-between"><span>Sueldo Ganado ({d.workedDays} días)</span><span>${d.baseSalary.toFixed(2)}</span></div>
                         <div className="flex justify-between text-blue-600"><span>Horas Extras / Bonos / Vac.</span><span>${(d.extraHours+d.bonuses+d.vacation).toFixed(2)}</span></div>
+                        <div className="flex justify-between text-red-600 font-black"><span>Recargo Feriado (100%)</span><span>${d.holidaySurcharge.toFixed(2)}</span></div>
                         <div className="flex justify-between text-emerald-600"><span>Décimo Tercero Mensual</span><span>${d.monthly13th.toFixed(2)}</span></div>
                         <div className="flex justify-between text-emerald-600"><span>Décimo Cuarto Mensual</span><span>${d.monthly14th.toFixed(2)}</span></div>
                         <div className="flex justify-between text-emerald-600"><span>Fondos de Reserva</span><span>${d.reserveFund.toFixed(2)}</span></div>
