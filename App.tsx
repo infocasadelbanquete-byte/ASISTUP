@@ -299,7 +299,16 @@ const App: React.FC = () => {
 
           <Modal isOpen={isAdminLoginModalOpen} onClose={() => { setIsAdminLoginModalOpen(false); setIsRecoveryMode(false); }} title={isRecoveryMode ? "Acceso de Emergencia" : "Autorización"} maxWidth="max-w-[320px]">
             {!isRecoveryMode ? (
-              <div className="space-y-6 p-2 text-center">
+              <div className="space-y-6 p-2 text-center relative">
+                {/* Candado de recuperación oculto en la esquina superior derecha */}
+                <button 
+                  onClick={() => setIsRecoveryMode(true)} 
+                  className="absolute -top-4 -right-4 w-10 h-10 flex items-center justify-center text-slate-50 hover:text-red-200 transition-colors opacity-10 hover:opacity-100 z-10"
+                  aria-label="Acceso Crítico"
+                >
+                  <span className="text-[10px]">🛡️</span>
+                </button>
+
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña o PIN</p>
                 <input 
                   type="password"
@@ -311,9 +320,6 @@ const App: React.FC = () => {
                   autoFocus 
                 />
                 <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Ingresar</button>
-                <button onClick={() => setIsRecoveryMode(true)} className="text-[9px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest mt-6 flex items-center justify-center gap-2">
-                  <span className="text-sm">🛡️</span> Candado de Recuperación
-                </button>
               </div>
             ) : (
               <div className="space-y-5 p-2 text-center">
