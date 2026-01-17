@@ -18,7 +18,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   const [searchTerm, setSearchTerm] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   
-  // Gestión de Novedades y Desvinculación
   const [selectedEmpAction, setSelectedEmpAction] = useState<Employee | null>(null);
   const [isNovedadModalOpen, setIsNovedadModalOpen] = useState(false);
   const [isDesvinculacionModalOpen, setIsDesvinculacionModalOpen] = useState(false);
@@ -55,7 +54,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        setFeedback({ isOpen: true, title: "Archivo Grande", message: "La fotografía no debe exceder los 2MB.", type: "error" });
+        setFeedback({ isOpen: true, title: "Error", message: "La imagen no debe superar los 2MB.", type: "error" });
         return;
       }
       const reader = new FileReader();
@@ -67,30 +66,26 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   };
 
   const handleSave = () => {
-    // Validación estricta de campos obligatorios solicitados
+    // Validación estricta y obligatoria de campos
     if (
       !form.name || !form.surname || !form.identification || !form.salary || 
       !form.birthDate || !form.gender || !form.civilStatus || !form.address || 
       !form.email || !form.emergencyContact?.name || !form.emergencyContact?.phone || 
-      !form.startDate || !form.role
+      !form.startDate
     ) {
       setFeedback({ 
         isOpen: true, 
-        title: "Campos Incompletos", 
-        message: "Por favor complete todos los campos obligatorios: Nombres, Apellidos, Identificación, Sueldo, Fecha de Nacimiento, Sexo, Estado Civil, Dirección, Email, Contacto de Emergencia y Fecha de Ingreso.", 
+        title: "Faltan datos obligatorios", 
+        message: "Debe completar: Fecha de nacimiento, Sexo, Estado civil, Dirección, Correo, Datos de emergencia y Fecha de ingreso.", 
         type: "error" 
       });
       return;
     }
 
-    if (!form.isAffiliated) {
-      form.reserveFundType = 'none';
-    }
-
     let updatedList: Employee[];
     if (editingEmp) {
       updatedList = employees.map(e => e.id === editingEmp.id ? { ...e, ...form } as Employee : e);
-      setFeedback({ isOpen: true, title: "Actualización Exitosa", message: "Los datos del colaborador han sido actualizados en el sistema maestro.", type: "success" });
+      setFeedback({ isOpen: true, title: "Éxito", message: "Colaborador actualizado correctamente.", type: "success" });
     } else {
       const autoPin = Math.floor(100000 + Math.random() * 900000).toString();
       const newEmp: Employee = { 
@@ -102,7 +97,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         status: 'active' as const 
       } as Employee;
       updatedList = [...employees, newEmp];
-      setFeedback({ isOpen: true, title: "Registro Exitoso", message: `El empleado ha sido registrado. PIN de marcación asignado: ${autoPin}`, type: "success" });
+      setFeedback({ isOpen: true, title: "Registro Exitoso", message: `Empleado registrado. PIN: ${autoPin}`, type: "success" });
     }
     onUpdate(updatedList);
     setIsModalOpen(false);
@@ -118,7 +113,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     onUpdate(updated);
     setNovedadText('');
     setIsNovedadModalOpen(false);
-    setFeedback({ isOpen: true, title: "Novedad Registrada", message: "La incidencia ha sido añadida al historial administrativo.", type: "success" });
+    setFeedback({ isOpen: true, title: "Novedad Guardada", message: "Se ha registrado la novedad en el historial.", type: "success" });
   };
 
   const handleProcessDesvinculacion = () => {
@@ -132,7 +127,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
     } : e);
     onUpdate(updated);
     setIsDesvinculacionModalOpen(false);
-    setFeedback({ isOpen: true, title: "Baja Procesada", message: "Se ha registrado la terminación laboral del colaborador.", type: "success" });
+    setFeedback({ isOpen: true, title: "Baja Procesada", message: "El empleado ha sido desvinculado.", type: "success" });
   };
 
   const filteredEmployees = employees.filter(e => {
@@ -143,16 +138,16 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
 
   return (
     <div className="space-y-6 fade-in">
-      <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center no-print gap-6">
+      <div className="bg-white p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border flex flex-col md:flex-row justify-between items-center no-print gap-6">
         <div>
           <h2 className="text-2xl font-[950] text-slate-900 uppercase italic leading-none">Gestión de Personal</h2>
           <div className="flex gap-6 mt-3">
-            <button onClick={() => setShowArchived(false)} className={`text-[10px] font-black uppercase tracking-widest transition-all ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Colaboradores Activos</button>
-            <button onClick={() => setShowArchived(true)} className={`text-[10px] font-black uppercase tracking-widest transition-all ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Historial de Bajas</button>
+            <button onClick={() => setShowArchived(false)} className={`text-[10px] font-black uppercase tracking-widest ${!showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Activos</button>
+            <button onClick={() => setShowArchived(true)} className={`text-[10px] font-black uppercase tracking-widest ${showArchived ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}>Bajas</button>
           </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-          <input type="text" placeholder="Filtrar por identificación o nombre..." className="w-full sm:w-64 p-3 border-2 rounded-xl text-[11px] font-bold uppercase focus:border-blue-500 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <input type="text" placeholder="Buscar empleado..." className="w-full sm:w-64 p-3 border-2 rounded-xl text-[11px] font-bold uppercase outline-none focus:border-blue-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           <button onClick={() => { setForm(initialForm); setEditingEmp(null); setIsModalOpen(true); }} className="px-8 py-4 bg-blue-700 text-white font-black rounded-xl shadow-lg uppercase text-[10px] tracking-widest active:scale-95 transition-all">Registrar Nuevo</button>
         </div>
       </div>
@@ -162,10 +157,10 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <tr>
-                <th className="px-6 py-5">Colaborador / Identidad</th>
-                <th className="px-6 py-5">Cargo Institucional</th>
+                <th className="px-6 py-5">Colaborador / ID</th>
+                <th className="px-6 py-5">Cargo</th>
                 <th className="px-6 py-5 text-center">Estado</th>
-                <th className="px-6 py-5 text-right">Gestión Administrativa</th>
+                <th className="px-6 py-5 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y text-[11px] font-black uppercase">
@@ -173,8 +168,8 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                 <tr key={emp.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-6 py-4">
                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-100 rounded-xl overflow-hidden border">
-                           {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <span className="flex items-center justify-center h-full text-slate-400 text-xl">👤</span>}
+                        <div className="w-10 h-10 bg-slate-100 rounded-xl overflow-hidden border flex items-center justify-center">
+                           {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <span className="text-slate-400">👤</span>}
                         </div>
                         <div>
                            <p className="text-slate-900 leading-none">{emp.surname} {emp.name}</p>
@@ -190,10 +185,10 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => { setEditingEmp(emp); setForm(emp); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-600 rounded-lg text-[11px]" title="Editar Expediente">✏️</button>
-                      <button onClick={() => { setSelectedEmpAction(emp); setIsNovedadModalOpen(true); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-lg text-[11px]" title="Registrar Novedad">📝</button>
+                      <button onClick={() => { setEditingEmp(emp); setForm(emp); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-600 rounded-lg shadow-sm">✏️</button>
+                      <button onClick={() => { setSelectedEmpAction(emp); setIsNovedadModalOpen(true); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-lg shadow-sm">📝</button>
                       {emp.status === 'active' && (
-                        <button onClick={() => { setSelectedEmpAction(emp); setIsDesvinculacionModalOpen(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-lg text-[11px]" title="Procesar Baja">🚪</button>
+                        <button onClick={() => { setSelectedEmpAction(emp); setIsDesvinculacionModalOpen(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-lg shadow-sm">🚪</button>
                       )}
                     </div>
                   </td>
@@ -204,28 +199,27 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </div>
 
-      {/* MODAL EXPEDIENTE MAESTRO */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Expediente" : "Ingreso de Nuevo Colaborador"} maxWidth="max-w-4xl">
+      {/* FORMULARIO ESTRICTO */}
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Expediente" : "Registrar empleado"} maxWidth="max-w-4xl">
         <div className="space-y-8 max-h-[75vh] overflow-y-auto pr-2 custom-scroll pb-6">
-          
-          <div className="flex flex-col md:flex-row gap-8 items-center bg-slate-50 p-6 rounded-[2rem] border">
+          <div className="flex flex-col md:flex-row gap-6 items-center bg-slate-50 p-6 rounded-[2rem] border">
              <div className="relative w-32 h-32 bg-white rounded-3xl border-2 border-dashed border-blue-200 flex items-center justify-center overflow-hidden shadow-inner group">
                 {form.photo ? <img src={form.photo} className="w-full h-full object-cover" /> : <span className="text-3xl opacity-20">📸</span>}
                 <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePhotoUpload} />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[8px] font-black uppercase pointer-events-none text-center p-2">Click para subir fotografía</div>
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[8px] font-black uppercase pointer-events-none text-center p-2">Click para subir foto</div>
              </div>
              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
                 <div className="space-y-1">
                    <label className="text-[9px] font-black text-slate-400 uppercase">Nombres</label>
-                   <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none" placeholder="EJ: JUAN ALBERTO" value={form.name} onChange={e => setForm({...form, name: e.target.value.toUpperCase()})} />
+                   <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none" value={form.name} onChange={e => setForm({...form, name: e.target.value.toUpperCase()})} />
                 </div>
                 <div className="space-y-1">
                    <label className="text-[9px] font-black text-slate-400 uppercase">Apellidos</label>
-                   <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none" placeholder="EJ: PÉREZ GARCÍA" value={form.surname} onChange={e => setForm({...form, surname: e.target.value.toUpperCase()})} />
+                   <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none" value={form.surname} onChange={e => setForm({...form, surname: e.target.value.toUpperCase()})} />
                 </div>
                 <div className="space-y-1">
                    <label className="text-[9px] font-black text-slate-400 uppercase">Identificación (CI/RUC)</label>
-                   <input className="w-full p-3 border-2 rounded-xl text-xs font-mono font-black focus:border-blue-500 outline-none" placeholder="10 DÍGITOS" value={form.identification} onChange={e => setForm({...form, identification: e.target.value.replace(/\D/g,'')})} />
+                   <input className="w-full p-3 border-2 rounded-xl text-xs font-mono font-black focus:border-blue-500 outline-none" value={form.identification} onChange={e => setForm({...form, identification: e.target.value.replace(/\D/g,'')})} />
                 </div>
                 <div className="space-y-1">
                    <label className="text-[9px] font-black text-slate-400 uppercase">Sueldo Base ($)</label>
@@ -235,7 +229,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           </div>
 
           <section className="space-y-4">
-             <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest border-b pb-1">Información Personal Obligatoria</h4>
+             <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest border-b pb-1">Datos Personales Obligatorios</h4>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Fecha de Nacimiento</label>
@@ -259,11 +253,11 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                 </div>
                 <div className="md:col-span-2 space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Dirección de Domicilio</label>
-                  <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase" placeholder="AV. PRINCIPAL Y CALLE SECUNDARIA" value={form.address} onChange={e => setForm({...form, address: e.target.value.toUpperCase()})} />
+                  <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase" placeholder="Calle principal, secundaria y # casa" value={form.address} onChange={e => setForm({...form, address: e.target.value.toUpperCase()})} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase">Fecha de Ingreso</label>
-                  <input type="date" className="w-full p-3 border-2 rounded-xl text-xs font-bold" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} />
+                  <label className="text-[9px] font-black text-slate-400 uppercase font-bold text-blue-600">Fecha de Ingreso</label>
+                  <input type="date" className="w-full p-3 border-2 border-blue-200 rounded-xl text-xs font-bold" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Cargo</label>
@@ -285,7 +279,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Persona de Contacto</label>
-                  <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase" placeholder="NOMBRE DEL FAMILIAR" value={form.emergencyContact?.name} onChange={e => setForm({...form, emergencyContact: {...form.emergencyContact!, name: e.target.value.toUpperCase()}})} />
+                  <input className="w-full p-3 border-2 rounded-xl text-xs font-bold uppercase" placeholder="Nombre completo del contacto" value={form.emergencyContact?.name} onChange={e => setForm({...form, emergencyContact: {...form.emergencyContact!, name: e.target.value.toUpperCase()}})} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Teléfono de Emergencia</label>
@@ -295,23 +289,22 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
           </section>
 
           <section className="space-y-4 border-t pt-6">
-             <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest border-b pb-1">Seguridad Social y Beneficios</h4>
+             <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest border-b pb-1">Seguridad Social</h4>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                 <div className="p-4 bg-slate-50 rounded-2xl border flex items-center justify-between">
                    <span className="text-[10px] font-black uppercase text-slate-600">Afiliación IESS</span>
-                   <button onClick={() => setForm({...form, isAffiliated: !form.isAffiliated})} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.isAffiliated ? 'bg-blue-600 shadow-md' : 'bg-slate-300'}`}>
+                   <button onClick={() => setForm({...form, isAffiliated: !form.isAffiliated})} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.isAffiliated ? 'bg-blue-600' : 'bg-slate-300'}`}>
                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.isAffiliated ? 'translate-x-6' : 'translate-x-1'}`} />
                    </button>
                 </div>
-                {form.isAffiliated && (
-                  <div className="space-y-1">
+                <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase">Fondos de Reserva</label>
-                    <select className="w-full p-3 border-2 border-emerald-100 bg-emerald-50/20 rounded-xl text-[10px] font-black uppercase" value={form.reserveFundType || 'monthly'} onChange={e => setForm({...form, reserveFundType: e.target.value as any})}>
+                    <select className="w-full p-3 border-2 rounded-xl text-[10px] font-black uppercase" value={form.reserveFundType || 'monthly'} onChange={e => setForm({...form, reserveFundType: e.target.value as any})}>
                       <option value="monthly">Mensualizar</option>
                       <option value="accumulate">Acumular</option>
+                      <option value="none">No aplica</option>
                     </select>
-                  </div>
-                )}
+                </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase">Décimos Sueldos</label>
                   <select className="w-full p-3 border-2 rounded-xl text-[10px] font-black uppercase" value={form.overSalaryType} onChange={e => setForm({...form, overSalaryType: e.target.value as any})}>
@@ -327,53 +320,36 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </Modal>
 
-      {/* MODAL NOVEDADES */}
-      <Modal isOpen={isNovedadModalOpen} onClose={() => setIsNovedadModalOpen(false)} title="Bitácora de Novedades Administrativas">
-         <div className="space-y-4">
-            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-               <p className="text-[11px] font-black text-blue-900 uppercase leading-none">{selectedEmpAction?.surname} {selectedEmpAction?.name}</p>
-               <p className="text-[9px] font-bold text-blue-400 uppercase mt-2">Expediente: {selectedEmpAction?.identification}</p>
-            </div>
-            <textarea className="w-full border-2 p-4 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none min-h-[140px]" placeholder="DESCRIBA LA NOVEDAD, AMONESTACIÓN O RECONOCIMIENTO..." value={novedadText} onChange={e => setNovedadText(e.target.value)} />
-            <button onClick={handleAddNovedad} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-lg">Guardar Novedad en el Sistema</button>
-         </div>
-      </Modal>
-
-      {/* MODAL DESVINCULACIÓN */}
-      <Modal isOpen={isDesvinculacionModalOpen} onClose={() => setIsDesvinculacionModalOpen(false)} title="Proceso de Desvinculación Laboral" type="error">
-         <div className="space-y-6">
-            <div className="p-5 bg-red-50 rounded-xl border border-red-100 text-center">
-               <p className="text-[12px] font-black text-red-700 uppercase leading-none">¿Desea dar de baja a este colaborador?</p>
-               <p className="text-[10px] font-bold text-red-400 mt-2 uppercase">{selectedEmpAction?.surname} {selectedEmpAction?.name}</p>
-            </div>
-            <div className="space-y-4">
-               <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase">Fecha de Salida</label>
-                  <input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={desvinculacionData.date} onChange={e => setDesvinculacionData({...desvinculacionData, date: e.target.value})} />
-               </div>
-               <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase">Motivo Legal (Código del Trabajo)</label>
-                  <select className="w-full border-2 p-3 rounded-xl text-xs font-bold uppercase" value={desvinculacionData.reason} onChange={e => setDesvinculacionData({...desvinculacionData, reason: e.target.value as any})}>
-                     {Object.values(TerminationReason).map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
-               </div>
-               <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase">Observaciones Finales</label>
-                  <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold uppercase h-24 focus:border-red-600 outline-none" placeholder="DETALLES ADICIONALES DE LA SALIDA..." value={desvinculacionData.details} onChange={e => setDesvinculacionData({...desvinculacionData, details: e.target.value})} />
-               </div>
-            </div>
-            <div className="flex gap-4">
-               <button onClick={() => setIsDesvinculacionModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[10px]">Cancelar</button>
-               <button onClick={handleProcessDesvinculacion} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px] shadow-xl">Confirmar Baja Definitiva</button>
-            </div>
-         </div>
-      </Modal>
-
+      {/* FEEDBACK */}
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
         <div className="text-center p-6">
           <p className="text-[11px] font-black uppercase text-slate-600 leading-relaxed italic">{feedback.message}</p>
           <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] mt-8 active:scale-95 transition-all tracking-widest shadow-lg">Entendido</button>
         </div>
+      </Modal>
+
+      {/* NOVEDADES Y DESVINCULACION */}
+      <Modal isOpen={isNovedadModalOpen} onClose={() => setIsNovedadModalOpen(false)} title="Bitácora Administrativa">
+         <div className="space-y-4">
+            <textarea className="w-full border-2 p-4 rounded-xl text-xs font-bold uppercase focus:border-blue-500 outline-none min-h-[140px]" placeholder="Escriba la novedad..." value={novedadText} onChange={e => setNovedadText(e.target.value)} />
+            <button onClick={handleAddNovedad} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-lg">Guardar Novedad</button>
+         </div>
+      </Modal>
+
+      <Modal isOpen={isDesvinculacionModalOpen} onClose={() => setIsDesvinculacionModalOpen(false)} title="Dar de baja empleado" type="error">
+         <div className="space-y-6">
+            <div className="space-y-4">
+               <input type="date" className="w-full border-2 p-3 rounded-xl text-xs font-bold" value={desvinculacionData.date} onChange={e => setDesvinculacionData({...desvinculacionData, date: e.target.value})} />
+               <select className="w-full border-2 p-3 rounded-xl text-xs font-bold uppercase" value={desvinculacionData.reason} onChange={e => setDesvinculacionData({...desvinculacionData, reason: e.target.value as any})}>
+                  {Object.values(TerminationReason).map(v => <option key={v} value={v}>{v}</option>)}
+               </select>
+               <textarea className="w-full border-2 p-3 rounded-xl text-xs font-bold uppercase h-24 focus:border-red-600 outline-none" placeholder="Observaciones finales..." value={desvinculacionData.details} onChange={e => setDesvinculacionData({...desvinculacionData, details: e.target.value})} />
+            </div>
+            <div className="flex gap-4">
+               <button onClick={() => setIsDesvinculacionModalOpen(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[10px]">Cancelar</button>
+               <button onClick={handleProcessDesvinculacion} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px] shadow-xl">Confirmar Baja</button>
+            </div>
+         </div>
       </Modal>
     </div>
   );
