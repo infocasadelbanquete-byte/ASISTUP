@@ -13,9 +13,10 @@ interface SettingsModuleProps {
 }
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role, onPurge, allData }) => {
-  // Aseguramos que todas las propiedades existan al inicializar el estado local para evitar errores 'undefined'
   const [local, setLocal] = useState<GlobalSettings>({ 
     ...settings, 
+    sbuPrev: settings.sbuPrev || 460.00,
+    reserveRate: settings.reserveRate || 0.0833,
     holidays: settings.holidays || [],
     schedule: {
       ...(settings.schedule || {
@@ -27,41 +28,59 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
   });
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [purgePassword, setPurgePassword] = useState('');
   const [newHolidayDate, setNewHolidayDate] = useState('');
-  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
+  const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info' | 'warning'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
 
   const handleBackup = () => {
     try {
-      if (!allData) return;
+      if (!allData) {
+         setFeedback({ isOpen: true, title: "Error", message: "Sin datos para respaldar.", type: "error" });
+         return;
+      }
       const dataStr = JSON.stringify(allData);
       const compressed = LZString.compressToEncodedURIComponent(dataStr);
-      const blob = new Blob([compressed], { type: 'application/zip' });
+      const blob = new Blob([compressed], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Respaldo_ASISTUP_${new Date().getMonth() + 1}_${new Date().getFullYear()}.zip`;
+      link.download = `RESPALDO_ASISTUP_${new Date().toISOString().split('T')[0]}.bin`;
       link.click();
-      setFeedback({ isOpen: true, title: "Respaldo Generado", message: "El archivo de respaldo comprimido (.zip) se ha descargado con éxito.", type: "success" });
+      setFeedback({ isOpen: true, title: "Respaldo OK", message: "Archivo de seguridad generado.", type: "success" });
     } catch (e) {
-      setFeedback({ isOpen: true, title: "Error", message: "No se pudo generar el respaldo.", type: "error" });
+      setFeedback({ isOpen: true, title: "Error", message: "Fallo al generar el respaldo.", type: "error" });
     }
   };
 
-  const handleResetDeviceConfig = () => {
+  const handleResetDevice = () => {
+    setFeedback({ 
+      isOpen: true, 
+      title: "Confirmación", 
+      message: "¿Restablecer configuración de terminal? Se recargará la aplicación.", 
+      type: "warning" 
+    });
     localStorage.removeItem('app_mode');
-    window.location.reload();
+    setTimeout(() => window.location.reload(), 2000);
+  };
+
+  const handlePurgeExecution = () => {
+    // Clave obligatoria para acciones críticas
+    if (purgePassword === 'admin123') {
+      onPurge?.();
+      setShowPurgeConfirm(false);
+      setPurgePassword('');
+      setFeedback({ isOpen: true, title: "Limpieza", message: "Base de datos purgada permanentemente.", type: "success" });
+    } else {
+      setFeedback({ isOpen: true, title: "Error de Seguridad", message: "Contraseña administrativa incorrecta.", type: "error" });
+    }
   };
 
   const handleAddHoliday = () => {
     if (!newHolidayDate) return;
-    if (local.holidays.includes(newHolidayDate)) {
-      setFeedback({ isOpen: true, title: "Fecha Duplicada", message: "Este día ya está marcado como feriado.", type: "error" });
-      return;
-    }
-    const updatedHolidays = [...local.holidays, newHolidayDate].sort();
-    setLocal({ ...local, holidays: updatedHolidays });
+    if (local.holidays.includes(newHolidayDate)) return;
+    setLocal({ ...local, holidays: [...local.holidays, newHolidayDate].sort() });
     setNewHolidayDate('');
   };
 
@@ -70,151 +89,149 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
   };
 
   const handleSave = () => {
-    if (role !== Role.SUPER_ADMIN) {
-        setFeedback({ isOpen: true, title: "Acceso Denegado", message: "Solo el Super Administrador puede modificar los parámetros maestros.", type: "error" });
-        return;
-    }
+    if (role !== Role.SUPER_ADMIN) return;
     onUpdate(local);
-    setFeedback({ isOpen: true, title: "Sincronizado", message: "Parámetros globales y calendario de feriados actualizados correctamente.", type: "success" });
+    setFeedback({ isOpen: true, title: "Guardado", message: "Parámetros globales institucionales sincronizados.", type: "success" });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-10 fade-in pb-20">
-      <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border space-y-12">
-        <header className="border-b pb-6">
-          <h2 className="text-3xl font-[900] text-slate-900 tracking-tighter uppercase italic">Configuración Maestra 2026</h2>
+      <div className="bg-white p-8 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] shadow-sm border space-y-10">
+        <header className="border-b pb-6 flex items-center gap-4">
+          <div className="w-10 h-10">
+             <svg viewBox="0 0 100 100" className="w-full h-full">
+               <circle cx="50" cy="50" r="45" fill="none" stroke="#3b82f6" strokeWidth="6" strokeDasharray="15 5" />
+               <circle cx="50" cy="50" r="6" fill="#3b82f6" />
+             </svg>
+          </div>
+          <h2 className="text-2xl font-[900] text-slate-900 uppercase italic">Ajustes del Sistema Maestro</h2>
         </header>
 
-        {/* PARÁMETROS FINANCIEROS */}
-        <section className="grid grid-cols-2 gap-10">
-           <div className="space-y-4">
-              <label className="text-[11px] font-black text-blue-700 uppercase tracking-widest">Sueldo Básico Unificado (SBU)</label>
-              <input type="number" step="0.01" className="w-full p-6 border-2 rounded-3xl font-[950] text-3xl focus:border-blue-500 outline-none transition-all" value={local.sbu} onChange={e => setLocal({...local, sbu: Number(e.target.value)})} />
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">SBU Año Vigente ($)</label>
+              <input type="number" step="0.01" className="w-full p-4 border-2 rounded-2xl font-[950] text-2xl focus:border-blue-500 outline-none" value={local.sbu} onChange={e => setLocal({...local, sbu: Number(e.target.value)})} />
            </div>
-           <div className="space-y-4">
-              <label className="text-[11px] font-black text-blue-700 uppercase tracking-widest">Aporte IESS (%)</label>
-              <input type="number" step="0.01" className="w-full p-6 border-2 rounded-3xl font-[950] text-3xl focus:border-blue-500 outline-none transition-all" value={(local.iessRate * 100).toFixed(2)} onChange={e => setLocal({...local, iessRate: Number(e.target.value) / 100})} />
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">SBU Año Anterior ($)</label>
+              <input type="number" step="0.01" className="w-full p-4 border-2 rounded-2xl font-[950] text-2xl focus:border-blue-500 outline-none" value={local.sbuPrev} onChange={e => setLocal({...local, sbuPrev: Number(e.target.value)})} />
+           </div>
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Aporte IESS Personal (%)</label>
+              <input type="number" step="0.01" className="w-full p-4 border-2 rounded-2xl font-[950] text-2xl focus:border-blue-500 outline-none" value={local.iessRate * 100} onChange={e => setLocal({...local, iessRate: Number(e.target.value) / 100})} />
+           </div>
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Fondos de Reserva (%)</label>
+              <input type="number" step="0.01" className="w-full p-4 border-2 rounded-2xl font-[950] text-2xl focus:border-blue-500 outline-none" value={local.reserveRate * 100} onChange={e => setLocal({...local, reserveRate: Number(e.target.value) / 100})} />
            </div>
         </section>
 
-        {/* GESTIÓN DE FERIADOS (NUEVA SECCIÓN) */}
-        <section className="p-10 bg-emerald-50/50 rounded-[3rem] border border-emerald-100 space-y-8">
-           <div className="flex justify-between items-center border-b border-emerald-200 pb-4">
-              <h3 className="text-[11px] font-black text-emerald-900 uppercase tracking-widest">Calendario de Feriados Institucionales</h3>
-              <span className="px-3 py-1 bg-emerald-600 text-white rounded-full text-[8px] font-black uppercase shadow-sm">Recargo 100%</span>
+        <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6">
+           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Horario Laboral Corporativo</h3>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="p-5 bg-white rounded-2xl border space-y-4">
+                 <p className="text-[10px] font-black text-blue-600 uppercase">Jornada Lunes a Viernes</p>
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Entrada 1</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.monFri.in1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in1: e.target.value}}})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Salida 1</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.monFri.out1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out1: e.target.value}}})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Entrada 2</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.monFri.in2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in2: e.target.value}}})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Salida 2</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.monFri.out2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out2: e.target.value}}})} />
+                    </div>
+                 </div>
+              </div>
+              <div className="p-5 bg-white rounded-2xl border space-y-4">
+                 <p className="text-[10px] font-black text-blue-600 uppercase">Jornada Sábados</p>
+                 <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Entrada</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.sat.in} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, in: e.target.value}}})} />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-bold text-slate-400 uppercase">Salida</label>
+                       <input type="time" className="w-full p-2 border rounded-lg text-xs font-black" value={local.schedule.sat.out} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, out: e.target.value}}})} />
+                    </div>
+                 </div>
+                 <div className="pt-2">
+                    <label className="text-[8px] font-bold text-slate-400 uppercase block mb-1">Día de Media Jornada</label>
+                    <input type="text" className="w-full p-2 border rounded-lg text-xs font-black uppercase" value={local.schedule.halfDayOff} onChange={e => setLocal({...local, schedule: {...local.schedule, halfDayOff: e.target.value.toUpperCase()}})} />
+                 </div>
+              </div>
            </div>
-           <div className="flex gap-4">
-              <input 
-                type="date" 
-                className="flex-1 p-4 border-2 rounded-2xl text-xs font-black focus:border-emerald-500 outline-none uppercase" 
-                value={newHolidayDate}
-                onChange={e => setNewHolidayDate(e.target.value)}
-              />
-              <button 
-                onClick={handleAddHoliday}
-                className="px-8 py-4 bg-emerald-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 shadow-md"
-              >
-                Agregar Feriado
+        </section>
+
+        <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6">
+           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Gestión de Feriados Institucionales</h3>
+           <div className="flex gap-3">
+              <input type="date" className="flex-1 p-3 border-2 rounded-xl text-sm font-black" value={newHolidayDate} onChange={e => setNewHolidayDate(e.target.value)} />
+              <button onClick={handleAddHoliday} className="px-6 py-3 bg-blue-700 text-white font-black rounded-xl text-[10px] uppercase">Agregar</button>
+           </div>
+           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-[150px] overflow-y-auto pr-2 custom-scroll">
+              {local.holidays.map(d => (
+                 <div key={d} className="bg-white border p-2 rounded-lg flex justify-between items-center group">
+                    <span className="text-[10px] font-black text-slate-700">{new Date(d + 'T00:00:00').toLocaleDateString()}</span>
+                    <button onClick={() => handleRemoveHoliday(d)} className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                 </div>
+              ))}
+           </div>
+        </section>
+
+        <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6">
+           <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Mantenimiento Crítico</h3>
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button onClick={handleBackup} className="p-6 bg-white border border-slate-200 rounded-2xl hover:border-blue-500 transition-all text-left flex items-center gap-4 group">
+                 <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-xl">💾</div>
+                 <div>
+                    <p className="text-[11px] font-black text-slate-900 uppercase">Respaldo Local</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Exportar Base .bin</p>
+                 </div>
+              </button>
+              <button onClick={handleResetDevice} className="p-6 bg-white border border-slate-200 rounded-2xl hover:border-orange-500 transition-all text-left flex items-center gap-4 group">
+                 <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-xl">🔄</div>
+                 <div>
+                    <p className="text-[11px] font-black text-slate-900 uppercase">Reset Terminal</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Configuración local</p>
+                 </div>
               </button>
            </div>
-           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {local.holidays.map(date => (
-                <div key={date} className="bg-white border border-emerald-100 p-3 rounded-xl flex justify-between items-center group shadow-sm">
-                   <span className="text-[10px] font-black text-slate-700">{new Date(date + 'T00:00:00').toLocaleDateString('es-EC', { day: '2-digit', month: 'short' }).toUpperCase()}</span>
-                   <button onClick={() => handleRemoveHoliday(date)} className="text-red-400 hover:text-red-600 font-black text-xs transition-colors">✕</button>
-                </div>
-              ))}
-              {local.holidays.length === 0 && (
-                <p className="col-span-4 text-center text-[9px] text-slate-400 font-black uppercase italic py-4">No se han registrado feriados especiales.</p>
-              )}
-           </div>
-           <p className="text-[8px] font-black text-emerald-600 uppercase leading-relaxed text-center italic">Nota: Las horas trabajadas en estas fechas se liquidarán con el 100% de recargo en nómina.</p>
+           <button onClick={() => setShowPurgeConfirm(true)} className="w-full p-6 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all text-left flex items-center gap-4 group">
+              <div className="w-12 h-12 bg-white/50 rounded-xl flex items-center justify-center text-xl">🗑️</div>
+              <div>
+                 <p className="text-[11px] font-black uppercase">Purga Definitiva</p>
+                 <p className="text-[9px] font-bold uppercase mt-1 opacity-70 italic">Eliminación masiva protegida por clave</p>
+              </div>
+           </button>
         </section>
 
-        {/* HORARIOS LABORALES */}
-        <section className="p-10 bg-slate-50 rounded-[3rem] border border-slate-200 space-y-8">
-           <div className="flex justify-between items-center border-b pb-4">
-              <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Jornada Laboral y Horarios de Marcación</h3>
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[9px] font-black uppercase">Vigente</span>
-           </div>
-           <div className="space-y-6">
-              <div className="space-y-4">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lunes a Viernes</p>
-                 <div className="grid grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Entrada AM</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.in1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in1: e.target.value}}})} />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Salida AM</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.out1} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out1: e.target.value}}})} />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Entrada PM</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.in2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, in2: e.target.value}}})} />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Salida PM</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.monFri.out2} onChange={e => setLocal({...local, schedule: {...local.schedule, monFri: {...local.schedule.monFri, out2: e.target.value}}})} />
-                    </div>
-                 </div>
-              </div>
-              <div className="space-y-4 border-t pt-6">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sábados</p>
-                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Entrada</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.in} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, in: e.target.value}}})} />
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Salida</p>
-                      <input type="time" className="w-full p-3 border-2 rounded-xl text-xs font-black" value={local.schedule.sat.out} onChange={e => setLocal({...local, schedule: {...local.schedule, sat: {...local.schedule.sat, out: e.target.value}}})} />
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </section>
-
-        {role === Role.SUPER_ADMIN && (
-          <section className="p-10 border-2 border-dashed border-slate-200 rounded-[3rem] bg-slate-50 space-y-8">
-             <div className="flex justify-between items-center border-b pb-4">
-                <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Seguridad y Mantenimiento de Equipo</h3>
-             </div>
-             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <button onClick={handleBackup} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-blue-500 transition-all group shadow-sm">
-                   <span className="text-3xl group-hover:scale-110 transition-transform">📦</span>
-                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-600">Respaldo Mensual</span>
-                </button>
-                <button onClick={handleResetDeviceConfig} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-yellow-600 transition-all group shadow-sm">
-                   <span className="text-3xl group-hover:scale-110 transition-transform">⚙️</span>
-                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-yellow-600">Resetear Terminal</span>
-                </button>
-                <button onClick={() => setShowPurgeConfirm(true)} className="flex flex-col items-center gap-4 p-8 bg-white border rounded-3xl hover:border-red-500 transition-all group shadow-sm">
-                   <span className="text-3xl group-hover:scale-110 transition-transform">🧹</span>
-                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-500 group-hover:text-red-600">Vaciar Base de Datos</span>
-                </button>
-             </div>
-          </section>
-        )}
-
-        <button onClick={handleSave} className="w-full py-6 bg-slate-900 text-white font-[900] rounded-[2.5rem] shadow-2xl uppercase text-xs tracking-[0.3em] hover:scale-[1.02] transition-all">Sincronizar Parámetros Maestros</button>
+        <button onClick={handleSave} className="w-full py-6 bg-slate-900 text-white font-[950] rounded-[2rem] shadow-2xl uppercase text-[11px] tracking-[0.2em] active:scale-95 transition-all">Sincronizar Parámetros Globales</button>
       </div>
 
-      <Modal isOpen={showPurgeConfirm} onClose={() => setShowPurgeConfirm(false)} title="REINICIO DE SISTEMA" type="error">
-         <div className="space-y-6 text-center">
-            <p className="text-xs font-black text-red-600 uppercase tracking-tighter italic">ADVERTENCIA: Acción Irreversible</p>
-            <p className="text-[11px] text-slate-500 font-medium">Se borrará personal, pagos y asistencia. Solo la configuración institucional permanecerá.</p>
+      <Modal isOpen={showPurgeConfirm} onClose={() => { setShowPurgeConfirm(false); setPurgePassword(''); }} title="AUTORIZACIÓN ADMINISTRATIVA" type="error">
+         <div className="space-y-8 text-center p-4">
+            <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-4xl mx-auto shadow-inner">🔒</div>
+            <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed">Debe ingresar la contraseña maestra para proceder con la eliminación total de los registros del sistema.</p>
+            <input type="password" value={purgePassword} onChange={e => setPurgePassword(e.target.value)} className="w-full p-5 border-2 rounded-2xl text-center text-3xl font-black focus:border-red-600 outline-none" placeholder="••••••••" autoFocus />
             <div className="flex gap-3">
-               <button onClick={() => setShowPurgeConfirm(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl uppercase text-[9px]">Cancelar</button>
-               <button onClick={() => { onPurge?.(); setShowPurgeConfirm(false); setFeedback({isOpen: true, title: "Purga Completa", message: "Sistema reiniciado con éxito.", type: "success"}); }} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[9px] shadow-lg">Confirmar Limpieza</button>
+               <button onClick={() => { setShowPurgeConfirm(false); setPurgePassword(''); }} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl uppercase text-[10px]">Cancelar</button>
+               <button onClick={handlePurgeExecution} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl uppercase text-[10px] shadow-xl">Confirmar Purga</button>
             </div>
          </div>
       </Modal>
 
-      <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
-          <div className="text-center space-y-6">
-              <p className="text-slate-600 font-bold uppercase text-[12px]">{feedback.message}</p>
-              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Aceptar</button>
+      <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type as any}>
+          <div className="text-center space-y-6 p-4">
+              <p className="text-slate-600 font-bold uppercase text-[11px] leading-relaxed">{feedback.message}</p>
+              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest active:scale-95">Aceptar</button>
           </div>
       </Modal>
     </div>

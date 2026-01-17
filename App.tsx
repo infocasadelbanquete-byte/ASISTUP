@@ -25,7 +25,6 @@ const App: React.FC = () => {
     (localStorage.getItem('app_mode') as 'full' | 'attendance') || null
   );
 
-  const [showWelcome, setShowWelcome] = useState(false);
   const [showLogoutFeedback, setShowLogoutFeedback] = useState(false);
   const [modalAlert, setModalAlert] = useState<{isOpen: boolean, title: string, message: string, type: 'info' | 'success' | 'error'}>({
     isOpen: false, title: '', message: '', type: 'info'
@@ -36,8 +35,10 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
 
+  // Fix: Added missing sbuPrev property to satisfy GlobalSettings interface
   const defaultSettings: GlobalSettings = {
     sbu: 482.00,
+    sbuPrev: 460.00,
     iessRate: 0.0945,
     reserveRate: 0.0833,
     holidays: [],
@@ -80,7 +81,6 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         setIsAdminLoginModalOpen(false);
         setIsRecoveryMode(false);
-        setShowWelcome(false);
         setModalAlert(prev => ({ ...prev, isOpen: false }));
       }
     };
@@ -103,7 +103,6 @@ const App: React.FC = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
-          // Solución al error in1: Merge profundo con valores por defecto
           setSettings({
             ...defaultSettings,
             ...dbSettings,
@@ -169,10 +168,8 @@ const App: React.FC = () => {
     if (role) {
       setCurrentUserRole(role);
       localStorage.setItem('admin_logged_in', 'true');
-      setShowWelcome(true);
       setView('admin');
       setIsAdminLoginModalOpen(false);
-      setTimeout(() => setShowWelcome(false), 1500);
     } else {
       showAlert("Error de Acceso", "Credencial no válida o sin privilegios.", "error");
     }
@@ -180,18 +177,15 @@ const App: React.FC = () => {
   };
 
   const handleEmergencyRecovery = () => {
-    // Llave maestra de emergencia hardcoded para recuperación absoluta
     const MASTER_RECOVERY_KEY = "ASISTUP-MASTER-ACCESS-2026";
     if (recoveryRuc === company?.ruc && recoveryKey === MASTER_RECOVERY_KEY) {
       setCurrentUserRole(Role.SUPER_ADMIN);
       localStorage.setItem('admin_logged_in', 'true');
-      setShowWelcome(true);
       setView('admin');
       setIsAdminLoginModalOpen(false);
       setIsRecoveryMode(false);
       setRecoveryRuc('');
       setRecoveryKey('');
-      setTimeout(() => setShowWelcome(false), 1500);
     } else {
       showAlert("Fallo de Autenticación", "Los datos de recuperación de emergencia son incorrectos.", "error");
     }
@@ -300,7 +294,6 @@ const App: React.FC = () => {
           <Modal isOpen={isAdminLoginModalOpen} onClose={() => { setIsAdminLoginModalOpen(false); setIsRecoveryMode(false); }} title={isRecoveryMode ? "Acceso de Emergencia" : "Autorización"} maxWidth="max-w-[320px]">
             {!isRecoveryMode ? (
               <div className="space-y-6 p-2 text-center relative">
-                {/* Candado de recuperación oculto en la esquina superior derecha */}
                 <button 
                   onClick={() => setIsRecoveryMode(true)} 
                   className="absolute -top-4 -right-4 w-10 h-10 flex items-center justify-center text-slate-50 hover:text-red-200 transition-colors opacity-10 hover:opacity-100 z-10"
@@ -380,14 +373,6 @@ const App: React.FC = () => {
           appMode={appMode}
         />
       )}
-
-      <Modal isOpen={showWelcome} onClose={() => setShowWelcome(false)} title="Autorizado" type="success" maxWidth="max-w-[280px]">
-         <div className="text-center space-y-4 p-4">
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto animate-bounce">✓</div>
-            <h2 className="text-xl font-[950] text-slate-900 uppercase tracking-tight leading-none">Acceso Exitoso</h2>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sincronizando panel de control...</p>
-         </div>
-      </Modal>
 
       <Modal isOpen={showLogoutFeedback} onClose={() => {}} title="Salida" type="success" maxWidth="max-w-[280px]">
          <div className="text-center space-y-6 p-2">

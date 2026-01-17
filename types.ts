@@ -1,3 +1,4 @@
+
 export enum Role {
   SUPER_ADMIN = 'Super Administrador',
   PARTIAL_ADMIN = 'Administrador Parcial',
@@ -68,7 +69,7 @@ export interface Payment {
   date: string;
   month: string;
   year: string;
-  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours' | 'BackPay' | 'SalaryBalance' | 'Advance';
+  type: 'Salary' | 'Loan' | 'Bonus' | 'Settlement' | 'Emergency' | 'Thirteenth' | 'Fourteenth' | 'Vacation' | 'ExtraHours' | 'BackPay' | 'SalaryBalance' | 'Advance' | 'Fine';
   method: 'Efectivo' | 'Transferencia' | 'Cheque' | 'Dual';
   concept: string;
   status: 'paid' | 'void';
@@ -109,7 +110,8 @@ export interface Employee {
   isFixed: boolean; 
   salary: number;
   isAffiliated: boolean;
-  overSalaryType: 'accumulate' | 'monthly' | 'none';
+  overSalaryType: 'accumulate' | 'monthly' | 'none'; // Para Décimos
+  reserveFundType?: 'monthly' | 'accumulate' | 'none'; // Específico para Fondos de Reserva
   bankInfo: { 
     ifi: string; 
     type: 'Ahorros' | 'Corriente'; 
@@ -141,6 +143,7 @@ export interface CompanyConfig {
 
 export interface GlobalSettings {
   sbu: number; 
+  sbuPrev: number;
   iessRate: number;
   reserveRate: number;
   holidays: string[];

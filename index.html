@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -26,13 +27,51 @@
         html { height: -webkit-fill-available; }
         .gradient-blue { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
         
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+
         @media print { 
             .no-print { display: none !important; } 
-            body { background: white !important; }
-            .modal-content { position: static !important; width: 100% !important; border: none !important; box-shadow: none !important; }
-            #individual-role-print, #payment-voucher-print { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 20px !important; }
-            table { width: 100% !important; border-collapse: collapse !important; }
-            th, td { border: 1px solid #e2e8f0 !important; }
+            body { 
+                background: white !important; 
+                color: black !important;
+                -webkit-print-color-adjust: economy !important;
+                print-color-adjust: economy !important;
+            }
+            * { 
+                box-shadow: none !important; 
+                text-shadow: none !important;
+                filter: grayscale(100%) contrast(1.2) !important;
+                background-color: transparent !important;
+                border-color: #000 !important;
+                color: #000 !important;
+            }
+            .modal-content, #individual-role-print, #payment-voucher-print, #employee-file-print, #reports-printable-area { 
+                position: static !important; 
+                width: 100% !important; 
+                max-width: 100% !important; 
+                margin: 0 !important; 
+                padding: 10px !important; 
+                border: none !important;
+            }
+            table { 
+                width: 100% !important; 
+                border-collapse: collapse !important; 
+                font-size: 10pt !important;
+            }
+            th, td { 
+                border: 0.5pt solid #000 !important; 
+                padding: 4pt !important;
+            }
+            thead { display: table-header-group !important; }
+            tr { page-break-inside: avoid !important; }
+            img { max-width: 100px !important; filter: grayscale(100%) brightness(1.1) !important; }
+            .bg-slate-900, .bg-blue-700, .bg-blue-600, .bg-emerald-600, .bg-red-600 {
+                background: none !important;
+                border: 1pt solid #000 !important;
+            }
         }
         
         #initial-loader { 
@@ -54,6 +93,7 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
     "lz-string": "https://esm.sh/lz-string@^1.5.0",
+    "jszip": "https://esm.sh/jszip@^3.10.1",
     "firebase/": "https://esm.sh/firebase@^12.7.0/",
     "vite": "https://esm.sh/vite@^7.3.0",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
