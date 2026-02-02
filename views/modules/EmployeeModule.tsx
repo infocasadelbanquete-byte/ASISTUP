@@ -21,6 +21,7 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   const [selectedEmpAction, setSelectedEmpAction] = useState<Employee | null>(null);
   const [isNovedadModalOpen, setIsNovedadModalOpen] = useState(false);
   const [isDesvinculacionModalOpen, setIsDesvinculacionModalOpen] = useState(false);
+  const [isExpedienteModalOpen, setIsExpedienteModalOpen] = useState(false);
   
   const [novedadText, setNovedadText] = useState('');
   const [desvinculacionData, setDesvinculacionData] = useState({
@@ -66,7 +67,6 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
   };
 
   const handleSave = () => {
-    // Validación estricta y obligatoria de campos
     if (
       !form.name || !form.surname || !form.identification || !form.salary || 
       !form.birthDate || !form.gender || !form.civilStatus || !form.address || 
@@ -171,10 +171,14 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                         <div className="w-10 h-10 bg-slate-100 rounded-xl overflow-hidden border flex items-center justify-center">
                            {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <span className="text-slate-400">👤</span>}
                         </div>
-                        <div>
-                           <p className="text-slate-900 leading-none">{emp.surname} {emp.name}</p>
+                        <button 
+                          onClick={() => { setSelectedEmpAction(emp); setIsExpedienteModalOpen(true); }}
+                          className="text-left group hover:bg-slate-50 p-1 rounded-lg transition-all"
+                          title="Ver Expediente Completo"
+                        >
+                           <p className="text-slate-900 leading-none group-hover:text-blue-700 transition-colors border-b border-transparent group-hover:border-blue-700 font-black">{emp.surname} {emp.name}</p>
                            <p className="text-[9px] text-slate-400 font-mono mt-1">{emp.identification}</p>
-                        </div>
+                        </button>
                      </div>
                   </td>
                   <td className="px-6 py-4"><p className="text-blue-600">{emp.role}</p><p className="text-[9px] text-slate-400 mt-1">Ingreso: {emp.startDate}</p></td>
@@ -185,10 +189,10 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <button onClick={() => { setEditingEmp(emp); setForm(emp); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-600 rounded-lg shadow-sm">✏️</button>
-                      <button onClick={() => { setSelectedEmpAction(emp); setIsNovedadModalOpen(true); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-lg shadow-sm">📝</button>
+                      <button onClick={() => { setEditingEmp(emp); setForm(emp); setIsModalOpen(true); }} className="p-2.5 bg-slate-100 text-slate-600 rounded-lg shadow-sm" title="Editar Ficha">✏️</button>
+                      <button onClick={() => { setSelectedEmpAction(emp); setIsNovedadModalOpen(true); }} className="p-2.5 bg-blue-50 text-blue-600 rounded-lg shadow-sm" title="Bitácora Administrativa">📝</button>
                       {emp.status === 'active' && (
-                        <button onClick={() => { setSelectedEmpAction(emp); setIsDesvinculacionModalOpen(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-lg shadow-sm">🚪</button>
+                        <button onClick={() => { setSelectedEmpAction(emp); setIsDesvinculacionModalOpen(true); }} className="p-2.5 bg-red-50 text-red-600 rounded-lg shadow-sm" title="Desvinculación">🚪</button>
                       )}
                     </div>
                   </td>
@@ -199,7 +203,112 @@ const EmployeeModule: React.FC<EmployeeModuleProps> = ({ employees, onUpdate, ro
         </div>
       </div>
 
-      {/* FORMULARIO ESTRICTO */}
+      {/* EXPEDIENTE INFORMATIVO DETALLADO */}
+      <Modal isOpen={isExpedienteModalOpen} onClose={() => setIsExpedienteModalOpen(false)} title="Expediente Informativo Corporativo" maxWidth="max-w-5xl">
+        {selectedEmpAction && (
+          <div className="space-y-8 pb-10 max-h-[80vh] overflow-y-auto custom-scroll pr-4" id="employee-file-print">
+            <header className="flex flex-col md:flex-row items-center gap-8 border-b-2 pb-8 border-slate-100">
+               <div className="w-32 h-32 md:w-40 md:h-40 bg-slate-100 rounded-[2.5rem] overflow-hidden border-4 border-white shadow-2xl">
+                 {selectedEmpAction.photo ? <img src={selectedEmpAction.photo} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl opacity-20">👤</div>}
+               </div>
+               <div className="text-center md:text-left flex-1">
+                 <h3 className="text-3xl font-[950] text-slate-900 uppercase italic tracking-tighter leading-none">{selectedEmpAction.surname} {selectedEmpAction.name}</h3>
+                 <p className="text-blue-600 font-black text-xs uppercase tracking-[0.4em] mt-2 mb-4">{selectedEmpAction.role}</p>
+                 <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                    <span className="px-4 py-1.5 bg-slate-900 text-white rounded-full text-[9px] font-black uppercase tracking-widest">CI: {selectedEmpAction.identification}</span>
+                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${selectedEmpAction.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{selectedEmpAction.status === 'active' ? 'VINCULADO' : 'DESVINCULADO'}</span>
+                 </div>
+               </div>
+               <div className="no-print">
+                 <button onClick={() => window.print()} className="px-6 py-3 bg-slate-50 text-slate-400 hover:text-slate-900 font-black rounded-xl uppercase text-[10px] border tracking-widest">Imprimir Ficha</button>
+               </div>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               <section className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                  <h4 className="text-[10px] font-black text-blue-700 uppercase tracking-widest border-b pb-3 mb-4 flex items-center gap-2"><span>👤</span> Información Personal</h4>
+                  <div className="space-y-3 text-[11px] font-bold uppercase">
+                     <p className="flex justify-between"><span className="text-slate-400">Nacimiento:</span> <span className="text-slate-900">{selectedEmpAction.birthDate}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Género:</span> <span className="text-slate-900">{selectedEmpAction.gender}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Estado Civil:</span> <span className="text-slate-900">{selectedEmpAction.civilStatus}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Tipo Sangre:</span> <span className="text-slate-900">{selectedEmpAction.bloodType}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Nacionalidad:</span> <span className="text-slate-900">{selectedEmpAction.origin}</span></p>
+                  </div>
+               </section>
+
+               <section className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                  <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-widest border-b pb-3 mb-4 flex items-center gap-2"><span>💼</span> Datos Laborales</h4>
+                  <div className="space-y-3 text-[11px] font-bold uppercase">
+                     <p className="flex justify-between"><span className="text-slate-400">Ingreso:</span> <span className="text-slate-900">{selectedEmpAction.startDate}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Sueldo Base:</span> <span className="text-emerald-700 font-black">${selectedEmpAction.salary.toFixed(2)}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Contrato:</span> <span className="text-slate-900">{selectedEmpAction.isFixed ? 'INDEFINIDO' : 'EVENTUAL'}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Afiliado IESS:</span> <span className="text-slate-900">{selectedEmpAction.isAffiliated ? 'SÍ' : 'NO'}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">F. Reserva:</span> <span className="text-slate-900">{selectedEmpAction.reserveFundType}</span></p>
+                  </div>
+               </section>
+
+               <section className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100">
+                  <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest border-b pb-3 mb-4 flex items-center gap-2"><span>💳</span> Información Bancaria</h4>
+                  <div className="space-y-3 text-[11px] font-bold uppercase">
+                     <p className="flex justify-between"><span className="text-slate-400">Institución:</span> <span className="text-slate-900">{selectedEmpAction.bankInfo?.ifi || 'NO REGISTRA'}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Tipo Cuenta:</span> <span className="text-slate-900">{selectedEmpAction.bankInfo?.type || 'N/A'}</span></p>
+                     <p className="flex justify-between"><span className="text-slate-400">Número:</span> <span className="text-slate-900 font-mono tracking-tighter">{selectedEmpAction.bankInfo?.account || 'N/A'}</span></p>
+                  </div>
+                  <h4 className="text-[10px] font-black text-orange-600 uppercase tracking-widest border-b pb-3 mb-4 mt-6 flex items-center gap-2"><span>☎️</span> Emergencias</h4>
+                  <div className="space-y-2 text-[11px] font-bold uppercase">
+                     <p className="text-slate-900 leading-tight">{selectedEmpAction.emergencyContact?.name}</p>
+                     <p className="text-blue-600 font-black">{selectedEmpAction.emergencyContact?.phone}</p>
+                  </div>
+               </section>
+            </div>
+
+            <section className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
+               <h4 className="text-[11px] font-[950] text-slate-900 uppercase tracking-[0.2em] border-b-4 border-slate-900 pb-3 mb-6 flex items-center justify-between">
+                  <span>📜 Bitácora de Novedades e Historial Administrativo</span>
+                  <span className="text-[9px] font-black text-slate-400">Total Eventos: {selectedEmpAction.observations?.length || 0}</span>
+               </h4>
+               <div className="space-y-4">
+                  {selectedEmpAction.observations?.length ? (
+                    selectedEmpAction.observations.map((obs, idx) => (
+                      <div key={idx} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-all group">
+                         <div className="flex flex-col items-center shrink-0">
+                            <div className="w-2 h-2 bg-blue-600 rounded-full group-hover:scale-150 transition-transform"></div>
+                            <div className="w-0.5 flex-1 bg-slate-200"></div>
+                         </div>
+                         <div className="flex-1">
+                            <p className="text-[9px] font-black text-slate-400 uppercase mb-1">{new Date(obs.date).toLocaleString()}</p>
+                            <p className="text-xs font-bold text-slate-700 uppercase italic">"{obs.text}"</p>
+                         </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-10 text-center opacity-30 italic font-bold uppercase text-[10px]">Sin novedades registradas en el historial del colaborador.</div>
+                  )}
+               </div>
+            </section>
+
+            {selectedEmpAction.status === 'terminated' && (
+              <section className="bg-red-50 p-8 rounded-[2rem] border border-red-100">
+                 <h4 className="text-[11px] font-black text-red-700 uppercase tracking-widest border-b border-red-200 pb-3 mb-4 flex items-center gap-2"><span>🚪</span> Acta de Desvinculación</h4>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-[11px] font-black uppercase">
+                    <div>
+                       <p className="text-red-400 text-[9px] mb-1">FECHA DE SALIDA:</p>
+                       <p className="text-red-900">{selectedEmpAction.terminationDate}</p>
+                       <p className="text-red-400 text-[9px] mt-4 mb-1">MOTIVO LEGAL:</p>
+                       <p className="text-red-900">{selectedEmpAction.terminationReason}</p>
+                    </div>
+                    <div>
+                       <p className="text-red-400 text-[9px] mb-1">DETALLES Y OBSERVACIONES FINALES:</p>
+                       <p className="text-red-900 italic">"{selectedEmpAction.terminationDetails}"</p>
+                    </div>
+                 </div>
+              </section>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* FORMULARIO DE REGISTRO/EDICIÓN */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingEmp ? "Actualizar Expediente" : "Registrar empleado"} maxWidth="max-w-4xl">
         <div className="space-y-8 max-h-[75vh] overflow-y-auto pr-2 custom-scroll pb-6">
           <div className="flex flex-col md:flex-row gap-6 items-center bg-slate-50 p-6 rounded-[2rem] border">

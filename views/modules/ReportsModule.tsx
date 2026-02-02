@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 import JSZip from 'jszip';
@@ -14,40 +14,75 @@ interface ReportsModuleProps {
 }
 
 const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role }) => {
-  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master'>('attendance');
+  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master' | 'employees' | 'payroll' | 'novedades' | 'bajas'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [isZipping, setIsZipping] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
+
+  // Efecto para disparar la impresión una vez que el estado de reporte ha cambiado y el DOM está listo
+  useEffect(() => {
+    if (isPrinting) {
+      const timer = setTimeout(() => {
+        window.print();
+        setIsPrinting(false);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isPrinting]);
   
-  const getCSVData = (type: 'employees' | 'payroll' | 'attendance' | 'novedades' | 'bajas') => {
+  const getCSVData = (type: string) => {
     let csv = "\uFEFF";
-    if (type === 'employees') {
+    const filterFn = (timestamp: string) => {
+      if (!startDate && !endDate) return true;
+      const date = new Date(timestamp);
+      const start = startDate ? new Date(startDate + 'T00:00:00') : null;
+      const end = endDate ? new Date(endDate + 'T23:59:59') : null;
+      if (start && date < start) return false;
+      if (end && date > end) return false;
+      return true;
+    };
+
+    if (type === 'employees' || type === 'history') {
       csv += "ID,COLABORADOR,CARGO,INGRESO,AFILIACION IESS,FONDOS RESERVA,DECIMOS,SUELDO,STATUS\n";
-      employees.forEach(e => {
+      employees.filter(e => filterFn(e.startDate)).forEach(e => {
         csv += `"${e.identification}","${e.surname} ${e.name}","${e.role}","${e.startDate}","${e.isAffiliated ? 'SI' : 'NO'}","${e.reserveFundType || 'N/A'}","${e.overSalaryType}","${e.salary.toFixed(2)}","${e.status}"\n`;
       });
-    } else if (type === 'payroll') {
+    } else if (type === 'payroll' || type === 'payments') {
       csv += "VOUCHER,FECHA,BENEFICIARIO,CONCEPTO,METODO,MONTO,STATUS\n";
-      payments.forEach(p => {
+      payments.filter(p => filterFn(p.date)).forEach(p => {
         const emp = employees.find(e => e.id === p.employeeId);
         csv += `"${p.voucherCode}","${new Date(p.date).toLocaleDateString()}","${emp?.surname} ${emp?.name}","${p.type}","${p.method}","${p.amount.toFixed(2)}","${p.status}"\n`;
       });
     } else if (type === 'attendance') {
       csv += "FECHA,COLABORADOR,ID,TIPO,ESTADO,ATRASO,JUSTIFICACION\n";
-      attendance.forEach(a => {
+      // Ordenamiento obligatorio para Excel: Empleado y luego Cronológico
+      const sortedForExcel = [...attendance].filter(a => filterFn(a.timestamp)).sort((a, b) => {
+        const empA = employees.find(e => e.id === a.employeeId);
+        const empB = employees.find(e => e.id === b.employeeId);
+        const nameA = `${empA?.surname || ''} ${empA?.name || ''}`.toLowerCase();
+        const nameB = `${empB?.surname || ''} ${empB?.name || ''}`.toLowerCase();
+        if (nameA !== nameB) return nameA.localeCompare(nameB);
+        return a.timestamp.localeCompare(b.timestamp);
+      });
+      
+      sortedForExcel.forEach(a => {
         const emp = employees.find(e => e.id === a.employeeId);
-        csv += `"${new Date(a.timestamp).toLocaleString()}","${emp?.surname} ${emp?.name}","${emp?.identification}","${a.type}","${a.status}","${a.isLate ? 'SI' : 'NO'}","${a.justification || ''}"\n`;
+        let statusTexto = a.status === 'confirmed' ? "CONFIRMADO" : "PENDIENTE";
+        csv += `"${new Date(a.timestamp).toLocaleString()}","${emp?.surname} ${emp?.name}","${emp?.identification}","${a.type}","${statusTexto}","${a.isLate ? 'SI' : 'NO'}","${a.justification || ''}"\n`;
       });
     } else if (type === 'novedades') {
       csv += "FECHA REGISTRO,COLABORADOR,EVENTO ADMINISTRATIVO\n";
-      employees.forEach(e => {
-        if (e.observations) e.observations.forEach(obs => {
-          csv += `"${new Date(obs.date).toLocaleString()}","${e.surname} ${e.name}","${obs.text}"\n`;
+      employees.flatMap(e => e.observations?.map(obs => ({ emp: e, obs })) || [])
+        .filter(item => filterFn(item.obs.date))
+        .forEach(item => {
+          csv += `"${new Date(item.obs.date).toLocaleString()}","${item.emp.surname} ${item.emp.name}","${item.obs.text}"\n`;
         });
-      });
     } else if (type === 'bajas') {
       csv += "COLABORADOR,IDENTIFICACION,SALIDA,MOTIVO LEGAL,DETALLES FINALES\n";
-      employees.filter(e => e.status === 'terminated').forEach(e => {
+      employees.filter(e => e.status === 'terminated' && filterFn(e.terminationDate || '')).forEach(e => {
         csv += `"${e.surname} ${e.name}","${e.identification}","${e.terminationDate}","${e.terminationReason}","${e.terminationDetails}"\n`;
       });
     }
@@ -59,7 +94,6 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     try {
       const zip = new JSZip();
       const folder = zip.folder(`ARCHIVO_MAESTRO_ASISTUP_${new Date().getFullYear()}`);
-      
       folder?.file("1_CENSO_PERSONAL_MAESTRO.csv", getCSVData('employees'));
       folder?.file("2_REGISTRO_PAGOS_NOMINA.csv", getCSVData('payroll'));
       folder?.file("3_BITACORA_ASISTENCIA.csv", getCSVData('attendance'));
@@ -72,7 +106,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
       link.href = url;
       link.download = `CONSOLIDADO_MASTER_ASISTUP_${new Date().toISOString().split('T')[0]}.zip`;
       link.click();
-      setFeedback({ isOpen: true, title: "Éxito Corporativo", message: "Contenedor ZIP generado y descargado correctamente para archivo físico.", type: "success" });
+      setFeedback({ isOpen: true, title: "Éxito Corporativo", message: "Contenedor ZIP generado correctamente.", type: "success" });
     } catch (e) {
       setFeedback({ isOpen: true, title: "Fallo Crítico", message: "No se pudo consolidar el paquete comprimido.", type: "error" });
     } finally {
@@ -80,51 +114,177 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     }
   };
 
-  const generateReportExcel = (type: any) => {
+  const generateReportExcel = (type: string) => {
     const csv = getCSVData(type);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `REPORTE_MASTER_${type.toUpperCase()}.csv`;
+    link.download = `REPORTE_${type.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 
   const generateReportPDF = (type: any) => {
+    // Si estamos en el panel maestro, limpiamos filtros para reporte completo
+    if (reportType === 'master') {
+      setSearchTerm('');
+      setStartDate('');
+      setEndDate('');
+    }
     setReportType(type);
-    setTimeout(() => window.print(), 500);
+    setIsPrinting(true);
+  };
+
+  const filterByDate = (timestamp: string) => {
+    if (!startDate && !endDate) return true;
+    const date = new Date(timestamp);
+    const start = startDate ? new Date(startDate + 'T00:00:00') : null;
+    const end = endDate ? new Date(endDate + 'T23:59:59') : null;
+    if (start && date < start) return false;
+    if (end && date > end) return false;
+    return true;
   };
 
   const attendanceToDisplay = (attendance || []).filter(a => {
     const emp = employees.find(e => e.id === a.employeeId);
-    return `${emp?.surname} ${emp?.name} ${emp?.identification}`.toLowerCase().includes(searchTerm.toLowerCase());
-  }).sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+    const matchesSearch = `${emp?.surname} ${emp?.name} ${emp?.identification}`.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch && filterByDate(a.timestamp);
+  }).sort((a, b) => {
+    // Ordenamiento obligatorio para UI/PDF: Empleado y luego Cronológico
+    const empA = employees.find(e => e.id === a.employeeId);
+    const empB = employees.find(e => e.id === b.employeeId);
+    const nameA = `${empA?.surname || ''} ${empA?.name || ''}`.toLowerCase();
+    const nameB = `${empB?.surname || ''} ${empB?.name || ''}`.toLowerCase();
+    
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    return a.timestamp.localeCompare(b.timestamp);
+  });
 
   const paymentsToDisplay = payments.filter(p => {
     const emp = employees.find(e => e.id === p.employeeId);
-    return `${emp?.surname} ${emp?.name} ${p.voucherCode}`.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = `${emp?.surname} ${emp?.name} ${p.voucherCode}`.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesSearch && filterByDate(p.date);
   }).sort((a,b) => b.date.localeCompare(a.date));
 
   const historyToDisplay = employees.filter(e => {
     const searchStr = `${e.name} ${e.surname} ${e.identification} ${e.status}`.toLowerCase();
-    return searchStr.includes(searchTerm.toLowerCase());
+    const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
+    return matchesSearch && (reportType === 'bajas' ? filterByDate(e.terminationDate || '') : filterByDate(e.startDate));
   }).sort((a,b) => b.startDate.localeCompare(a.startDate));
+
+  const translateAttendanceStatus = (record: AttendanceRecord) => {
+    let base = "";
+    if (record.type === 'in') base = record.status === 'confirmed' ? "INGRESO APROBADO" : record.status === 'pending_approval' ? "INGRESO PENDIENTE" : "INGRESO RECHAZADO";
+    else if (record.type === 'out') base = record.status === 'confirmed' ? "SALIDA APROBADA" : record.status === 'pending_approval' ? "SALIDA PENDIENTE" : "SALIDA RECHAZADA";
+    else if (record.type === 'half_day') base = "MEDIA JORNADA LIBRE";
+    
+    return (
+      <span className="flex flex-col items-end">
+        <span>{base}</span>
+        {record.isLate && <span className="text-[8px] font-black lowercase opacity-60">(atraso)</span>}
+      </span>
+    );
+  };
+
+  const renderTableRows = () => {
+    switch (reportType) {
+      case 'attendance':
+        return attendanceToDisplay.map(a => (
+          <tr key={a.id}>
+            <td className="p-5">{new Date(a.timestamp).toLocaleString()}</td>
+            <td className="p-5">{employees.find(e => e.id === a.employeeId)?.surname} {employees.find(e => e.id === a.employeeId)?.name}</td>
+            <td className="p-5 text-right font-black">{translateAttendanceStatus(a)}</td>
+          </tr>
+        ));
+      case 'payments':
+      case 'payroll':
+        return paymentsToDisplay.map(p => (
+          <tr key={p.id}>
+            <td className="p-5"><p className="text-blue-600">{p.voucherCode}</p><p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString()}</p></td>
+            <td className="p-5">{employees.find(e => e.id === p.employeeId)?.surname}</td>
+            <td className="p-5 text-right font-[950] text-emerald-700">${p.amount.toFixed(2)}</td>
+          </tr>
+        ));
+      case 'history':
+      case 'employees':
+        return historyToDisplay.map(e => (
+          <tr key={e.id}>
+            <td className="p-5"><p className="text-slate-900">{e.surname} {e.name}</p><p className="text-[9px] text-slate-400">CI: {e.identification}</p></td>
+            <td className="p-5">{e.role}</td>
+            <td className={`p-5 text-right font-[950] ${e.status === 'active' ? 'text-emerald-600' : 'text-red-500'}`}>{e.status}</td>
+          </tr>
+        ));
+      case 'novedades':
+        const novedades = employees.flatMap(e => e.observations?.map(obs => ({ emp: e, obs })) || []).filter(item => filterByDate(item.obs.date));
+        return novedades.map((item, idx) => (
+          <tr key={idx}>
+            <td className="p-5">{new Date(item.obs.date).toLocaleString()}</td>
+            <td className="p-5">{item.emp.surname} {item.emp.name}</td>
+            <td className="p-5 text-right font-black italic">{item.obs.text}</td>
+          </tr>
+        ));
+      case 'bajas':
+        const bajas = employees.filter(e => e.status === 'terminated' && filterByDate(e.terminationDate || ''));
+        return bajas.map(e => (
+          <tr key={e.id}>
+            <td className="p-5">{e.terminationDate}</td>
+            <td className="p-5">{e.surname} {e.name}</td>
+            <td className="p-5 text-right font-black text-red-600">{e.terminationReason} <span className="text-[9px] opacity-60">({e.terminationDetails})</span></td>
+          </tr>
+        ));
+      default:
+        return null;
+    }
+  };
+
+  const getReportHeaderTitle = () => {
+    switch(reportType) {
+      case 'employees': return 'CENSO DE PERSONAL MAESTRO';
+      case 'payroll': return 'REGISTRO DE PAGOS DE NÓMINA';
+      case 'novedades': return 'HISTORIAL DE NOVEDADES ADMINISTRATIVAS';
+      case 'bajas': return 'EXPEDIENTES DE DESVINCULACIONES';
+      case 'attendance': return 'BITÁCORA DE ASISTENCIA Y PUNTUALIDAD';
+      case 'payments': return 'HISTORIAL DE EGRESOS Y PAGOS';
+      case 'history': return 'EXPEDIENTES DE PERSONAL ACTIVO';
+      default: return `REPORTE DE ${reportType.toUpperCase()}`;
+    }
+  };
 
   return (
     <div className="space-y-6 md:space-y-8 fade-in">
       <div className="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm border no-print flex flex-col md:flex-row justify-between items-center gap-6">
-        <div>
+        <div className="shrink-0">
            <h2 className="text-2xl font-[950] text-slate-900 uppercase italic">Centro de Reportes Maestro</h2>
            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-2">Auditoría y Gestión de Datos Corporativos</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+        <div className="flex flex-col gap-4 w-full md:w-auto">
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {['attendance', 'payments', 'history', 'master'].map(t => (
-              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm('');}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
+              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm(''); setStartDate(''); setEndDate('');}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
                 {t === 'attendance' ? 'Asistencia' : t === 'payments' ? 'Pagos' : t === 'history' ? 'Historial' : 'Archivo Maestro'}
               </button>
             ))}
           </div>
-          {reportType !== 'master' && <input type="text" placeholder="Filtrar por nombre o CI..." className="flex-1 p-3 border-2 rounded-xl text-[11px] font-bold uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />}
+          
+          {reportType !== 'master' && (
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input type="text" placeholder="Filtrar por nombre o CI..." className="flex-1 p-3 border-2 rounded-xl text-[11px] font-bold uppercase outline-none focus:border-blue-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <div className="flex gap-2">
+                 <div className="flex flex-col gap-1">
+                   <label className="text-[7px] font-black uppercase text-slate-400">Desde</label>
+                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                 </div>
+                 <div className="flex flex-col gap-1">
+                   <label className="text-[7px] font-black uppercase text-slate-400">Hasta</label>
+                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                 </div>
+                 <div className="flex gap-1 items-end">
+                    <button onClick={() => generateReportExcel(reportType)} title="Excel" className="p-3 bg-emerald-600 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">XLS</button>
+                    <button onClick={() => generateReportPDF(reportType)} title="PDF" className="p-3 bg-blue-700 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">PDF</button>
+                    <button onClick={() => {setStartDate(''); setEndDate(''); setSearchTerm(''); setReportType('master');}} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors">✕</button>
+                 </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -142,7 +302,11 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                </div>
             </div>
             <div className="pt-4 border-t-2 border-black/10">
-               <p className="text-[12px] font-[950] uppercase tracking-[0.3em]">Reporte de {reportType.toUpperCase()}</p>
+               <p className="text-[12px] font-[950] uppercase tracking-[0.3em]">{getReportHeaderTitle()}</p>
+               {startDate || endDate ? (
+                 <p className="text-[10px] font-black uppercase mt-1">Período: {startDate || 'Inicio'} al {endDate || 'Hoy'}</p>
+               ) : null}
+               {searchTerm && <p className="text-[9px] font-black uppercase italic">Filtro aplicado: "{searchTerm}"</p>}
                <p className="text-[8px] font-bold uppercase opacity-60">Documento Generado el {new Date().toLocaleString()}</p>
             </div>
          </div>
@@ -200,27 +364,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                         </tr>
                       </thead>
                       <tbody className="divide-y print:text-black">
-                          {reportType === 'attendance' && attendanceToDisplay.map(a => (
-                            <tr key={a.id}>
-                               <td className="p-5">{new Date(a.timestamp).toLocaleString()}</td>
-                               <td className="p-5">{employees.find(e => e.id === a.employeeId)?.surname} {employees.find(e => e.id === a.employeeId)?.name}</td>
-                               <td className="p-5 text-right font-black">{a.status} - {a.type}</td>
-                            </tr>
-                          ))}
-                          {reportType === 'payments' && paymentsToDisplay.map(p => (
-                            <tr key={p.id}>
-                               <td className="p-5"><p className="text-blue-600">{p.voucherCode}</p><p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString()}</p></td>
-                               <td className="p-5">{employees.find(e => e.id === p.employeeId)?.surname}</td>
-                               <td className="p-5 text-right font-[950] text-emerald-700">${p.amount.toFixed(2)}</td>
-                            </tr>
-                          ))}
-                          {reportType === 'history' && historyToDisplay.map(e => (
-                            <tr key={e.id}>
-                               <td className="p-5"><p className="text-slate-900">{e.surname} {e.name}</p><p className="text-[9px] text-slate-400">CI: {e.identification}</p></td>
-                               <td className="p-5">{e.role}</td>
-                               <td className={`p-5 text-right font-[950] ${e.status === 'active' ? 'text-emerald-600' : 'text-red-500'}`}>{e.status}</td>
-                            </tr>
-                          ))}
+                          {renderTableRows()}
                       </tbody>
                   </table>
               </div>

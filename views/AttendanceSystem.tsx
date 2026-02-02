@@ -17,11 +17,9 @@ interface AttendanceSystemProps {
 
 const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendance, onRegister, onBack, onUpdateEmployees, settings }) => {
   const [pin, setPin] = useState('');
-  const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin' | 'justification_form'>('idle');
+  const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin' | 'regularize_form'>('idle');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
-  const [pendingMarkData, setPendingMarkData] = useState<{ type: 'in' | 'out' | 'half_day', isLate: boolean } | null>(null);
-  const [justificationText, setJustificationText] = useState('');
   const [newPin, setNewPin] = useState('');
   const [forgotCi, setForgotCi] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -30,7 +28,16 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     isOpen: false, title: '', message: '', type: 'success'
   });
 
+  const [regularizeData, setRegularizeData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+    type: 'in' as 'in' | 'out',
+    justification: 'SIN ACCESO AL PANEL',
+    otherDetails: ''
+  });
+
   const today = useMemo(() => new Date(), []);
+  const todayDateStr = today.toISOString().split('T')[0];
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
 
@@ -45,43 +52,41 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     });
   }, [employees, currentMonth]);
 
-  const isWithinRange = (now: Date, startStr: string, endStr: string) => {
-    const [sh, sm] = startStr.split(':').map(Number);
-    const [eh, em] = endStr.split(':').map(Number);
-    const s = new Date(now); s.setHours(sh, sm, 0, 0);
-    const e = new Date(now); e.setHours(eh, em, 0, 0);
-    return now >= s && now <= e;
-  };
-  
-  const handleMark = (type: 'in' | 'out' | 'half_day') => {
-    if (!currentEmp || isProcessing) return;
-    
+  const empTodayRecords = useMemo(() => {
+    if (!currentEmp) return [];
+    return attendance.filter(a => a.employeeId === currentEmp.id && a.timestamp.startsWith(todayDateStr));
+  }, [attendance, currentEmp, todayDateStr]);
+
+  const halfDayDoneThisWeek = useMemo(() => {
+    if (!currentEmp) return false;
     const now = new Date();
     const day = now.getDay();
-    let isOffSchedule = false;
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(now.setDate(diff));
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    return attendance.some(a => {
+      const aDate = new Date(a.timestamp);
+      return a.employeeId === currentEmp.id && a.type === 'half_day' && aDate >= startOfWeek;
+    });
+  }, [attendance, currentEmp]);
+
+  const insCount = empTodayRecords.filter(r => r.type === 'in').length;
+  const outsCount = empTodayRecords.filter(r => r.type === 'out').length;
+  const halfDayDoneToday = empTodayRecords.some(r => r.type === 'half_day');
+
+  const handleMark = (type: 'in' | 'out' | 'half_day', shiftLabel: string) => {
+    if (!currentEmp || isProcessing) return;
+    const now = new Date();
+    const day = now.getDay();
     let isCriticalLate = false;
 
     if (type !== 'half_day') {
       if (day >= 1 && day <= 5) {
-        const in1Range = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
-        const in2Range = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
-        
-        // Horarios de entrada programados
         const [h1, m1] = settings.schedule.monFri.in1.split(':').map(Number);
         const schedIn1 = new Date(now); schedIn1.setHours(h1, m1, 0, 0);
         const [h2, m2] = settings.schedule.monFri.in2.split(':').map(Number);
         const schedIn2 = new Date(now); schedIn2.setHours(h2, m2, 0, 0);
-
-        if (!in1Range && !in2Range) {
-          isOffSchedule = true;
-          // Si es un ingreso 'in' y está antes de la primera jornada o antes de la segunda jornada, no es extratemporal
-          const isEarlyTurn1 = type === 'in' && now < schedIn1;
-          const isEarlyTurn2 = type === 'in' && (now > schedIn1 && now < schedIn2);
-          
-          if (isEarlyTurn1 || isEarlyTurn2) {
-            isOffSchedule = false;
-          }
-        }
 
         if (type === 'in') {
           const targetSched = (now > schedIn1 && now < schedIn2) ? schedIn2 : schedIn1;
@@ -89,34 +94,53 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
           if (diffMins > 15) isCriticalLate = true;
         }
       } else if (day === 6) {
-        const inSatRange = isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out);
         const [hs, ms] = settings.schedule.sat.in.split(':').map(Number);
         const schedSatIn = new Date(now); schedSatIn.setHours(hs, ms, 0, 0);
-
-        if (!inSatRange) {
-          isOffSchedule = true;
-          if (type === 'in' && now < schedSatIn) isOffSchedule = false;
-        }
 
         if (type === 'in') {
           const diffMins = (now.getTime() - schedSatIn.getTime()) / (1000 * 60);
           if (diffMins > 15) isCriticalLate = true;
         }
-      } else {
-        isOffSchedule = true;
       }
     }
 
-    if (isOffSchedule || isCriticalLate) {
-      setPendingMarkData({ type, isLate: isCriticalLate });
-      setStatus('justification_form');
-      return;
-    }
-
-    processRegistration(type, isCriticalLate);
+    processRegistration(type, isCriticalLate, shiftLabel);
   };
 
-  const processRegistration = (type: 'in' | 'out' | 'half_day', isLate: boolean, justification?: string) => {
+  const handleRegularize = () => {
+    if (!currentEmp || isProcessing) return;
+    setIsProcessing(true);
+
+    const fullTimestamp = `${regularizeData.date}T${regularizeData.time}:00.000Z`;
+    
+    const finalJustification = regularizeData.justification === 'OTRO (DETALLAR)' 
+      ? `OTRO: ${regularizeData.otherDetails.toUpperCase()}` 
+      : regularizeData.justification;
+
+    const record: AttendanceRecord = {
+      id: Math.random().toString(36).substr(2, 9),
+      employeeId: currentEmp.id,
+      timestamp: fullTimestamp,
+      type: regularizeData.type,
+      status: 'pending_approval',
+      justification: finalJustification,
+      isForgotten: true
+    };
+
+    onRegister(record);
+    const typeLabel = regularizeData.type === 'in' ? 'ENTRADA' : 'SALIDA';
+    setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: ${typeLabel} (REGULARIZACIÓN)`);
+    setStatus('success');
+    setPin('');
+
+    setTimeout(() => {
+      setStatus('idle');
+      setCurrentEmp(null);
+      setIsProcessing(false);
+    }, 3000);
+  };
+
+  const processRegistration = (type: 'in' | 'out' | 'half_day', isLate: boolean, shiftLabel: string, justification?: string) => {
     setIsProcessing(true);
     
     if (isLate && Notification.permission === "granted") {
@@ -138,26 +162,21 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    let msg = "";
+    let msg = `ÉXITO AL REALIZAR EL MARCAJE: ${shiftLabel}`;
     const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
     const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
     
     if (isTodayBirthday) {
-       msg = "¡FELIZ CUMPLEAÑOS! 🎂🎈";
+       msg = `¡FELIZ CUMPLEAÑOS! 🎂🎈 | ${msg}`;
        setIsBirthdaySuccess(true);
     } else {
-       if (type === 'in') msg = "INGRESO REGISTRADO";
-       else if (type === 'out') msg = "SALIDA REGISTRADA";
-       else msg = "MEDIA JORNADA REGISTRADA";
        setIsBirthdaySuccess(false);
     }
 
     setSuccessMsg(msg);
     setStatus('success');
     setPin('');
-    setJustificationText('');
-    setPendingMarkData(null);
-
+    
     setTimeout(() => {
       setStatus('idle');
       setCurrentEmp(null);
@@ -166,32 +185,13 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     }, isTodayBirthday ? 5000 : 3000);
   };
 
-  const handleConfirmJustification = () => {
-    if (!justificationText.trim()) {
-      setFeedback({ isOpen: true, title: "Requerido", message: "Debe ingresar un motivo para continuar.", type: "error" });
-      return;
-    }
-    if (pendingMarkData) {
-      processRegistration(pendingMarkData.type, pendingMarkData.isLate, justificationText);
-    }
-  };
-
   const handlePinChange = () => {
     if (newPin.length !== 6 || newPin === currentEmp?.pin) {
       setFeedback({ isOpen: true, title: "Error de PIN", message: "Ingrese un PIN nuevo de 6 dígitos diferente al actual.", type: "error" });
       return;
     }
-    
-    const updated = employees.map(e => e.id === currentEmp?.id ? {
-      ...e,
-      pin: newPin,
-      pinChanged: true,
-      pinNeedsReset: false,
-      pinResetRequested: false
-    } : e);
-    
+    const updated = employees.map(e => e.id === currentEmp?.id ? { ...e, pin: newPin, pinChanged: true, pinNeedsReset: false, pinResetRequested: false } : e);
     onUpdateEmployees(updated);
-
     setFeedback({ isOpen: true, title: "PIN Actualizado", message: "Su clave de acceso ha sido cambiada. Ahora puede marcar su asistencia.", type: "success" });
     setStatus('confirm');
     setNewPin('');
@@ -202,29 +202,14 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     if (emp) {
       const updated = employees.map(e => e.id === emp.id ? { ...e, pinResetRequested: true } : e);
       onUpdateEmployees(updated);
-      
       if (Notification.permission === "granted") {
-        new Notification("SOLICITUD DE ACCESO", {
-          body: `El colaborador ${emp.name} solicita resetear su PIN de asistencia.`,
-          icon: APP_ICON_SVG
-        });
+        new Notification("SOLICITUD DE ACCESO", { body: `El colaborador ${emp.name} solicita resetear su PIN de asistencia.`, icon: APP_ICON_SVG });
       }
-      
-      setFeedback({ 
-        isOpen: true, 
-        title: "Solicitud Recibida", 
-        message: "Su solicitud ha sido enviada al administrador. RRHH autorizará su nuevo acceso a la brevedad.", 
-        type: "info" 
-      });
+      setFeedback({ isOpen: true, title: "Solicitud Recibida", message: "Su solicitud ha sido enviada al administrador. RRHH autorizará su nuevo acceso a la brevedad.", type: "info" });
       setStatus('idle');
       setForgotCi('');
     } else {
-      setFeedback({ 
-        isOpen: true, 
-        title: "Error", 
-        message: "Identificación no encontrada en el sistema.", 
-        type: "error" 
-      });
+      setFeedback({ isOpen: true, title: "Error", message: "Identificación no encontrada en el sistema.", type: "error" });
     }
   };
 
@@ -233,11 +218,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       const emp = employees.find(e => e.pin === pin && e.status === 'active');
       if (emp) {
         setCurrentEmp(emp);
-        if (!emp.pinChanged || emp.pinNeedsReset) {
-          setStatus('change_pin');
-        } else {
-          setStatus('confirm');
-        }
+        if (!emp.pinChanged || emp.pinNeedsReset) setStatus('change_pin');
+        else setStatus('confirm');
       } else {
         setStatus('error');
         setTimeout(() => { setStatus('idle'); setPin(''); }, 1500);
@@ -288,11 +270,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                       <span className="text-[7px] font-bold text-yellow-600 bg-yellow-50 px-1.5 rounded-full">{new Date(e.birthDate).getDate() + 1}/{currentMonth + 1}</span>
                     </div>
                   ))}
-                  {monthBirthdays.length > 3 && <span className="text-[8px] font-black text-slate-400 flex items-center">+{monthBirthdays.length - 3}</span>}
                 </div>
               </div>
             )}
-
             <h2 className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 md:mb-6">Ingresar PIN de 6 dígitos</h2>
             <div className="flex gap-1.5 md:gap-2 justify-center mb-8 md:mb-10">
               {[...Array(6)].map((_, i) => (
@@ -303,85 +283,68 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             </div>
             <div className="grid grid-cols-3 gap-2 md:gap-3 max-w-[280px] md:max-w-[340px] mx-auto mb-8 md:mb-10">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
-                <button 
-                  key={btn} 
-                  onClick={() => {
-                    if (btn === 'C') setPin('');
-                    else if (btn === '←') setPin(p => p.slice(0, -1));
-                    else if (pin.length < 6) setPin(p => p + btn);
-                  }} 
-                  className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center"
-                >
-                  {btn}
-                </button>
+                <button key={btn} onClick={() => { if (btn === 'C') setPin(''); else if (btn === '←') setPin(p => p.slice(0, -1)); else if (pin.length < 6) setPin(p => p + btn); }} className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center">{btn}</button>
               ))}
             </div>
-            
-            <button 
-              onClick={() => setStatus('forgotten_form')}
-              className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95"
-            >
-              ¿Olvidó su PIN? Solicitar Reseteo
-            </button>
+            <button onClick={() => setStatus('forgotten_form')} className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95">¿Olvidó su PIN? Solicitar Reseteo</button>
           </div>
         )}
 
-        {status === 'justification_form' && (
-          <div className="text-center w-full space-y-4 md:space-y-6 animate-in zoom-in">
-             <div className="w-16 h-16 md:w-20 md:h-20 bg-blue-50 text-blue-600 rounded-2xl md:rounded-3xl flex items-center justify-center text-3xl mx-auto mb-2 border border-blue-100 shadow-inner">📝</div>
-             <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Justificación Requerida</h2>
-             <p className="text-[9px] md:text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">Su marcación presenta una excepción horaria.</p>
-             <textarea 
-               value={justificationText}
-               onChange={e => setJustificationText(e.target.value)}
-               className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-[11px] font-black uppercase focus:border-blue-600 outline-none bg-slate-50 min-h-[100px] md:min-h-[120px]" 
-               placeholder="Escriba el motivo..." 
-               autoFocus 
-             />
-             <div className="grid grid-cols-2 gap-2 md:gap-3">
-                <button onClick={() => setStatus('confirm')} className="w-full py-3 md:py-4 bg-slate-100 text-slate-600 font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95">Cancelar</button>
-                <button onClick={handleConfirmJustification} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Confirmar</button>
-             </div>
-          </div>
-        )}
-
-        {status === 'forgotten_form' && (
-          <div className="text-center w-full space-y-4 md:space-y-6 animate-in zoom-in">
-            <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase tracking-tighter">Solicitar Nuevo PIN</h2>
-            <p className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-widest">Ingrese su Identificación</p>
-            <input 
-              maxLength={10} 
-              type="text" 
-              inputMode="numeric"
-              value={forgotCi} 
-              onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))} 
-              className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-center text-2xl md:text-3xl font-black focus:border-blue-600 outline-none bg-slate-50" 
-              placeholder="0000000000" 
-              autoFocus 
-            />
-            <div className="grid grid-cols-2 gap-2 md:gap-3">
-              <button onClick={() => setStatus('idle')} className="w-full py-3 md:py-4 bg-slate-100 text-slate-600 font-black rounded-xl md:rounded-2xl uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95">Cancelar</button>
-              <button onClick={handleRequestPinReset} className="w-full py-3 md:py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] md:text-[10px] tracking-widest shadow-xl active:scale-95">Enviar</button>
-            </div>
-          </div>
-        )}
-
-        {status === 'change_pin' && currentEmp && (
-          <div className="text-center w-full space-y-4 md:space-y-6">
-            <h2 className="text-xl md:text-2xl font-[950] text-slate-900 uppercase">Seguridad Obligatoria</h2>
-            <p className="text-[10px] md:text-xs text-slate-500 font-bold uppercase tracking-widest">Establezca su PIN de 6 dígitos</p>
-            <input 
-              maxLength={6} 
-              type="password" 
-              inputMode="numeric"
-              value={newPin} 
-              onChange={e => setNewPin(e.target.value.replace(/\D/g,''))} 
-              className="w-full border-2 p-4 md:p-5 rounded-xl md:rounded-2xl text-center text-3xl md:text-4xl font-black focus:border-blue-600 outline-none bg-slate-50" 
-              placeholder="••••••" 
-              autoFocus 
-            />
-            <button onClick={handlePinChange} className="w-full py-4 md:py-5 bg-blue-700 text-white font-black rounded-xl md:rounded-[2rem] uppercase text-[10px] md:text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Guardar PIN</button>
-          </div>
+        {status === 'regularize_form' && (
+           <div className="text-center w-full space-y-6 animate-in zoom-in">
+              <div className="p-6 bg-blue-50 border border-blue-100 rounded-3xl mb-4">
+                  <p className="text-[11px] font-black text-blue-700 uppercase tracking-widest leading-relaxed italic">
+                    "Tu integridad es el valor más grande de nuestra institución. Si por motivos de acceso no pudiste marcar, regulariza tu jornada con total honestidad. La transparencia nos fortalece."
+                  </p>
+              </div>
+              <div className="space-y-4 text-left">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fecha Olvidada</label>
+                    <input type="date" value={regularizeData.date} onChange={e => setRegularizeData({...regularizeData, date: e.target.value})} className="w-full p-4 border-2 rounded-xl text-xs font-black" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hora Aproximada</label>
+                       <input type="time" value={regularizeData.time} onChange={e => setRegularizeData({...regularizeData, time: e.target.value})} className="w-full p-4 border-2 rounded-xl text-xs font-black" />
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tipo</label>
+                       <select value={regularizeData.type} onChange={e => setRegularizeData({...regularizeData, type: e.target.value as any})} className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase">
+                          <option value="in">Ingreso</option>
+                          <option value="out">Salida</option>
+                       </select>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Motivo de Justificación</label>
+                    <select 
+                      value={regularizeData.justification} 
+                      onChange={e => setRegularizeData({...regularizeData, justification: e.target.value})} 
+                      className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase focus:border-blue-500 outline-none"
+                    >
+                      <option value="SIN ACCESO AL PANEL">SIN ACCESO AL PANEL</option>
+                      <option value="OLVIDO">OLVIDO</option>
+                      <option value="OTRO (DETALLAR)">OTRO (DETALLAR)</option>
+                    </select>
+                  </div>
+                  {regularizeData.justification === 'OTRO (DETALLAR)' && (
+                    <div className="space-y-1 animate-in slide-in-from-top-2">
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Detalle del Motivo</label>
+                       <input 
+                         type="text" 
+                         value={regularizeData.otherDetails} 
+                         onChange={e => setRegularizeData({...regularizeData, otherDetails: e.target.value})} 
+                         className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase focus:border-blue-500 outline-none" 
+                         placeholder="DESCRIBA AQUÍ..." 
+                       />
+                    </div>
+                  )}
+              </div>
+              <div className="flex gap-3">
+                 <button onClick={() => setStatus('confirm')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px]">Volver</button>
+                 <button onClick={handleRegularize} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl active:scale-95">Solicitar Autorización</button>
+              </div>
+           </div>
         )}
 
         {status === 'confirm' && currentEmp && (
@@ -393,28 +356,26 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] mb-6 md:mb-8">{currentEmp.role}</p>
             
             <div className="space-y-4">
-              <section className="space-y-2">
-                <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest text-left">Primera Jornada (Mañana)</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => handleMark('in')} className="py-4 bg-blue-700 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-blue-900">Ingreso</button>
-                  <button onClick={() => handleMark('out')} className="py-4 bg-slate-800 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-slate-950">Salida</button>
+              <section className="space-y-3">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-emerald-500 pl-2">Primera Jornada (Mañana)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button disabled={insCount >= 1 || halfDayDoneToday} onClick={() => handleMark('in', 'ENTRADA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${insCount >= 1 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-800'}`}>Ingreso</button>
+                  <button disabled={outsCount >= 1 || halfDayDoneToday} onClick={() => handleMark('out', 'SALIDA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${outsCount >= 1 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-orange-600 text-white border-orange-800'}`}>Salida</button>
                 </div>
               </section>
 
-              <section className="space-y-2">
-                <p className="text-[7px] font-black text-slate-300 uppercase tracking-widest text-left">Segunda Jornada (Tarde)</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => handleMark('in')} className="py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-blue-800">Ingreso</button>
-                  <button onClick={() => handleMark('out')} className="py-4 bg-slate-700 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-slate-900">Salida</button>
+              <section className="space-y-3">
+                <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-cyan-500 pl-2">Segunda Jornada (Tarde)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button disabled={insCount >= 2 || halfDayDoneToday} onClick={() => handleMark('in', 'ENTRADA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${insCount >= 2 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-cyan-600 text-white border-cyan-800'}`}>Ingreso</button>
+                  <button disabled={outsCount >= 2 || halfDayDoneToday} onClick={() => handleMark('out', 'SALIDA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${outsCount >= 2 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-pink-600 text-white border-pink-800'}`}>Salida</button>
                 </div>
               </section>
 
-              <button 
-                onClick={() => handleMark('half_day')} 
-                className="w-full py-4 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-2 border-emerald-800 flex items-center justify-center gap-2"
-              >
-                <span>📅</span> Media Jornada Libre
-              </button>
+              <div className="grid grid-cols-1 gap-3">
+                  <button disabled={halfDayDoneThisWeek} onClick={() => handleMark('half_day', 'REGISTRO MEDIA JORNADA LIBRE')} className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 ${halfDayDoneThisWeek ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-amber-500 text-white border-amber-700'}`}><span>📅</span> Media Jornada Libre</button>
+                  <button onClick={() => setStatus('regularize_form')} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95"><span>💡</span> Regularizar Marcación Olvidada</button>
+              </div>
             </div>
           </div>
         )}
@@ -427,7 +388,6 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
           </div>
         )}
       </div>
-
       <button onClick={onBack} className="mt-8 md:mt-10 text-white/30 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.4em] md:tracking-[0.6em] p-4 transition-all active:scale-95">Salir del Terminal</button>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>

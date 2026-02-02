@@ -86,12 +86,10 @@ const App: React.FC = () => {
     
     cleanListeners();
 
-    // Manejador de errores común para Firestore
     const handleFirestoreError = (module: string, error: any) => {
       console.warn(`Firestore Error [${module}]:`, error.message || error);
       setIsDbConnected(false);
       
-      // Fallback a datos cacheados localmente
       const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
       if (cached) {
         const data = JSON.parse(cached);
@@ -101,8 +99,6 @@ const App: React.FC = () => {
         if (module === 'Attendance') setAttendance(data);
         if (module === 'Payments') setPayments(data);
       }
-      
-      // Permitir que la app cargue aunque falle la DB
       setIsLoadingData(false);
     };
 
@@ -266,6 +262,13 @@ const App: React.FC = () => {
     }
   };
 
+  // NUEVA FUNCIÓN PARA GESTIONAR ACTUALIZACIÓN DE ASISTENCIA (AUTORIZACIONES)
+  const handleUpdateAttendance = async (recs: AttendanceRecord[]) => {
+    for (const r of recs) {
+       await setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e));
+    }
+  };
+
   if (isLoadingData) return null;
 
   return (
@@ -394,6 +397,7 @@ const App: React.FC = () => {
           employees={employees}
           onUpdateEmployees={handleUpdateEmployees}
           attendance={attendance}
+          onUpdateAttendance={handleUpdateAttendance}
           payments={payments}
           onUpdatePayments={handleUpdatePayments}
           settings={settings}
