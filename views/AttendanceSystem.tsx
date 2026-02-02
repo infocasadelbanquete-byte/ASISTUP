@@ -230,13 +230,20 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onBack();
-      if (status !== 'idle' || isProcessing) return;
-      if (e.key >= '0' && e.key <= '9' && pin.length < 6) setPin(p => p + e.key);
-      if (e.key === 'Backspace') setPin(p => p.slice(0, -1));
+      if (isProcessing) return;
+      
+      if (status === 'idle') {
+        if (e.key >= '0' && e.key <= '9' && pin.length < 6) setPin(p => p + e.key);
+        if (e.key === 'Backspace') setPin(p => p.slice(0, -1));
+      } else if (status === 'change_pin') {
+        if (e.key >= '0' && e.key <= '9' && newPin.length < 6) setNewPin(p => p + e.key);
+        if (e.key === 'Backspace') setNewPin(p => p.slice(0, -1));
+        if (e.key === 'Enter') handlePinChange();
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [pin, status, isProcessing]);
+  }, [pin, newPin, status, isProcessing]);
 
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
@@ -287,6 +294,50 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               ))}
             </div>
             <button onClick={() => setStatus('forgotten_form')} className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95">¿Olvidó su PIN? Solicitar Reseteo</button>
+          </div>
+        )}
+
+        {status === 'forgotten_form' && (
+           <div className="text-center w-full space-y-6 animate-in zoom-in">
+              <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Solicitud de Reseteo de Acceso</h2>
+              <div className="space-y-4">
+                 <input 
+                   type="text" 
+                   value={forgotCi} 
+                   onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))} 
+                   placeholder="INGRESE SU N° IDENTIFICACIÓN" 
+                   className="w-full p-4 border-2 rounded-2xl text-center text-lg font-black focus:border-blue-600 outline-none uppercase"
+                   autoFocus
+                 />
+                 <div className="flex gap-3">
+                    <button onClick={() => setStatus('idle')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px]">Cancelar</button>
+                    <button onClick={handleRequestPinReset} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl">Solicitar</button>
+                 </div>
+              </div>
+           </div>
+        )}
+
+        {status === 'change_pin' && (
+          <div className="text-center w-full space-y-6 animate-in zoom-in">
+            <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center text-4xl mb-4">🔐</div>
+            <h2 className="text-[11px] font-[950] text-slate-900 uppercase tracking-[0.2em]">Actualización Obligatoria de PIN</h2>
+            <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">Por seguridad, debe establecer una clave personal de 6 dígitos para sus próximos marcajes.</p>
+            
+            <div className="flex gap-2 justify-center mb-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className={`w-8 h-12 border-b-4 flex items-center justify-center text-2xl font-black transition-all ${newPin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
+                  {newPin[i] ? '•' : ''}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 max-w-[280px] mx-auto mb-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
+                <button key={btn} onClick={() => { if (btn === 'C') setNewPin(''); else if (btn === '←') setNewPin(p => p.slice(0, -1)); else if (newPin.length < 6) setNewPin(p => p + btn); }} className="h-14 bg-white hover:bg-blue-700 hover:text-white rounded-xl text-xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center">{btn}</button>
+              ))}
+            </div>
+
+            <button onClick={handlePinChange} disabled={newPin.length !== 6} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 disabled:opacity-50">Actualizar y Continuar</button>
           </div>
         )}
 
