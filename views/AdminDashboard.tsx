@@ -133,6 +133,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return new Date(e.birthDate).getMonth() === currentMonth;
   });
 
+  // Apartado de Monitoreo Diario: Filtrado de marcajes de hoy
+  const todayMarkings = useMemo(() => {
+    return (attendance || [])
+      .filter(a => a.timestamp.includes(todayDateStr))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [attendance, todayDateStr]);
+
   const handlePurgeData = async () => {
     if (role !== Role.SUPER_ADMIN) return;
     onUpdateEmployees([]);
@@ -169,6 +176,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <p className="text-blue-400 font-black text-[14px] md:text-[16px] uppercase tracking-[0.5em] mb-6 md:mb-8">Estrategia & Visión Diaria</p>
                     <h2 className="text-2xl md:text-5xl font-[900] leading-tight tracking-tighter italic max-w-5xl">"{dailyQuote}"</h2>
                   </div>
+              </div>
+
+              {/* NUEVO APARTADO: MONITOREO DE JORNADA DIARIA */}
+              <div className="bg-white p-8 md:p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
+                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+                    <div>
+                      <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-widest leading-none mb-2">Monitoreo de Jornada Diaria</h3>
+                      <p className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Actividad en Tiempo Real • {new Date().toLocaleDateString('es-EC', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
+                    </div>
+                    <div className="px-4 py-2 bg-slate-50 border rounded-full text-[10px] font-black text-slate-400 uppercase">
+                      Información volátil (reseteo diario)
+                    </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto custom-scroll pr-2">
+                    {todayMarkings.length === 0 ? (
+                      <div className="col-span-full py-20 flex flex-col items-center justify-center opacity-40">
+                         <span className="text-5xl mb-4">⌛</span>
+                         <p className="text-[12px] font-black uppercase tracking-[0.2em] text-slate-400">Esperando marcaciones para el día de hoy...</p>
+                      </div>
+                    ) : (
+                      todayMarkings.map((mark) => {
+                        const emp = employees.find(e => e.id === mark.employeeId);
+                        return (
+                          <div key={mark.id} className="flex items-center gap-4 bg-slate-50 p-5 rounded-3xl border border-slate-100 transition-all hover:shadow-md hover:bg-white group">
+                             <div className="w-12 h-12 bg-white rounded-2xl border flex items-center justify-center overflow-hidden shrink-0">
+                                {emp?.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <span className="text-[14px] font-black uppercase text-slate-300">{emp?.name[0]}</span>}
+                             </div>
+                             <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-[950] text-slate-900 uppercase leading-none truncate">{emp?.surname} {emp?.name}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                   <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                      mark.type === 'in' ? 'bg-blue-600 text-white' : 
+                                      mark.type === 'out' ? 'bg-slate-800 text-white' : 
+                                      'bg-emerald-600 text-white'
+                                   }`}>
+                                      {mark.type === 'in' ? 'Ingreso' : mark.type === 'out' ? 'Salida' : 'M. Jornada'}
+                                   </span>
+                                   {mark.isLate && <span className="text-[7px] font-black uppercase bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full animate-pulse">Retraso</span>}
+                                </div>
+                             </div>
+                             <div className="text-right">
+                                <p className="text-[13px] font-[950] text-slate-900 tabular-nums">{new Date(mark.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}</p>
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter mt-1">{mark.status}</p>
+                             </div>
+                          </div>
+                        );
+                      })
+                    )}
+                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">

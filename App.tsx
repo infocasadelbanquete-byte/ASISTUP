@@ -14,7 +14,6 @@ const App: React.FC = () => {
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   
-  // Estados para recuperación de emergencia
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryRuc, setRecoveryRuc] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
@@ -35,7 +34,6 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
 
-  // Fix: Added missing sbuPrev property to satisfy GlobalSettings interface
   const defaultSettings: GlobalSettings = {
     sbu: 482.00,
     sbuPrev: 460.00,
@@ -88,22 +86,44 @@ const App: React.FC = () => {
     
     cleanListeners();
 
+    // Manejador de errores común para Firestore
+    const handleFirestoreError = (module: string, error: any) => {
+      console.warn(`Firestore Error [${module}]:`, error.message || error);
+      setIsDbConnected(false);
+      
+      // Fallback a datos cacheados localmente
+      const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
+      if (cached) {
+        const data = JSON.parse(cached);
+        if (module === 'Company') setCompany(data);
+        if (module === 'Settings') setSettings(data);
+        if (module === 'Employees') setEmployees(data);
+        if (module === 'Attendance') setAttendance(data);
+        if (module === 'Payments') setPayments(data);
+      }
+      
+      // Permitir que la app cargue aunque falle la DB
+      setIsLoadingData(false);
+    };
+
     try {
       const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setCompany(data.payload ? decompressData(data.payload as string) : data as any);
+          const decompressed = data.payload ? decompressData(data.payload as string) : data as any;
+          setCompany(decompressed);
+          localStorage.setItem('cache_company', JSON.stringify(decompressed));
         }
         setIsDbConnected(true);
         setIsLoadingData(false);
-      }, () => setIsDbConnected(false));
+      }, (err) => handleFirestoreError('Company', err));
       unsubscribesRef.current.push(unsubCompany);
 
       const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
-          setSettings({
+          const mergedSettings = {
             ...defaultSettings,
             ...dbSettings,
             schedule: {
@@ -118,36 +138,45 @@ const App: React.FC = () => {
                 ...(dbSettings.schedule?.sat || {})
               }
             }
-          });
+          };
+          setSettings(mergedSettings);
+          localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
         }
-      });
+      }, (err) => handleFirestoreError('Settings', err));
       unsubscribesRef.current.push(unsubSettings);
 
       const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
-        setEmployees(snapshot.docs.map(d => {
+        const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Employee[]);
-      });
+        }) as Employee[];
+        setEmployees(data);
+        localStorage.setItem('cache_employees', JSON.stringify(data));
+      }, (err) => handleFirestoreError('Employees', err));
       unsubscribesRef.current.push(unsubEmployees);
 
       const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
-        setAttendance(snapshot.docs.map(d => {
+        const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as AttendanceRecord[]);
-      });
+        }) as AttendanceRecord[];
+        setAttendance(data);
+        localStorage.setItem('cache_attendance', JSON.stringify(data));
+      }, (err) => handleFirestoreError('Attendance', err));
       unsubscribesRef.current.push(unsubAttendance);
 
       const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
-        setPayments(snapshot.docs.map(d => {
+        const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Payment[]);
-      });
+        }) as Payment[];
+        setPayments(data);
+        localStorage.setItem('cache_payments', JSON.stringify(data));
+      }, (err) => handleFirestoreError('Payments', err));
       unsubscribesRef.current.push(unsubPayments);
 
     } catch (e) {
+      console.error("Initial load failed:", e);
       setIsLoadingData(false);
     }
 
@@ -212,11 +241,11 @@ const App: React.FC = () => {
     const previousIds = new Set<string>(employees.map(e => e.id));
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "employees", id));
+        await deleteDoc(doc(db, "employees", id)).catch(e => console.warn("Delete employee failed:", e));
       }
     }
     for (const e of emps) {
-      await setDoc(doc(db, "employees", e.id), { payload: compressData(e) });
+      await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(e => console.warn("Save employee failed:", e));
     }
   };
 
@@ -225,14 +254,14 @@ const App: React.FC = () => {
     const previousIds = new Set<string>(payments.map(p => p.id));
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "payments", id));
+        await deleteDoc(doc(db, "payments", id)).catch(e => console.warn("Delete payment failed:", e));
       }
     }
     for (const p of pys) {
       if (p.id.length > 15) {
-        await addDoc(collection(db, "payments"), { payload: compressData(p) });
+        await addDoc(collection(db, "payments"), { payload: compressData(p) }).catch(e => console.warn("Add payment failed:", e));
       } else {
-        await setDoc(doc(db, "payments", p.id), { payload: compressData(p) });
+        await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(e => console.warn("Update payment failed:", e));
       }
     }
   };
@@ -350,7 +379,7 @@ const App: React.FC = () => {
           attendance={attendance} 
           onBack={() => setView('selection')} 
           settings={settings} 
-          onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }); }} 
+          onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Register attendance failed:", e)); }} 
           onUpdateEmployees={handleUpdateEmployees} 
         />
       )}
@@ -361,14 +390,14 @@ const App: React.FC = () => {
           isDbConnected={isDbConnected}
           onLogout={() => setShowLogoutFeedback(true)} 
           company={company}
-          onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) })}
+          onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) }).catch(e => console.warn("Update company failed:", e))}
           employees={employees}
           onUpdateEmployees={handleUpdateEmployees}
           attendance={attendance}
           payments={payments}
           onUpdatePayments={handleUpdatePayments}
           settings={settings}
-          onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) })}
+          onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) }).catch(e => console.warn("Update settings failed:", e))}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}
           appMode={appMode}
         />

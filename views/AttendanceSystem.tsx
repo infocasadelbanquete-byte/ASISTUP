@@ -63,19 +63,45 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     if (type !== 'half_day') {
       if (day >= 1 && day <= 5) {
-        const in1 = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
-        const in2 = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
-        if (!in1 && !in2) isOffSchedule = true;
+        const in1Range = isWithinRange(now, settings.schedule.monFri.in1, settings.schedule.monFri.out1);
+        const in2Range = isWithinRange(now, settings.schedule.monFri.in2, settings.schedule.monFri.out2);
+        
+        // Horarios de entrada programados
+        const [h1, m1] = settings.schedule.monFri.in1.split(':').map(Number);
+        const schedIn1 = new Date(now); schedIn1.setHours(h1, m1, 0, 0);
+        const [h2, m2] = settings.schedule.monFri.in2.split(':').map(Number);
+        const schedIn2 = new Date(now); schedIn2.setHours(h2, m2, 0, 0);
+
+        if (!in1Range && !in2Range) {
+          isOffSchedule = true;
+          // Si es un ingreso 'in' y está antes de la primera jornada o antes de la segunda jornada, no es extratemporal
+          const isEarlyTurn1 = type === 'in' && now < schedIn1;
+          const isEarlyTurn2 = type === 'in' && (now > schedIn1 && now < schedIn2);
+          
+          if (isEarlyTurn1 || isEarlyTurn2) {
+            isOffSchedule = false;
+          }
+        }
 
         if (type === 'in') {
-          const [schedH, schedM] = settings.schedule.monFri.in1.split(':').map(Number);
-          const schedDate = new Date(now);
-          schedDate.setHours(schedH, schedM, 0, 0);
-          const diffMins = (now.getTime() - schedDate.getTime()) / (1000 * 60);
+          const targetSched = (now > schedIn1 && now < schedIn2) ? schedIn2 : schedIn1;
+          const diffMins = (now.getTime() - targetSched.getTime()) / (1000 * 60);
           if (diffMins > 15) isCriticalLate = true;
         }
       } else if (day === 6) {
-        if (!isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out)) isOffSchedule = true;
+        const inSatRange = isWithinRange(now, settings.schedule.sat.in, settings.schedule.sat.out);
+        const [hs, ms] = settings.schedule.sat.in.split(':').map(Number);
+        const schedSatIn = new Date(now); schedSatIn.setHours(hs, ms, 0, 0);
+
+        if (!inSatRange) {
+          isOffSchedule = true;
+          if (type === 'in' && now < schedSatIn) isOffSchedule = false;
+        }
+
+        if (type === 'in') {
+          const diffMins = (now.getTime() - schedSatIn.getTime()) / (1000 * 60);
+          if (diffMins > 15) isCriticalLate = true;
+        }
       } else {
         isOffSchedule = true;
       }
@@ -112,7 +138,6 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
     onRegister(record);
     
-    // Detección de cumpleaños hoy
     let msg = "";
     const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
     const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
@@ -251,7 +276,6 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
         {status === 'idle' && (
           <div className="w-full text-center">
-            {/* Recordatorio de Cumpleañeros del Mes */}
             {monthBirthdays.length > 0 && (
               <div className="mb-6 p-4 bg-yellow-50/50 border border-yellow-100 rounded-2xl animate-in slide-in-from-top-4 duration-1000">
                 <p className="text-[8px] font-black text-yellow-600 uppercase tracking-widest mb-2 flex items-center justify-center gap-2">
