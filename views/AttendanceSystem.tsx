@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
 import Modal from '../components/Modal.tsx';
@@ -75,8 +75,64 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   const outsCount = empTodayRecords.filter(r => r.type === 'out').length;
   const halfDayDoneToday = empTodayRecords.some(r => r.type === 'half_day');
 
-  const handleMark = (type: 'in' | 'out' | 'half_day', shiftLabel: string) => {
+  const processRegistration = useCallback((type: 'in' | 'out' | 'half_day', isLate: boolean, shiftLabel: string, justification?: string) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    
+    try {
+      if (isLate && Notification.permission === "granted") {
+        new Notification("ALERTA DE ASISTENCIA", {
+          body: `El colaborador ${currentEmp?.name} ${currentEmp?.surname} ha marcado con más de 15 minutos de retraso.`,
+          icon: APP_ICON_SVG
+        });
+      }
+
+      const record: AttendanceRecord = {
+        id: Math.random().toString(36).substr(2, 9),
+        employeeId: currentEmp!.id,
+        timestamp: new Date().toISOString(),
+        type,
+        status: 'confirmed',
+        isLate,
+        justification
+      };
+
+      // Registrar inmediatamente para persistencia offline. No esperamos respuesta del servidor.
+      onRegister(record);
+      
+      let msg = `ÉXITO AL REALIZAR EL MARCAJE: ${shiftLabel}`;
+      const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
+      const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
+      
+      if (isTodayBirthday) {
+         msg = `¡FELIZ CUMPLEAÑOS! 🎂🎈 | ${msg}`;
+         setIsBirthdaySuccess(true);
+      } else {
+         setIsBirthdaySuccess(false);
+      }
+
+      setSuccessMsg(msg);
+      setStatus('success');
+      setPin('');
+      
+      // Liberar estado de procesamiento después de la marcación exitosa en la UI
+      setTimeout(() => {
+        setStatus('idle');
+        setCurrentEmp(null);
+        setIsProcessing(false);
+        setIsBirthdaySuccess(false);
+      }, isTodayBirthday ? 5000 : 2500);
+
+    } catch (err) {
+      console.error("Error al procesar marcación:", err);
+      setIsProcessing(false);
+      setFeedback({ isOpen: true, title: "Fallo Crítico", message: "No se pudo registrar la asistencia. Intente nuevamente.", type: "error" });
+    }
+  }, [currentEmp, isProcessing, onRegister, currentMonth, currentDay]);
+
+  const handleMark = useCallback((type: 'in' | 'out' | 'half_day', shiftLabel: string) => {
     if (!currentEmp || isProcessing) return;
+    
     const now = new Date();
     const day = now.getDay();
     let isCriticalLate = false;
@@ -105,84 +161,42 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     }
 
     processRegistration(type, isCriticalLate, shiftLabel);
-  };
+  }, [currentEmp, isProcessing, settings, processRegistration]);
 
   const handleRegularize = () => {
     if (!currentEmp || isProcessing) return;
     setIsProcessing(true);
 
-    const fullTimestamp = `${regularizeData.date}T${regularizeData.time}:00.000Z`;
-    
-    const finalJustification = regularizeData.justification === 'OTRO (DETALLAR)' 
-      ? `OTRO: ${regularizeData.otherDetails.toUpperCase()}` 
-      : regularizeData.justification;
+    try {
+      const fullTimestamp = `${regularizeData.date}T${regularizeData.time}:00.000Z`;
+      const finalJustification = regularizeData.justification === 'OTRO (DETALLAR)' 
+        ? `OTRO: ${regularizeData.otherDetails.toUpperCase()}` 
+        : regularizeData.justification;
 
-    const record: AttendanceRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      employeeId: currentEmp.id,
-      timestamp: fullTimestamp,
-      type: regularizeData.type,
-      status: 'pending_approval',
-      justification: finalJustification,
-      isForgotten: true
-    };
+      const record: AttendanceRecord = {
+        id: Math.random().toString(36).substr(2, 9),
+        employeeId: currentEmp.id,
+        timestamp: fullTimestamp,
+        type: regularizeData.type,
+        status: 'pending_approval',
+        justification: finalJustification,
+        isForgotten: true
+      };
 
-    onRegister(record);
-    const typeLabel = regularizeData.type === 'in' ? 'ENTRADA' : 'SALIDA';
-    setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: ${typeLabel} (REGULARIZACIÓN)`);
-    setStatus('success');
-    setPin('');
+      onRegister(record);
+      const typeLabel = regularizeData.type === 'in' ? 'ENTRADA' : 'SALIDA';
+      setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: ${typeLabel} (REGULARIZACIÓN)`);
+      setStatus('success');
+      setPin('');
 
-    setTimeout(() => {
-      setStatus('idle');
-      setCurrentEmp(null);
+      setTimeout(() => {
+        setStatus('idle');
+        setCurrentEmp(null);
+        setIsProcessing(false);
+      }, 3000);
+    } catch (e) {
       setIsProcessing(false);
-    }, 3000);
-  };
-
-  const processRegistration = (type: 'in' | 'out' | 'half_day', isLate: boolean, shiftLabel: string, justification?: string) => {
-    setIsProcessing(true);
-    
-    if (isLate && Notification.permission === "granted") {
-      new Notification("ALERTA DE ASISTENCIA", {
-        body: `El colaborador ${currentEmp?.name} ${currentEmp?.surname} ha marcado con más de 15 minutos de retraso.`,
-        icon: APP_ICON_SVG
-      });
     }
-
-    const record: AttendanceRecord = {
-      id: Math.random().toString(36).substr(2, 9),
-      employeeId: currentEmp!.id,
-      timestamp: new Date().toISOString(),
-      type,
-      status: 'confirmed',
-      isLate,
-      justification
-    };
-
-    onRegister(record);
-    
-    let msg = `ÉXITO AL REALIZAR EL MARCAJE: ${shiftLabel}`;
-    const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
-    const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
-    
-    if (isTodayBirthday) {
-       msg = `¡FELIZ CUMPLEAÑOS! 🎂🎈 | ${msg}`;
-       setIsBirthdaySuccess(true);
-    } else {
-       setIsBirthdaySuccess(false);
-    }
-
-    setSuccessMsg(msg);
-    setStatus('success');
-    setPin('');
-    
-    setTimeout(() => {
-      setStatus('idle');
-      setCurrentEmp(null);
-      setIsProcessing(false);
-      setIsBirthdaySuccess(false);
-    }, isTodayBirthday ? 5000 : 3000);
   };
 
   const handlePinChange = () => {
@@ -255,7 +269,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               </div>
               <h2 className={`font-[950] text-xl uppercase tracking-tighter leading-none ${isBirthdaySuccess ? 'text-yellow-600 animate-pulse' : 'text-slate-900'}`}>{successMsg}</h2>
               {isBirthdaySuccess && <p className="text-xl mt-2 animate-bounce">🎈🎊🎁</p>}
-              <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-2 italic">Sincronizado con RRHH</p>
+              <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-2 italic">Registrado Offline / Sincronizando...</p>
            </div>
         </div>
       )}
@@ -290,10 +304,10 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             </div>
             <div className="grid grid-cols-3 gap-2 md:gap-3 max-w-[280px] md:max-w-[340px] mx-auto mb-8 md:mb-10">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
-                <button key={btn} onClick={() => { if (btn === 'C') setPin(''); else if (btn === '←') setPin(p => p.slice(0, -1)); else if (pin.length < 6) setPin(p => p + btn); }} className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center">{btn}</button>
+                <button key={btn} type="button" onClick={() => { if (btn === 'C') setPin(''); else if (btn === '←') setPin(p => p.slice(0, -1)); else if (pin.length < 6) setPin(p => p + btn); }} className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center cursor-pointer">{btn}</button>
               ))}
             </div>
-            <button onClick={() => setStatus('forgotten_form')} className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95">¿Olvidó su PIN? Solicitar Reseteo</button>
+            <button type="button" onClick={() => setStatus('forgotten_form')} className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95 cursor-pointer">¿Olvidó su PIN? Solicitar Reseteo</button>
           </div>
         )}
 
@@ -310,8 +324,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                    autoFocus
                  />
                  <div className="flex gap-3">
-                    <button onClick={() => setStatus('idle')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px]">Cancelar</button>
-                    <button onClick={handleRequestPinReset} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl">Solicitar</button>
+                    <button type="button" onClick={() => setStatus('idle')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px] cursor-pointer">Cancelar</button>
+                    <button type="button" onClick={handleRequestPinReset} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl cursor-pointer">Solicitar</button>
                  </div>
               </div>
            </div>
@@ -333,11 +347,11 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
             <div className="grid grid-cols-3 gap-2 max-w-[280px] mx-auto mb-6">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
-                <button key={btn} onClick={() => { if (btn === 'C') setNewPin(''); else if (btn === '←') setNewPin(p => p.slice(0, -1)); else if (newPin.length < 6) setNewPin(p => p + btn); }} className="h-14 bg-white hover:bg-blue-700 hover:text-white rounded-xl text-xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center">{btn}</button>
+                <button key={btn} type="button" onClick={() => { if (btn === 'C') setNewPin(''); else if (btn === '←') setNewPin(p => p.slice(0, -1)); else if (newPin.length < 6) setNewPin(p => p + btn); }} className="h-14 bg-white hover:bg-blue-700 hover:text-white rounded-xl text-xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center cursor-pointer">{btn}</button>
               ))}
             </div>
 
-            <button onClick={handlePinChange} disabled={newPin.length !== 6} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 disabled:opacity-50">Actualizar y Continuar</button>
+            <button type="button" onClick={handlePinChange} disabled={newPin.length !== 6} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 disabled:opacity-50 cursor-pointer">Actualizar y Continuar</button>
           </div>
         )}
 
@@ -392,8 +406,8 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                   )}
               </div>
               <div className="flex gap-3">
-                 <button onClick={() => setStatus('confirm')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px]">Volver</button>
-                 <button onClick={handleRegularize} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl active:scale-95">Solicitar Autorización</button>
+                 <button type="button" onClick={() => setStatus('confirm')} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-xl uppercase text-[9px] cursor-pointer">Volver</button>
+                 <button type="button" onClick={handleRegularize} className="flex-1 py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[9px] shadow-xl active:scale-95 cursor-pointer">Solicitar Autorización</button>
               </div>
            </div>
         )}
@@ -410,22 +424,22 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               <section className="space-y-3">
                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-emerald-500 pl-2">Primera Jornada (Mañana)</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <button disabled={insCount >= 1 || halfDayDoneToday} onClick={() => handleMark('in', 'ENTRADA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${insCount >= 1 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-800'}`}>Ingreso</button>
-                  <button disabled={outsCount >= 1 || halfDayDoneToday} onClick={() => handleMark('out', 'SALIDA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${outsCount >= 1 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-orange-600 text-white border-orange-800'}`}>Salida</button>
+                  <button type="button" disabled={insCount >= 1 || halfDayDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 1 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-800'}`}>Ingreso</button>
+                  <button type="button" disabled={outsCount >= 1 || halfDayDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 1 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-orange-600 text-white border-orange-800'}`}>Salida</button>
                 </div>
               </section>
 
               <section className="space-y-3">
                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-cyan-500 pl-2">Segunda Jornada (Tarde)</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <button disabled={insCount >= 2 || halfDayDoneToday} onClick={() => handleMark('in', 'ENTRADA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${insCount >= 2 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-cyan-600 text-white border-cyan-800'}`}>Ingreso</button>
-                  <button disabled={outsCount >= 2 || halfDayDoneToday} onClick={() => handleMark('out', 'SALIDA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 ${outsCount >= 2 || halfDayDoneToday ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-pink-600 text-white border-pink-800'}`}>Salida</button>
+                  <button type="button" disabled={insCount >= 2 || halfDayDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 2 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-cyan-600 text-white border-cyan-800'}`}>Ingreso</button>
+                  <button type="button" disabled={outsCount >= 2 || halfDayDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 2 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-pink-600 text-white border-pink-800'}`}>Salida</button>
                 </div>
               </section>
 
               <div className="grid grid-cols-1 gap-3">
-                  <button disabled={halfDayDoneThisWeek} onClick={() => handleMark('half_day', 'REGISTRO MEDIA JORNADA LIBRE')} className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 ${halfDayDoneThisWeek ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-amber-500 text-white border-amber-700'}`}><span>📅</span> Media Jornada Libre</button>
-                  <button onClick={() => setStatus('regularize_form')} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95"><span>💡</span> Regularizar Marcación Olvidada</button>
+                  <button type="button" disabled={halfDayDoneThisWeek || isProcessing} onClick={() => handleMark('half_day', 'REGISTRO MEDIA JORNADA LIBRE')} className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 cursor-pointer ${halfDayDoneThisWeek || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-amber-500 text-white border-amber-700'}`}><span>📅</span> Media Jornada Libre</button>
+                  <button type="button" onClick={() => setStatus('regularize_form')} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 cursor-pointer"><span>💡</span> Regularizar Marcación Olvidada</button>
               </div>
             </div>
           </div>
@@ -439,12 +453,12 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
           </div>
         )}
       </div>
-      <button onClick={onBack} className="mt-8 md:mt-10 text-white/30 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.4em] md:tracking-[0.6em] p-4 transition-all active:scale-95">Salir del Terminal</button>
+      <button type="button" onClick={onBack} className="mt-8 md:mt-10 text-white/30 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.4em] md:tracking-[0.6em] p-4 transition-all active:scale-95 cursor-pointer">Salir del Terminal</button>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
           <div className="text-center space-y-4 md:space-y-6">
               <p className="text-slate-600 font-bold uppercase text-[11px] md:text-[12px] leading-relaxed">{feedback.message}</p>
-              <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Aceptar</button>
+              <button type="button" onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest cursor-pointer">Aceptar</button>
           </div>
       </Modal>
     </div>

@@ -262,7 +262,6 @@ const App: React.FC = () => {
     }
   };
 
-  // NUEVA FUNCIÓN PARA GESTIONAR ACTUALIZACIÓN DE ASISTENCIA (AUTORIZACIONES)
   const handleUpdateAttendance = async (recs: AttendanceRecord[]) => {
     for (const r of recs) {
        await setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e));
@@ -382,7 +381,12 @@ const App: React.FC = () => {
           attendance={attendance} 
           onBack={() => setView('selection')} 
           settings={settings} 
-          onRegister={async (r) => { await addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Register attendance failed:", e)); }} 
+          onRegister={(r) => { 
+            // Sincronización offline optimizada: Encolar sin esperar conexión.
+            // addDoc de Firebase devolverá la promesa pero nosotros no esperamos en la UI principal.
+            addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp })
+              .catch(e => console.warn("Marcación encolada (offline):", e)); 
+          }} 
           onUpdateEmployees={handleUpdateEmployees} 
         />
       )}

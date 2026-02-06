@@ -1,4 +1,3 @@
-
 import { initializeApp } from "firebase/app";
 import { 
   initializeFirestore, 
@@ -14,7 +13,14 @@ import {
 } from "firebase/firestore";
 import LZString from "lz-string";
 
-// Configuración de Firebase utilizando variables de entorno inyectadas por Vite
+/**
+ * CONFIGURACIÓN DE SEGURIDAD FIRESTORE:
+ * Si experimenta errores de permiso (403) al intentar crear registros, asegúrese de
+ * aplicar las reglas definidas en el archivo 'firestore.rules' en su consola de Firebase.
+ * El sistema ASIST UP requiere permisos de escritura en 'attendance', 'employees',
+ * 'payments' y 'config' para operar correctamente.
+ */
+
 const firebaseConfig = {
   apiKey: (process.env.API_KEY as string) || "",
   authDomain: "asist-up-6ccd1.firebaseapp.com",
@@ -26,7 +32,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Firestore con persistencia optimizada para PWA
+// Inicializar Firestore con persistencia optimizada para PWA y múltiples pestañas
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
@@ -54,7 +60,6 @@ export const compressData = (data: any): string => {
   }
 };
 
-// Fix: Changed signature from string to any to handle unknown data from Firestore safely
 export const decompressData = (compressed: any): any => {
   try {
     if (!compressed || typeof compressed !== 'string') return null;
