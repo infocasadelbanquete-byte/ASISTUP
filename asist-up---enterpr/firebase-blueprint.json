@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Información detallada del empleado incluyendo datos personales, bancarios y de contrato.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "surname": { "type": "string" },
+        "identification": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "gender": { "type": "string" },
+        "civilStatus": { "type": "string" },
+        "origin": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "bloodType": { "type": "string" },
+        "startDate": { "type": "string" },
+        "role": { "type": "string" },
+        "isFixed": { "type": "boolean" },
+        "salary": { "type": "number" },
+        "isAffiliated": { "type": "boolean" },
+        "overSalaryType": { "type": "string" },
+        "status": { "type": "string" },
+        "pin": { "type": "string" }
+      },
+      "required": ["id", "name", "surname", "identification", "pin", "role", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Registro de asistencia (entrada/salida) de un empleado.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "timestamp", "type", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Registro de pagos, sueldos, préstamos o bonos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "string" },
+        "type": { "type": "string" },
+        "method": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "amount", "date", "type", "status"]
+    },
+    "CompanyConfig": {
+      "title": "CompanyConfig",
+      "description": "Configuración general de la empresa.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "legalRep": { "type": "string" },
+        "ruc": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "logo": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "employees": {
+      "schema": "Employee",
+      "description": "Colección de empleados."
+    },
+    "attendance": {
+      "schema": "AttendanceRecord",
+      "description": "Colección de registros de asistencia."
+    },
+    "payments": {
+      "schema": "Payment",
+      "description": "Colección de pagos realizados."
+    },
+    "config": {
+      "schema": "CompanyConfig",
+      "description": "Configuración de la empresa."
+    }
+  }
+}

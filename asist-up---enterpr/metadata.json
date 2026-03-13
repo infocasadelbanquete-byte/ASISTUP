@@ -1,0 +1,7 @@
+{
+  "name": "ASIST UP - Enterprise HR & Attendance",
+  "description": "Una suite de gestión administrativa y control de asistencia de alto nivel, diseñada bajo estándares corporativos para la optimización del talento humano.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
