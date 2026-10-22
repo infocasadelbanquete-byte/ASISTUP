@@ -21,13 +21,14 @@ import LZString from "lz-string";
  * 'payments' y 'config' para operar correctamente.
  */
 
+// Configuración leída desde variables de entorno (definidas en Netlify con prefijo VITE_)
 const firebaseConfig = {
-  apiKey: (process.env.API_KEY as string) || "",
-  authDomain: "asist-up-6ccd1.firebaseapp.com",
-  projectId: "asist-up-6ccd1",
-  storageBucket: "asist-up-6ccd1.firebasestorage.app",
-  messagingSenderId: "944407397524",
-  appId: "1:944407397524:web:8e685e9ea9382288622081"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "asist-up-6ccd1.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "asist-up-6ccd1",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "asist-up-6ccd1.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "944407397524",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:944407397524:web:6b0cdfa6a21cc6a7622081"
 };
 
 const app = initializeApp(firebaseConfig);
