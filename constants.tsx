@@ -60,6 +60,31 @@ export const ACTIVE_BREAKS = [
 
 export const APP_NAME = "ASIST UP";
 
+export const SYSTEM_VERSION = "v3.5.0";
+
+export const DEFAULT_SYSTEM_UPDATE = {
+  version: "v3.5.0",
+  releaseDate: "2026-04-01",
+  title: "Actualización Mayor 2026: Motor Laboral Ecuatoriano, Expedientes A4 y Control de Asistencia",
+  description: "Actualización obligatoria para todas las terminales y dispositivos instalados. Integra el nuevo motor de liquidaciones con vacaciones gozadas y finiquitos modificables, bitácora administrativa detallada, censo con cargas familiares e hijos (utilidades Art. 97 C.T.), fichas A4, reportes individuales de horas trabajadas consolidadas y control de marcaciones pendientes retroactivas.",
+  changelog: [
+    "Control obligatorio de marcaciones pendientes del mes con bloqueo de marcado hasta regularizar o solicitar auditoría.",
+    "Sumatoria de horas trabajadas y consolidación de jornada en una sola línea diaria en reporte individual.",
+    "Registro administrativo de vacaciones gozadas y recálculo automático en liquidaciones.",
+    "Cláusula de finiquito con declaración de no reclamo en copias de archivo y colaborador.",
+    "Bitácora administrativa de novedades con catálogo dinámico de conceptos y desglose por jornada o número de horas.",
+    "Clasificación de trabajador Fijo/Temporal con activación a criterio administrativo de beneficios sociales.",
+    "Censo de cargas familiares e hijos (con nombres, edades y cédulas) para distribución legal del 5% de utilidades.",
+    "Modificación de acta de finiquito definitiva para reimpresión formal en 3 copias A4 oficiales.",
+    "Fichas individuales completas de colaboradores en Personal y Archivo Maestro en formato oficial A4.",
+    "Exportación y previsualización de reportes individuales de asistencia en PDF y Excel sin bloqueos ni pantallas en blanco.",
+    "Campo de teléfono de contacto en alta de colaboradores, expediente y ficha oficial.",
+    "Sincronización forzada en tiempo real y renovación de Service Worker en todos los dispositivos instalados."
+  ],
+  isMandatory: true,
+  publishedAt: "2026-04-01T08:00:00.000Z"
+};
+
 export const ECUADOR_HOLIDAYS = [
   { name: "Año Nuevo", month: 0, day: 1, duration: 7 },
   { name: "San Valentín", month: 1, day: 14 },

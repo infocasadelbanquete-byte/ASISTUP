@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
+import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings, SavedReport } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
 import { db, collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
+import { DEFAULT_SYSTEM_UPDATE } from './constants.tsx';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
@@ -29,10 +30,46 @@ const App: React.FC = () => {
     isOpen: false, title: '', message: '', type: 'info'
   });
   
-  const [company, setCompany] = useState<CompanyConfig | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [company, setCompany] = useState<CompanyConfig | null>(() => {
+    try {
+      const cached = localStorage.getItem('cache_company');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_employees');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_attendance');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [payments, setPayments] = useState<Payment[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_payments');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [savedReports, setSavedReports] = useState<SavedReport[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_saved_reports');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   const defaultSettings: GlobalSettings = {
     sbu: 482.00,
@@ -44,10 +81,34 @@ const App: React.FC = () => {
       monFri: { in1: '08:30', out1: '13:00', in2: '15:00', out2: '18:00' },
       sat: { in: '08:30', out: '13:00' },
       halfDayOff: 'Miércoles tarde'
-    }
+    },
+    systemUpdate: DEFAULT_SYSTEM_UPDATE
   };
 
-  const [settings, setSettings] = useState<GlobalSettings>(defaultSettings);
+  const [settings, setSettings] = useState<GlobalSettings>(() => {
+    try {
+      const cached = localStorage.getItem('cache_settings');
+      return cached ? { ...defaultSettings, ...JSON.parse(cached) } : defaultSettings;
+    } catch (e) {
+      return defaultSettings;
+    }
+  });
+
+  useEffect(() => {
+    if (settings.systemUpdate && settings.systemUpdate.version) {
+      const currentInstalled = localStorage.getItem('asistup_device_version');
+      if (currentInstalled !== settings.systemUpdate.version) {
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(`ACTUALIZACIÓN OBLIGATORIA DISPONIBLE: ${settings.systemUpdate.version}`, {
+              body: `${settings.systemUpdate.title}. Actualización obligatoria requerida al abrir el terminal antes de marcar.`,
+              icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%233b82f6' stroke-width='6'/%3E%3C/svg%3E"
+            });
+          } catch (e) {}
+        }
+      }
+    }
+  }, [settings.systemUpdate]);
 
   useEffect(() => {
     if (!appMode) {
@@ -86,18 +147,28 @@ const App: React.FC = () => {
     
     cleanListeners();
 
+    // Temporizador de seguridad para garantizar que la pantalla inicial nunca se quede en blanco
+    const safetyTimer = setTimeout(() => {
+      setIsLoadingData(false);
+    }, 1500);
+
     const handleFirestoreError = (module: string, error: any) => {
       console.warn(`Firestore Error [${module}]:`, error.message || error);
       setIsDbConnected(false);
       
       const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
       if (cached) {
-        const data = JSON.parse(cached);
-        if (module === 'Company') setCompany(data);
-        if (module === 'Settings') setSettings(data);
-        if (module === 'Employees') setEmployees(data);
-        if (module === 'Attendance') setAttendance(data);
-        if (module === 'Payments') setPayments(data);
+        try {
+          const data = JSON.parse(cached);
+          if (module === 'Company') setCompany(data);
+          if (module === 'Settings') setSettings(data);
+          if (module === 'Employees') setEmployees(data);
+          if (module === 'Attendance') setAttendance(data);
+          if (module === 'Payments') setPayments(data);
+          if (module === 'SavedReports') setSavedReports(data);
+        } catch (e) {
+          console.error("Error al restaurar caché:", e);
+        }
       }
       setIsLoadingData(false);
     };
@@ -107,8 +178,20 @@ const App: React.FC = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const decompressed = data.payload ? decompressData(data.payload as string) : data as any;
-          setCompany(decompressed);
-          localStorage.setItem('cache_company', JSON.stringify(decompressed));
+          if (decompressed) {
+            setCompany(decompressed);
+            localStorage.setItem('cache_company', JSON.stringify(decompressed));
+          }
+        } else {
+          // Si el documento remoto aún no existe, revisar si hay datos locales para inicializar
+          const cached = localStorage.getItem('cache_company');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              setCompany(parsed);
+              setDoc(doc(db, "config", "company"), { payload: compressData(parsed) }).catch(() => {});
+            } catch (e) {}
+          }
         }
         setIsDbConnected(true);
         setIsLoadingData(false);
@@ -119,24 +202,57 @@ const App: React.FC = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
-          const mergedSettings = {
-            ...defaultSettings,
-            ...dbSettings,
-            schedule: {
-              ...defaultSettings.schedule,
-              ...(dbSettings.schedule || {}),
-              monFri: {
-                ...defaultSettings.schedule.monFri,
-                ...(dbSettings.schedule?.monFri || {})
-              },
-              sat: {
-                ...defaultSettings.schedule.sat,
-                ...(dbSettings.schedule?.sat || {})
+          if (dbSettings) {
+            // Verificar si el código desplegado tiene una versión superior o actualizada respecto a Firestore
+            const dbVersion = dbSettings.systemUpdate?.version;
+            const isCodebaseNewer = !dbVersion || dbVersion !== DEFAULT_SYSTEM_UPDATE.version;
+
+            const effectiveUpdate = isCodebaseNewer
+              ? DEFAULT_SYSTEM_UPDATE
+              : (dbSettings.systemUpdate || DEFAULT_SYSTEM_UPDATE);
+
+            const mergedSettings = {
+              ...defaultSettings,
+              ...dbSettings,
+              systemUpdate: effectiveUpdate,
+              schedule: {
+                ...defaultSettings.schedule,
+                ...(dbSettings.schedule || {}),
+                monFri: {
+                  ...defaultSettings.schedule.monFri,
+                  ...(dbSettings.schedule?.monFri || {})
+                },
+                sat: {
+                  ...defaultSettings.schedule.sat,
+                  ...(dbSettings.schedule?.sat || {})
+                }
               }
+            };
+            setSettings(mergedSettings);
+            localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
+
+            // Si el código desplegado es más nuevo que la base de datos, sincronizar automáticamente a Firestore
+            // para que TODOS los demás dispositivos instalados reciban la notificación obligatoria de inmediato
+            if (isCodebaseNewer) {
+              setDoc(doc(db, "config", "settings"), { payload: compressData(mergedSettings) }).catch(() => {});
             }
-          };
-          setSettings(mergedSettings);
-          localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
+          }
+        } else {
+          const cached = localStorage.getItem('cache_settings');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              const withLatestUpdate = { ...defaultSettings, ...parsed, systemUpdate: DEFAULT_SYSTEM_UPDATE };
+              setSettings(withLatestUpdate);
+              setDoc(doc(db, "config", "settings"), { payload: compressData(withLatestUpdate) }).catch(() => {});
+            } catch (e) {
+              setSettings(defaultSettings);
+              setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
+            }
+          } else {
+            setSettings(defaultSettings);
+            setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
+          }
         }
       }, (err) => handleFirestoreError('Settings', err));
       unsubscribesRef.current.push(unsubSettings);
@@ -145,9 +261,26 @@ const App: React.FC = () => {
         const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Employee[];
-        setEmployees(data);
-        localStorage.setItem('cache_employees', JSON.stringify(data));
+        }).filter(Boolean) as Employee[];
+
+        if (data.length > 0) {
+          setEmployees(data);
+          localStorage.setItem('cache_employees', JSON.stringify(data));
+        } else {
+          // Si Firestore está vacío pero existe información local previamente guardada, preservarla y sincronizar
+          const cached = localStorage.getItem('cache_employees');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setEmployees(parsed);
+                parsed.forEach(e => {
+                  setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
       }, (err) => handleFirestoreError('Employees', err));
       unsubscribesRef.current.push(unsubEmployees);
 
@@ -155,9 +288,25 @@ const App: React.FC = () => {
         const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as AttendanceRecord[];
-        setAttendance(data);
-        localStorage.setItem('cache_attendance', JSON.stringify(data));
+        }).filter(Boolean) as AttendanceRecord[];
+
+        if (data.length > 0) {
+          setAttendance(data);
+          localStorage.setItem('cache_attendance', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_attendance');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setAttendance(parsed);
+                parsed.forEach(r => {
+                  setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
       }, (err) => handleFirestoreError('Attendance', err));
       unsubscribesRef.current.push(unsubAttendance);
 
@@ -165,11 +314,50 @@ const App: React.FC = () => {
         const data = snapshot.docs.map(d => {
           const raw = d.data();
           return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Payment[];
-        setPayments(data);
-        localStorage.setItem('cache_payments', JSON.stringify(data));
+        }).filter(Boolean) as Payment[];
+
+        if (data.length > 0) {
+          setPayments(data);
+          localStorage.setItem('cache_payments', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_payments');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setPayments(parsed);
+                parsed.forEach(p => {
+                  setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
       }, (err) => handleFirestoreError('Payments', err));
       unsubscribesRef.current.push(unsubPayments);
+
+      const unsubSavedReports = onSnapshot(collection(db, "saved_reports"), (snapshot) => {
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
+        }).filter(Boolean) as SavedReport[];
+
+        if (data.length > 0) {
+          setSavedReports(data);
+          localStorage.setItem('cache_saved_reports', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_saved_reports');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setSavedReports(parsed);
+              }
+            } catch (e) {}
+          }
+        }
+      }, (err) => handleFirestoreError('SavedReports', err));
+      unsubscribesRef.current.push(unsubSavedReports);
 
     } catch (e) {
       console.error("Initial load failed:", e);
@@ -177,6 +365,7 @@ const App: React.FC = () => {
     }
 
     return () => {
+      clearTimeout(safetyTimer);
       window.removeEventListener('keydown', handleEsc);
       cleanListeners();
     };
@@ -232,39 +421,106 @@ const App: React.FC = () => {
     }
   }, [showLogoutFeedback]);
 
+  const handleUpdateCompany = async (c: CompanyConfig) => {
+    setCompany(c);
+    localStorage.setItem('cache_company', JSON.stringify(c));
+    await setDoc(doc(db, "config", "company"), { payload: compressData(c) }).catch(e => console.warn("Update company in Firestore failed:", e));
+  };
+
+  const handleUpdateSettings = async (s: GlobalSettings) => {
+    setSettings(s);
+    localStorage.setItem('cache_settings', JSON.stringify(s));
+    await setDoc(doc(db, "config", "settings"), { payload: compressData(s) }).catch(e => console.warn("Update settings in Firestore failed:", e));
+  };
+
   const handleUpdateEmployees = async (emps: Employee[]) => {
-    const currentIds = new Set<string>(emps.map(e => e.id));
-    const previousIds = new Set<string>(employees.map(e => e.id));
-    for (const id of previousIds) {
-      if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "employees", id)).catch(e => console.warn("Delete employee failed:", e));
+    // Actualización inmediata en memoria y caché local
+    setEmployees(emps);
+    localStorage.setItem('cache_employees', JSON.stringify(emps));
+
+    try {
+      const currentIds = new Set<string>(emps.map(e => e.id));
+      const previousIds = new Set<string>(employees.map(e => e.id));
+      const deletePromises: Promise<any>[] = [];
+      for (const id of previousIds) {
+        if (!currentIds.has(id)) {
+          deletePromises.push(deleteDoc(doc(db, "employees", id)).catch(e => console.warn("Delete employee failed:", e)));
+        }
       }
-    }
-    for (const e of emps) {
-      await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(e => console.warn("Save employee failed:", e));
+      const savePromises = emps.map(e => 
+        setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(e => console.warn("Save employee failed:", e))
+      );
+      await Promise.allSettled([...deletePromises, ...savePromises]);
+    } catch (e) {
+      console.warn("Update employees Firestore sync error:", e);
     }
   };
 
   const handleUpdatePayments = async (pys: Payment[]) => {
-    const currentIds = new Set<string>(pys.map(p => p.id));
-    const previousIds = new Set<string>(payments.map(p => p.id));
-    for (const id of previousIds) {
-      if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "payments", id)).catch(e => console.warn("Delete payment failed:", e));
+    setPayments(pys);
+    localStorage.setItem('cache_payments', JSON.stringify(pys));
+
+    try {
+      const currentIds = new Set<string>(pys.map(p => p.id));
+      const previousIds = new Set<string>(payments.map(p => p.id));
+      const deletePromises: Promise<any>[] = [];
+      for (const id of previousIds) {
+        if (!currentIds.has(id)) {
+          deletePromises.push(deleteDoc(doc(db, "payments", id)).catch(e => console.warn("Delete payment failed:", e)));
+        }
       }
-    }
-    for (const p of pys) {
-      if (p.id.length > 15) {
-        await addDoc(collection(db, "payments"), { payload: compressData(p) }).catch(e => console.warn("Add payment failed:", e));
-      } else {
-        await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(e => console.warn("Update payment failed:", e));
-      }
+      const savePromises = pys.map(p => 
+        setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(e => console.warn("Update payment failed:", e))
+      );
+      await Promise.allSettled([...deletePromises, ...savePromises]);
+    } catch (e) {
+      console.warn("Update payments Firestore sync error:", e);
     }
   };
 
   const handleUpdateAttendance = async (recs: AttendanceRecord[]) => {
-    for (const r of recs) {
-       await setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e));
+    setAttendance(prev => {
+      const recMap = new Map(recs.map(r => [r.id, r]));
+      const updated = prev.map(item => recMap.has(item.id) ? recMap.get(item.id)! : item);
+      for (const r of recs) {
+        if (!prev.some(item => item.id === r.id)) {
+          updated.push(r);
+        }
+      }
+      localStorage.setItem('cache_attendance', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const savePromises = recs.map(r => 
+        setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e))
+      );
+      await Promise.allSettled(savePromises);
+    } catch (e) {
+      console.warn("Update attendance Firestore sync error:", e);
+    }
+  };
+
+  const handleRegisterAttendance = (r: AttendanceRecord) => {
+    setAttendance(prev => {
+      const updated = [r, ...prev.filter(item => item.id !== r.id)];
+      localStorage.setItem('cache_attendance', JSON.stringify(updated));
+      return updated;
+    });
+    setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp })
+      .catch(e => console.warn("Marcación encolada (offline):", e));
+  };
+
+  const handleUpdateSavedReports = async (reps: SavedReport[]) => {
+    setSavedReports(reps);
+    localStorage.setItem('cache_saved_reports', JSON.stringify(reps));
+    try {
+      const savePromises = reps.map(r => 
+        setDoc(doc(db, "saved_reports", r.id), { payload: compressData(r) }).catch(e => console.warn("Save report failed:", e))
+      );
+      await Promise.allSettled(savePromises);
+    } catch (e) {
+      console.warn("Update saved reports Firestore sync error:", e);
     }
   };
 
@@ -381,12 +637,7 @@ const App: React.FC = () => {
           attendance={attendance} 
           onBack={() => setView('selection')} 
           settings={settings} 
-          onRegister={(r) => { 
-            // Sincronización offline optimizada: Encolar sin esperar conexión.
-            // addDoc de Firebase devolverá la promesa pero nosotros no esperamos en la UI principal.
-            addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp })
-              .catch(e => console.warn("Marcación encolada (offline):", e)); 
-          }} 
+          onRegister={handleRegisterAttendance} 
           onUpdateEmployees={handleUpdateEmployees} 
         />
       )}
@@ -397,15 +648,17 @@ const App: React.FC = () => {
           isDbConnected={isDbConnected}
           onLogout={() => setShowLogoutFeedback(true)} 
           company={company}
-          onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) }).catch(e => console.warn("Update company failed:", e))}
+          onUpdateCompany={handleUpdateCompany}
           employees={employees}
           onUpdateEmployees={handleUpdateEmployees}
           attendance={attendance}
           onUpdateAttendance={handleUpdateAttendance}
           payments={payments}
           onUpdatePayments={handleUpdatePayments}
+          savedReports={savedReports}
+          onUpdateSavedReports={handleUpdateSavedReports}
           settings={settings}
-          onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) }).catch(e => console.warn("Update settings failed:", e))}
+          onUpdateSettings={handleUpdateSettings}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}
           appMode={appMode}
         />
