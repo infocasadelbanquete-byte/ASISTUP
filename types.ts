@@ -24,11 +24,68 @@ export enum BloodType {
 
 export enum TerminationReason {
   VOLUNTARY = 'Renuncia Voluntaria',
-  LAYOFF = 'Despido',
-  UNILATERAL = 'Terminación unilateral',
-  BILATERAL = 'Terminación bilateral',
+  LAYOFF = 'Despido Intempestivo',
+  MUTUAL_AGREEMENT = 'Mutuo Acuerdo',
+  UNILATERAL = 'Terminación Unilateral',
+  BILATERAL = 'Terminación Bilateral',
   VISTO_BUENO = 'Visto Bueno',
+  TRIAL_PERIOD = 'Fin Período de Prueba',
   OTHER = 'Otro'
+}
+
+export interface SettlementRubrics {
+  workedDaysInMonth: number;
+  proportionalSalary: number;
+  thirteenthSalary: number;
+  thirteenthDays: number;
+  fourteenthSalary: number;
+  fourteenthDays: number;
+  fourteenthRegion: 'sierra' | 'costa';
+  vacationAmount: number;
+  vacationPendingDays: number;
+  vacationAccruedDays?: number;
+  vacationEnjoyedDays?: number;
+  desahucioAmount: number;
+  yearsOfService: number;
+  completedYears: number;
+  layoffIndemnity: number; // Art. 188 Código de Trabajo
+  reserveFunds: number;
+  otherBonuses: number;
+  otherBonusesReason: string;
+  // Deducciones
+  iessContribution: number;
+  advancesDiscount: number;
+  otherDiscounts: number;
+  otherDiscountsReason: string;
+  // Totales
+  totalEarnings: number;
+  totalDeductions: number;
+  netPayable: number;
+}
+
+export interface SettlementRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeCedula: string;
+  employeeRole: string;
+  companyName: string;
+  companyRuc: string;
+  companyLegalRep: string;
+  companyAddress: string;
+  startDate: string;
+  terminationDate: string;
+  tenureYears: number;
+  tenureMonths: number;
+  tenureDays: number;
+  baseSalary: number;
+  reason: TerminationReason | string;
+  notes: string;
+  rubrics: SettlementRubrics;
+  status: 'draft' | 'confirmed';
+  confirmedAt?: string;
+  confirmedBy?: string;
+  voucherCode?: string;
 }
 
 export interface NotificationMessage {
@@ -48,6 +105,15 @@ export interface AbsenceRecord {
   reason: string;
   justified: boolean;
   documentUrl?: string;
+}
+
+export interface VacationRecord {
+  id: string;
+  startDate: string; // Fecha en la que inicia sus vacaciones
+  endDate: string;   // Fecha en la que termina las mismas
+  days: number;      // Días de vacaciones gozados
+  notes?: string;
+  registeredAt: string;
 }
 
 export interface AttendanceRecord {
@@ -91,6 +157,22 @@ export interface Payment {
   voidJustification?: string;
 }
 
+export interface EmployeeChild {
+  id: string;
+  fullName: string;
+  name?: string;
+  age: number;
+  identification?: string;
+  birthDate?: string;
+}
+
+export interface NovedadReason {
+  id: string;
+  name: string;
+  isPermission: boolean;
+  isCustom?: boolean;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -112,6 +194,9 @@ export interface Employee {
   isAffiliated: boolean;
   overSalaryType: 'accumulate' | 'monthly' | 'none'; // Para Décimos
   reserveFundType?: 'monthly' | 'accumulate' | 'none'; // Específico para Fondos de Reserva
+  hasChildren?: boolean;
+  childrenCount?: number;
+  children?: EmployeeChild[];
   bankInfo: { 
     ifi: string; 
     type: 'Ahorros' | 'Corriente'; 
@@ -126,9 +211,29 @@ export interface Employee {
   terminationDate?: string;
   terminationReason?: string;
   terminationDetails?: string;
-  observations: { date: string; text: string; }[];
+  observations: { 
+    id?: string;
+    date: string; 
+    text: string; 
+    reason?: string; 
+    permissionType?: 'entero' | 'media_am' | 'media_pm' | 'horas' | string; 
+    permissionHours?: number; 
+    observation?: string;
+  }[];
   absences: AbsenceRecord[];
+  vacations?: VacationRecord[];
   totalHoursWorked: number;
+  settlement?: SettlementRecord;
+}
+
+export interface SavedReport {
+  id: string;
+  name: string;
+  date: string;
+  content: string;
+  type: 'payroll';
+  month?: string;
+  year?: string;
 }
 
 export interface CompanyConfig {
@@ -139,6 +244,17 @@ export interface CompanyConfig {
   phone: string; 
   email: string;
   logo: string;
+}
+
+export interface SystemUpdateConfig {
+  version: string;
+  releaseDate: string;
+  title: string;
+  description: string;
+  changelog: string[];
+  isMandatory: boolean;
+  minVersionRequired?: string;
+  publishedAt: string;
 }
 
 export interface GlobalSettings {
@@ -152,4 +268,6 @@ export interface GlobalSettings {
     sat: { in: string; out: string };
     halfDayOff: string; 
   };
+  systemUpdate?: SystemUpdateConfig;
 }
+

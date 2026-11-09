@@ -29,6 +29,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // 5. Reportes Guardados
+    match /saved_reports/{reportId} {
+      allow read, write: if true;
+    }
+
     // Seguridad por defecto: Denegar cualquier acceso a colecciones no definidas.
     match /{document=**} {
       allow read, write: if false;

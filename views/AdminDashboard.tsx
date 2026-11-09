@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage } from '../types.ts';
+import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage, SavedReport } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
 import EmployeeModule from './modules/EmployeeModule.tsx';
@@ -11,6 +11,7 @@ import ReportsModule from './modules/ReportsModule.tsx';
 import AiAssistant from './modules/AiAssistant.tsx';
 import NotificationsModule from './modules/NotificationsModule.tsx';
 import Modal from '../components/Modal.tsx';
+import ConfirmationModal from '../components/ConfirmationModal.tsx';
 import { DAILY_QUOTES, ACTIVE_BREAKS, ECUADOR_HOLIDAYS } from '../constants.tsx';
 
 interface AdminDashboardProps {
@@ -25,18 +26,54 @@ interface AdminDashboardProps {
   onUpdateAttendance?: (records: AttendanceRecord[]) => void;
   payments: Payment[];
   onUpdatePayments: (payments: Payment[]) => void;
+  savedReports: SavedReport[];
+  onUpdateSavedReports: (reports: SavedReport[]) => void;
   settings: GlobalSettings;
   onUpdateSettings: (settings: GlobalSettings) => void;
   onUpdateAppMode: (mode: 'full' | 'attendance') => void;
   appMode: 'full' | 'attendance';
 }
 
+const APP_ICON_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233b82f6;'/%3E%3Cstop offset='100%25' style='stop-color:%231e3a8a;'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='url(%23g)' stroke-width='6' stroke-dasharray='15 5'/%3E%3Ccircle cx='50' cy='50' r='32' fill='none' stroke='url(%23g)' stroke-width='5' stroke-dasharray='10 4' opacity='0.7'/%3E%3Ccircle cx='50' cy='50' r='18' fill='none' stroke='url(%23g)' stroke-width='4' opacity='0.4'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%233b82f6'/%3E%3C/svg%3E";
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, payments, onUpdatePayments, settings, onUpdateSettings, onUpdateAppMode, appMode 
+  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, payments, onUpdatePayments, savedReports, onUpdateSavedReports, settings, onUpdateSettings, onUpdateAppMode, appMode 
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai' | 'notifications'>('dashboard');
   const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
   const [dismissedNotificationIds, setDismissedNotificationIds] = useState<Set<string>>(new Set());
+  const [confirmAction, setConfirmAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    type?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  } | null>(null);
+
+  const requestConfirmation = (config: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    type?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }) => {
+    setConfirmAction({
+      isOpen: true,
+      ...config
+    });
+  };
+  const [resetPinModal, setResetPinModal] = useState<{
+    isOpen: boolean;
+    employeeName: string;
+    newPin: string;
+  }>({
+    isOpen: false,
+    employeeName: '',
+    newPin: ''
+  });
   
   const today = useMemo(() => new Date(), []);
   const todayDateStr = useMemo(() => today.toISOString().split('T')[0], [today]);
@@ -49,6 +86,116 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (prev.some(n => n.id === id)) return prev;
       return [{ id, title, message, timestamp: new Date().toISOString(), type, isRead: false, isProcessed: false }, ...prev];
     });
+  };
+
+  const pinResetRequests = useMemo(() => {
+    return employees.filter(e => e.pinResetRequested && e.status === 'active');
+  }, [employees]);
+
+  // Sincronización y Notificación en tiempo real de Solicitudes de Reseteo de PIN
+  useEffect(() => {
+    const pinResetEmps = employees.filter(e => e.pinResetRequested && e.status === 'active');
+    
+    setNotifications(prev => {
+      let updated = [...prev];
+      let hasChanges = false;
+
+      pinResetEmps.forEach(emp => {
+        const notifId = `pin-reset-${emp.id}`;
+        const existing = updated.find(n => n.id === notifId);
+        
+        if (!existing) {
+          hasChanges = true;
+          updated = [{
+            id: notifId,
+            title: `Solicitud de Reseteo de PIN: ${emp.surname} ${emp.name}`,
+            message: `El colaborador ${emp.name} ${emp.surname} (CI: ${emp.identification}) solicita restablecer su PIN de asistencia desde el panel de marcaciones.`,
+            timestamp: new Date().toISOString(),
+            type: 'critical',
+            isRead: false,
+            isProcessed: false
+          }, ...updated];
+
+          // Sonido de alerta
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              const audioCtx = new AudioCtx();
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              osc.connect(gain);
+              gain.connect(audioCtx.destination);
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+              osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1);
+              gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.35);
+            }
+          } catch (e) {
+            // Ignorar bloqueo de audio sin gesto
+          }
+
+          // Notificación del sistema operativo / navegador
+          if ("Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("SOLICITUD DE RESETEO DE PIN", {
+                body: `El colaborador ${emp.surname} ${emp.name} (CI: ${emp.identification}) solicita resetear su PIN de marcación.`,
+                icon: APP_ICON_SVG
+              });
+            } catch (err) {
+              console.warn("Desktop notification error:", err);
+            }
+          }
+        } else if (existing.isProcessed) {
+          hasChanges = true;
+          updated = updated.map(n => n.id === notifId ? { ...n, isProcessed: false, isRead: false, timestamp: new Date().toISOString() } : n);
+        }
+      });
+
+      // Si la solicitud de reseteo ya fue atendida
+      updated = updated.map(n => {
+        if (n.id.startsWith('pin-reset-')) {
+          const empId = n.id.replace('pin-reset-', '');
+          const emp = employees.find(e => e.id === empId);
+          if (emp && !emp.pinResetRequested && !n.isProcessed) {
+            hasChanges = true;
+            return { ...n, isProcessed: true, isRead: true };
+          }
+        }
+        return n;
+      });
+
+      return hasChanges ? updated : prev;
+    });
+  }, [employees]);
+
+  const handleApprovePinReset = (emp: Employee) => {
+    const newPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const updated = employees.map(e => e.id === emp.id ? {
+      ...e,
+      pin: newPin,
+      pinChanged: false,
+      pinNeedsReset: true,
+      pinResetRequested: false
+    } : e);
+    onUpdateEmployees(updated);
+    setNotifications(prev => prev.map(n => n.id === `pin-reset-${emp.id}` ? { ...n, isProcessed: true, isRead: true } : n));
+    setResetPinModal({
+      isOpen: true,
+      employeeName: `${emp.surname} ${emp.name}`,
+      newPin
+    });
+  };
+
+  const handleRejectPinReset = (empId: string) => {
+    const updated = employees.map(e => e.id === empId ? {
+      ...e,
+      pinResetRequested: false
+    } : e);
+    onUpdateEmployees(updated);
+    setNotifications(prev => prev.filter(n => n.id !== `pin-reset-${empId}`));
   };
   
   useEffect(() => {
@@ -157,6 +304,71 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
               </div>
 
+              {/* SOLICITUDES DE RESETEO DE PIN */}
+              {pinResetRequests.length > 0 && (
+                <div className="bg-white p-8 md:p-10 rounded-[3.5rem] border-4 border-amber-300 shadow-xl bg-gradient-to-br from-amber-50/60 to-white">
+                   <div className="flex items-center justify-between mb-8">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-amber-500/20 animate-pulse">🔑</div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-widest leading-none">Solicitudes de Reseteo de PIN</h3>
+                            <span className="px-2.5 py-0.5 bg-amber-500 text-white text-[8px] font-black uppercase rounded-full animate-bounce">{pinResetRequests.length} PENDIENTE{pinResetRequests.length > 1 ? 'S' : ''}</span>
+                          </div>
+                          <p className="text-[10px] font-black text-amber-600 uppercase mt-1">Colaboradores que solicitaron restablecer su acceso desde el terminal</p>
+                        </div>
+                      </div>
+                   </div>
+                   <div className="space-y-4">
+                      {pinResetRequests.map(emp => (
+                        <div key={emp.id} className="flex flex-col md:flex-row items-center justify-between gap-6 p-6 bg-white rounded-[2rem] border-2 border-amber-200/70 shadow-sm hover:shadow-md transition-all">
+                           <div className="flex items-center gap-4 flex-1">
+                              <div className="w-14 h-14 bg-amber-100 rounded-2xl border-2 border-amber-200 flex items-center justify-center overflow-hidden shrink-0">
+                                 {emp.photo ? <img src={emp.photo} className="w-full h-full object-cover" /> : <span className="font-black text-amber-700 text-lg">{emp.name[0]}</span>}
+                              </div>
+                              <div>
+                                 <p className="text-sm font-black text-slate-900 uppercase">{emp.surname} {emp.name}</p>
+                                 <p className="text-[10px] font-bold text-slate-500 uppercase mt-0.5">CI: <span className="font-mono text-slate-700 font-black">{emp.identification}</span> • Cargo: <span className="text-blue-600 font-black">{emp.role}</span></p>
+                                 <p className="text-[9px] font-black text-amber-600 mt-1 flex items-center gap-1.5">
+                                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                                   Solicitud activa desde el panel de asistencia
+                                 </p>
+                              </div>
+                           </div>
+                           <div className="flex gap-3 w-full md:w-auto">
+                              <button 
+                                onClick={() => requestConfirmation({
+                                  title: 'Descartar Solicitud de PIN',
+                                  message: `¿Está seguro de descartar la solicitud de reseteo de PIN para ${emp.surname} ${emp.name}?`,
+                                  confirmLabel: 'Sí, Descartar',
+                                  cancelLabel: 'Cancelar',
+                                  type: 'danger',
+                                  onConfirm: () => handleRejectPinReset(emp.id)
+                                })} 
+                                className="flex-1 md:flex-none px-6 py-3.5 bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600 border border-slate-200 font-black rounded-xl uppercase text-[9px] tracking-widest transition-all cursor-pointer"
+                              >
+                                Descartar
+                              </button>
+                              <button 
+                                onClick={() => requestConfirmation({
+                                  title: 'Generar Clave Temporal',
+                                  message: `¿Desea emitir un nuevo PIN provisional de marcación para ${emp.surname} ${emp.name}? El colaborador deberá actualizar su clave obligatoriamente en su siguiente ingreso.`,
+                                  confirmLabel: 'Sí, Generar PIN',
+                                  cancelLabel: 'Cancelar',
+                                  type: 'warning',
+                                  onConfirm: () => handleApprovePinReset(emp)
+                                })} 
+                                className="flex-1 md:flex-none px-6 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-lg shadow-amber-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <span>✨</span> Generar Nuevo PIN
+                              </button>
+                           </div>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+              )}
+
               {/* AUTORIZACIONES PENDIENTES */}
               {role === Role.SUPER_ADMIN && pendingApprovals.length > 0 && (
                 <div className="bg-white p-8 md:p-10 rounded-[3.5rem] border-4 border-blue-100 shadow-xl">
@@ -183,8 +395,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                              </div>
                              <div className="flex gap-3">
-                                <button onClick={() => handleProcessApproval(req.id, 'rejected')} className="px-6 py-3 bg-white text-red-500 border-2 border-red-100 font-black rounded-xl uppercase text-[9px]">Rechazar</button>
-                                <button onClick={() => handleProcessApproval(req.id, 'confirmed')} className="px-6 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[9px] shadow-lg">Aprobar</button>
+                                <button 
+                                  onClick={() => requestConfirmation({
+                                    title: 'Rechazar Regularización',
+                                    message: `¿Desea rechazar la regularización de esta marcación para ${emp?.surname || ''} ${emp?.name || ''}?`,
+                                    confirmLabel: 'Sí, Rechazar',
+                                    cancelLabel: 'Cancelar',
+                                    type: 'danger',
+                                    onConfirm: () => handleProcessApproval(req.id, 'rejected')
+                                  })} 
+                                  className="px-6 py-3 bg-white text-red-500 border-2 border-red-100 font-black rounded-xl uppercase text-[9px]"
+                                >
+                                  Rechazar
+                                </button>
+                                <button 
+                                  onClick={() => requestConfirmation({
+                                    title: 'Aprobar Regularización',
+                                    message: `¿Desea validar y registrar oficialmente esta marcación retroactiva para ${emp?.surname || ''} ${emp?.name || ''}?`,
+                                    confirmLabel: 'Sí, Aprobar',
+                                    cancelLabel: 'Cancelar',
+                                    type: 'info',
+                                    onConfirm: () => handleProcessApproval(req.id, 'confirmed')
+                                  })} 
+                                  className="px-6 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[9px] shadow-lg"
+                                >
+                                  Aprobar
+                                </button>
                              </div>
                           </div>
                         );
@@ -253,8 +489,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                    </div>
                    <div className="grid grid-cols-7 gap-2 text-center flex-1 items-center">
-                      {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map(d => (
-                        <div key={d} className="text-[11px] font-black text-slate-300 uppercase py-2">{d}</div>
+                      {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
+                        <div key={`${d}-${i}`} className="text-[11px] font-black text-slate-300 uppercase py-2">{d}</div>
                       ))}
                       {calendarDays.map((day, i) => {
                         const isHoliday = day && monthHolidays.some(h => h.day === day);
@@ -313,14 +549,59 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           )}
           {activeTab === 'notifications' && <NotificationsModule notifications={notifications} onToggleRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: !n.isRead} : n))} onToggleProcessed={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isProcessed: !n.isProcessed} : n))} onClearAll={() => { setNotifications([]); }} />}
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
-          {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
-          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} onUpdatePayments={onUpdatePayments} onUpdateEmployees={onUpdateEmployees} attendance={attendance} company={company} settings={settings} role={role} />}
+          {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} onUpdatePayments={onUpdatePayments} settings={settings} />}
+          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} onUpdatePayments={onUpdatePayments} onUpdateEmployees={onUpdateEmployees} attendance={attendance} company={company} settings={settings} role={role} onSaveReport={(report) => onUpdateSavedReports([...savedReports, report])} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} company={company} />}
           {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} onPurge={handlePurgeData} allData={{ company, employees, attendance, payments, settings }} />}
-          {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} />}
+          {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} savedReports={savedReports} />}
           {activeTab === 'ai' && <AiAssistant employees={employees} attendance={attendance} payments={payments} role={role} />}
         </div>
       </main>
+
+      <Modal 
+        isOpen={resetPinModal.isOpen} 
+        onClose={() => setResetPinModal({ ...resetPinModal, isOpen: false })} 
+        title="Nuevo PIN Generado" 
+        type="success"
+        maxWidth="max-w-md"
+      >
+        <div className="text-center p-4 space-y-6">
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-inner">
+            🔑
+          </div>
+          <div>
+            <h4 className="text-base font-black text-slate-900 uppercase">Clave Temporal Asignada</h4>
+            <p className="text-[11px] font-bold text-slate-500 uppercase mt-1">Colaborador: <span className="text-slate-900 font-black">{resetPinModal.employeeName}</span></p>
+          </div>
+          <div className="p-6 bg-slate-900 text-white rounded-3xl shadow-xl border-2 border-amber-400">
+            <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-1">PIN Temporal de Marcación</p>
+            <p className="text-4xl font-mono font-[950] tracking-[0.3em]">{resetPinModal.newPin}</p>
+          </div>
+          <p className="text-[10px] font-bold text-slate-500 leading-relaxed uppercase">
+            Comunique este PIN de 6 dígitos al colaborador. Al ingresarlo en el panel de asistencia, el sistema le solicitará obligatoriamente registrar su nueva clave definitiva.
+          </p>
+          <button 
+            type="button"
+            onClick={() => setResetPinModal({ ...resetPinModal, isOpen: false })} 
+            className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-lg active:scale-95 cursor-pointer"
+          >
+            Entendido y Notificado
+          </button>
+        </div>
+      </Modal>
+
+      {confirmAction && (
+        <ConfirmationModal
+          isOpen={confirmAction.isOpen}
+          title={confirmAction.title}
+          message={confirmAction.message}
+          confirmLabel={confirmAction.confirmLabel}
+          cancelLabel={confirmAction.cancelLabel}
+          type={confirmAction.type}
+          onConfirm={confirmAction.onConfirm}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
     </div>
   );
 };
