@@ -1,15 +1,15 @@
 import { initializeApp } from "firebase/app";
-import { 
-  initializeFirestore, 
-  persistentLocalCache, 
+import {
+  initializeFirestore,
+  persistentLocalCache,
   persistentMultipleTabManager,
-  collection, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc 
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 import LZString from "lz-string";
 
@@ -22,22 +22,26 @@ import LZString from "lz-string";
  */
 
 const firebaseConfig = {
-  apiKey: (process.env.API_KEY as string) || "",
-  authDomain: "asist-up-6ccd1.firebaseapp.com",
-  projectId: "asist-up-6ccd1",
-  storageBucket: "asist-up-6ccd1.firebasestorage.app",
-  messagingSenderId: "944407397524",
-  appId: "1:944407397524:web:8e685e9ea9382288622081"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "asist-up-6ccd1.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "asist-up-6ccd1",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "asist-up-6ccd1.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "944407397524",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:944407397524:web:8e685e9ea9382288622081"
 };
 
 const app = initializeApp(firebaseConfig);
 
 // Inicializar Firestore con persistencia optimizada para PWA y múltiples pestañas
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+const db = initializeFirestore(
+  app,
+  {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  },
+  import.meta.env.VITE_FIREBASE_DATABASE_ID || undefined
+);
 
 const safeStringify = (obj: any) => {
   const cache = new Set();

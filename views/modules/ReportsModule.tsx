@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
-import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role, SavedReport } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
+import EmployeeFileModal from '../../components/EmployeeFileModal.tsx';
+import ConfirmationModal from '../../components/ConfirmationModal.tsx';
 import JSZip from 'jszip';
 
 interface ReportsModuleProps {
@@ -11,16 +13,110 @@ interface ReportsModuleProps {
   company: CompanyConfig | null;
   settings: GlobalSettings;
   role: Role;
+  savedReports?: SavedReport[];
 }
 
-const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role }) => {
-  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master' | 'employees' | 'payroll' | 'novedades' | 'bajas'>('attendance');
+export interface DailyAttendanceSummary {
+  dateKey: string;
+  dateFormatted: string;
+  records: AttendanceRecord[];
+  in1: string;
+  out1: string;
+  in2: string;
+  out2: string;
+  isHalfDay: boolean;
+  isPendingMarking?: boolean;
+  totalMinutes: number;
+  hoursFormatted: string;
+  decimalHours: number;
+  hasLate: boolean;
+  statusLabel: string;
+  justifications: string;
+}
+
+const safeFormatTime = (timestamp?: string): string => {
+  if (!timestamp) return '--:--';
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '--:--';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return '--:--';
+  }
+};
+
+const safeFormatDate = (timestamp?: string): string => {
+  if (!timestamp) return 'S/F';
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) {
+      return timestamp.includes('T') ? timestamp.split('T')[0] : (timestamp.split(' ')[0] || timestamp);
+    }
+    return d.toLocaleDateString('es-EC', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  } catch (e) {
+    return timestamp ? (timestamp.includes('T') ? timestamp.split('T')[0] : timestamp) : 'S/F';
+  }
+};
+
+const safeFormatDateTime = (timestamp?: string): string => {
+  if (!timestamp) return 'S/F';
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return timestamp;
+    return d.toLocaleString('es-EC');
+  } catch (e) {
+    return timestamp;
+  }
+};
+
+const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role, savedReports = [] }) => {
+  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master' | 'employees' | 'payroll' | 'novedades' | 'bajas' | 'saved_payroll'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [isZipping, setIsZipping] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
+
+  const [selectedEmpForFicha, setSelectedEmpForFicha] = useState<Employee | null>(null);
+  const [selectedEmployeeIdForAttendance, setSelectedEmployeeIdForAttendance] = useState<string>('');
+
+  // Modal de confirmación genérico para acciones de reportes
+  const [confirmAction, setConfirmAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    type?: 'warning' | 'danger' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const requestConfirmation = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    type: 'warning' | 'danger' | 'info' = 'warning',
+    confirmText: string = 'Sí, Confirmar Acción'
+  ) => {
+    setConfirmAction({
+      isOpen: true,
+      title,
+      message,
+      type,
+      confirmText,
+      onConfirm: () => {
+        setConfirmAction(prev => ({ ...prev, isOpen: false }));
+        onConfirm();
+      }
+    });
+  };
 
   // Efecto para disparar la impresión una vez que el estado de reporte ha cambiado y el DOM está listo
   useEffect(() => {
@@ -32,7 +128,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
       return () => clearTimeout(timer);
     }
   }, [isPrinting]);
-  
+
   const getCSVData = (type: string) => {
     let csv = "\uFEFF";
     const filterFn = (timestamp: string) => {
@@ -67,7 +163,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         if (nameA !== nameB) return nameA.localeCompare(nameB);
         return a.timestamp.localeCompare(b.timestamp);
       });
-      
+
       sortedForExcel.forEach(a => {
         const emp = employees.find(e => e.id === a.employeeId);
         let statusTexto = a.status === 'confirmed' ? "CONFIRMADO" : "PENDIENTE";
@@ -89,54 +185,81 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     return csv;
   };
 
-  const handleDownloadMasterZip = async () => {
-    setIsZipping(true);
-    try {
-      const zip = new JSZip();
-      const folder = zip.folder(`ARCHIVO_MAESTRO_ASISTUP_${new Date().getFullYear()}`);
-      folder?.file("1_CENSO_PERSONAL_MAESTRO.csv", getCSVData('employees'));
-      folder?.file("2_REGISTRO_PAGOS_NOMINA.csv", getCSVData('payroll'));
-      folder?.file("3_BITACORA_ASISTENCIA.csv", getCSVData('attendance'));
-      folder?.file("4_HISTORIAL_NOVEDADES.csv", getCSVData('novedades'));
-      folder?.file("5_EXPEDIENTES_DESVINCULADOS.csv", getCSVData('bajas'));
+  const handleDownloadMasterZip = () => {
+    requestConfirmation(
+      "Descargar Archivo Maestro ZIP",
+      "¿Está seguro de consolidar y descargar el paquete completo del Archivo Maestro en formato ZIP con todos los censos de personal, nóminas y asistencias?",
+      async () => {
+        setIsZipping(true);
+        try {
+          const zip = new JSZip();
+          const folder = zip.folder(`ARCHIVO_MAESTRO_ASISTUP_${new Date().getFullYear()}`);
+          folder?.file("1_CENSO_PERSONAL_MAESTRO.csv", getCSVData('employees'));
+          folder?.file("2_REGISTRO_PAGOS_NOMINA.csv", getCSVData('payroll'));
+          folder?.file("3_BITACORA_ASISTENCIA.csv", getCSVData('attendance'));
+          folder?.file("4_HISTORIAL_NOVEDADES.csv", getCSVData('novedades'));
+          folder?.file("5_EXPEDIENTES_DESVINCULADOS.csv", getCSVData('bajas'));
 
-      const blob = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `CONSOLIDADO_MASTER_ASISTUP_${new Date().toISOString().split('T')[0]}.zip`;
-      link.click();
-      setFeedback({ isOpen: true, title: "Éxito Corporativo", message: "Contenedor ZIP generado correctamente.", type: "success" });
-    } catch (e) {
-      setFeedback({ isOpen: true, title: "Fallo Crítico", message: "No se pudo consolidar el paquete comprimido.", type: "error" });
-    } finally {
-      setIsZipping(false);
-    }
+          const blob = await zip.generateAsync({ type: "blob" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `CONSOLIDADO_MASTER_ASISTUP_${new Date().toISOString().split('T')[0]}.zip`;
+          link.click();
+          setFeedback({ isOpen: true, title: "Éxito Corporativo", message: "Contenedor ZIP generado correctamente.", type: "success" });
+        } catch (e) {
+          setFeedback({ isOpen: true, title: "Fallo Crítico", message: "No se pudo consolidar el paquete comprimido.", type: "error" });
+        } finally {
+          setIsZipping(false);
+        }
+      },
+      'info',
+      'Descargar ZIP'
+    );
   };
 
   const generateReportExcel = (type: string) => {
-    const csv = getCSVData(type);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `REPORTE_${type.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    requestConfirmation(
+      "Descargar Reporte en Excel",
+      `¿Está seguro de descargar el reporte de ${type.toUpperCase()} en formato Excel?`,
+      () => {
+        const csv = getCSVData(type);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `REPORTE_${type.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+      },
+      'info',
+      'Descargar Excel'
+    );
   };
 
   const generateReportPDF = (type: any) => {
-    // Si estamos en el panel maestro, limpiamos filtros para reporte completo
-    if (reportType === 'master') {
-      setSearchTerm('');
-      setStartDate('');
-      setEndDate('');
-    }
-    setReportType(type);
-    setIsPrinting(true);
+    requestConfirmation(
+      "Generar Reporte Oficial PDF",
+      `¿Está seguro de generar e imprimir el reporte oficial de ${type.toUpperCase()} en formato PDF para A4?`,
+      () => {
+        if (reportType === 'master') {
+          setSearchTerm('');
+          setStartDate('');
+          setEndDate('');
+        }
+        setReportType(type);
+        setIsPrinting(true);
+      },
+      'info',
+      'Generar PDF'
+    );
   };
 
-  const filterByDate = (timestamp: string) => {
+  const selectedEmpForAttendance = employees.find(e => e.id === selectedEmployeeIdForAttendance);
+
+  const filterByDate = (timestamp?: string) => {
     if (!startDate && !endDate) return true;
+    if (!timestamp) return false;
     const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return true;
     const start = startDate ? new Date(startDate + 'T00:00:00') : null;
     const end = endDate ? new Date(endDate + 'T23:59:59') : null;
     if (start && date < start) return false;
@@ -144,19 +267,372 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     return true;
   };
 
+  const individualAttendanceRecords = (attendance || []).filter(a => {
+    if (!a || !selectedEmployeeIdForAttendance) return false;
+    if (a.employeeId !== selectedEmployeeIdForAttendance) return false;
+    return filterByDate(a.timestamp);
+  }).sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+
+  // Agrupación de registros por día y detección de fechas con marcaciones pendientes
+  const individualDailyRecords: DailyAttendanceSummary[] = useMemo(() => {
+    if (!selectedEmpForAttendance) return [];
+
+    // 1. Agrupar registros físicos existentes por fecha
+    const grouped: { [dateStr: string]: AttendanceRecord[] } = {};
+    (individualAttendanceRecords || []).forEach(rec => {
+      if (!rec) return;
+      const ts = rec.timestamp || '';
+      const dateKey = ts.includes('T') ? ts.split('T')[0] : (ts.includes(' ') ? ts.split(' ')[0] : (ts || 'SIN_FECHA'));
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(rec);
+    });
+
+    // 2. Determinar el rango de fechas que abarca el reporte
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const currentDay = now.getDate();
+    const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+
+    let rangeStart = startDate;
+    let rangeEnd = endDate;
+
+    if (!rangeStart) {
+      const currentMonthStart = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      rangeStart = currentMonthStart;
+    }
+    if (!rangeEnd) {
+      rangeEnd = todayStr;
+    }
+
+    const existingDateKeys = Object.keys(grouped);
+    if (existingDateKeys.length > 0) {
+      const sortedExisting = [...existingDateKeys].sort();
+      if (!startDate && sortedExisting[0] < rangeStart) {
+        rangeStart = sortedExisting[0];
+      }
+      if (!endDate && sortedExisting[sortedExisting.length - 1] > rangeEnd) {
+        rangeEnd = sortedExisting[sortedExisting.length - 1];
+      }
+    }
+
+    // 3. Generar todas las fechas calendario dentro del rango para identificar días laborables sin marcaje o incompletos
+    const allDateSet = new Set<string>(existingDateKeys);
+
+    try {
+      const cur = new Date(rangeStart + 'T12:00:00');
+      const end = new Date(rangeEnd + 'T12:00:00');
+      const maxToday = new Date(todayStr + 'T12:00:00');
+
+      while (cur <= end && cur <= maxToday) {
+        const dStr = cur.toISOString().split('T')[0];
+        const dayOfWeek = cur.getDay(); // 0 = Domingo
+
+        const empStart = selectedEmpForAttendance.startDate ? selectedEmpForAttendance.startDate : null;
+        const empTerm = selectedEmpForAttendance.terminationDate ? selectedEmpForAttendance.terminationDate : null;
+
+        const isBeforeStart = empStart && dStr < empStart;
+        const isAfterTerm = empTerm && dStr > empTerm;
+        const isSunday = dayOfWeek === 0;
+        const isHoliday = (settings.holidays || []).includes(dStr);
+        const isApprovedVacation = (selectedEmpForAttendance.vacations || []).some(
+          v => dStr >= v.startDate && dStr <= v.endDate
+        );
+
+        // Excluir días con permisos o libres registrados en la bitácora administrativa
+        const dayObs = (selectedEmpForAttendance.observations || []).filter(o => o.date && o.date.startsWith(dStr));
+        const isFullDayPermissionOrFree = dayObs.some(o => {
+          const pType = (o.permissionType || '').toUpperCase();
+          const r = (o.reason || '').toUpperCase();
+          return pType === 'DIA LABORAL ENTERO' || pType === 'ENTERO' ||
+            (pType === '' && (r.includes('PERMISO MATERNAL') || r.includes('PERMISO MEDICO') || r.includes('PERMISO PERSONAL') || r.includes('FALTA JUSTIFICADA'))) ||
+            (typeof o.permissionHours === 'number' && o.permissionHours >= 8);
+        });
+
+        if (!isBeforeStart && !isAfterTerm && !isSunday && !isHoliday && !isApprovedVacation && !isFullDayPermissionOrFree) {
+          allDateSet.add(dStr);
+        }
+
+        cur.setDate(cur.getDate() + 1);
+      }
+    } catch (e) {
+      console.error("Error al calcular rango de fechas:", e);
+    }
+
+    const allDays = Array.from(allDateSet).sort((a, b) => a.localeCompare(b));
+
+    return allDays.map(dateKey => {
+      const dayRecs = (grouped[dateKey] || []).sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+      const sampleTs = dayRecs[0]?.timestamp || `${dateKey}T12:00:00`;
+      const dateFormatted = safeFormatDate(sampleTs);
+
+      // Revisar si existe permiso o día libre en la bitácora para esta fecha
+      const dayObs = (selectedEmpForAttendance.observations || []).filter(o => o.date && o.date.startsWith(dateKey));
+      const fullDayPermObs = dayObs.find(o => {
+        const pType = (o.permissionType || '').toUpperCase();
+        const r = (o.reason || '').toUpperCase();
+        return pType === 'DIA LABORAL ENTERO' || pType === 'ENTERO' ||
+          (pType === '' && (r.includes('PERMISO MATERNAL') || r.includes('PERMISO MEDICO') || r.includes('PERMISO PERSONAL') || r.includes('FALTA JUSTIFICADA'))) ||
+          (typeof o.permissionHours === 'number' && o.permissionHours >= 8);
+      });
+
+      const halfDayPermObs = dayObs.find(o => {
+        const pType = (o.permissionType || '').toUpperCase();
+        return pType.includes('MEDIA') || pType === 'MEDIA_AM' || pType === 'MEDIA_PM' || (typeof o.permissionHours === 'number' && o.permissionHours >= 4);
+      });
+
+      // Si no hay registros físicos en este día laborable
+      if (dayRecs.length === 0) {
+        if (fullDayPermObs) {
+          return {
+            dateKey,
+            dateFormatted,
+            records: [],
+            in1: '--:--',
+            out1: '--:--',
+            in2: '--:--',
+            out2: '--:--',
+            isHalfDay: false,
+            isPendingMarking: false,
+            totalMinutes: 0,
+            hoursFormatted: '0h 00m',
+            decimalHours: 0,
+            hasLate: false,
+            statusLabel: 'PERMISO AUTORIZADO',
+            justifications: `PERMISO AUTORIZADO • ${fullDayPermObs.reason || 'Día Libre Justificado'}`
+          };
+        }
+
+        const novedad = dayObs[0];
+        const obsText = novedad ? `BITÁCORA: ${novedad.reason || 'NOVEDAD'} - ${novedad.observation || novedad.text || ''}` : 'SIN REGISTRO DE MARCAJE';
+
+        return {
+          dateKey,
+          dateFormatted,
+          records: [],
+          in1: '--:--',
+          out1: '--:--',
+          in2: '--:--',
+          out2: '--:--',
+          isHalfDay: false,
+          isPendingMarking: true,
+          totalMinutes: 0,
+          hoursFormatted: '0h 00m',
+          decimalHours: 0,
+          hasLate: false,
+          statusLabel: 'FECHA PENDIENTE',
+          justifications: `⚠️ FECHA PENDIENTE DE MARCAJE (${obsText})`
+        };
+      }
+
+      // Si existen registros físicos para esta fecha
+      const inRecords = dayRecs.filter(r => r.type === 'in');
+      const outRecords = dayRecs.filter(r => r.type === 'out');
+      const isHalfDay = dayRecs.some(r => r.type === 'half_day') || !!halfDayPermObs;
+
+      const in1 = inRecords[0] ? safeFormatTime(inRecords[0].timestamp) : '--:--';
+      const out1 = outRecords[0] ? safeFormatTime(outRecords[0].timestamp) : '--:--';
+      const in2 = inRecords[1] ? safeFormatTime(inRecords[1].timestamp) : '--:--';
+      const out2 = outRecords[1] ? safeFormatTime(outRecords[1].timestamp) : (outRecords.length > 2 ? safeFormatTime(outRecords[outRecords.length - 1].timestamp) : '--:--');
+
+      // Cálculo de horas trabajadas en el día
+      let totalMinutes = 0;
+      if (isHalfDay) {
+        totalMinutes += 240; // 4 horas para media jornada
+      }
+
+      let lastIn: Date | null = null;
+      dayRecs.forEach(r => {
+        if (!r.timestamp) return;
+        const d = new Date(r.timestamp);
+        if (isNaN(d.getTime())) return;
+
+        if (r.type === 'in') {
+          lastIn = d;
+        } else if (r.type === 'out' && lastIn) {
+          const diffMs = d.getTime() - lastIn.getTime();
+          if (diffMs > 0) {
+            totalMinutes += Math.round(diffMs / (1000 * 60));
+          }
+          lastIn = null;
+        }
+      });
+
+      const hoursInt = Math.floor(totalMinutes / 60);
+      const minutesRem = totalMinutes % 60;
+      const hoursFormatted = `${hoursInt}h ${minutesRem.toString().padStart(2, '0')}m`;
+      const decimalHours = +(totalMinutes / 60).toFixed(2);
+
+      const hasLate = dayRecs.some(r => r.isLate);
+      const allConfirmed = dayRecs.every(r => r.status === 'confirmed');
+      const hasPendingApproval = dayRecs.some(r => r.status === 'pending_approval');
+      const justifications = dayRecs.map(r => r.justification).filter(Boolean).join(' | ');
+
+      // Determinar si hay marcaje incompleto (sin tomar en consideración horas o días de permiso o libres)
+      const dateObj = new Date(dateKey + 'T12:00:00');
+      const dayOfWeek = isNaN(dateObj.getTime()) ? 1 : dateObj.getDay();
+      const isSaturday = dayOfWeek === 6;
+
+      let isIncomplete = false;
+      if (!isHalfDay && !fullDayPermObs) {
+        if (isSaturday) {
+          isIncomplete = inRecords.length === 0 || outRecords.length === 0;
+        } else {
+          // Lunes a Viernes
+          isIncomplete = inRecords.length === 0 || outRecords.length === 0 || inRecords.length < 2 || outRecords.length < 2;
+        }
+      }
+
+      const isPendingMarking = !fullDayPermObs && (hasPendingApproval || isIncomplete);
+
+      let statusLabel = 'CONFIRMADO';
+      if (fullDayPermObs) {
+        statusLabel = 'PERMISO AUTORIZADO';
+      } else if (isIncomplete) {
+        statusLabel = 'MARCAJE INCOMPLETO';
+      } else if (hasPendingApproval) {
+        statusLabel = 'PENDIENTE APROBACIÓN';
+      } else if (!allConfirmed) {
+        statusLabel = 'RECHAZADO';
+      }
+
+      let finalJustifications = justifications;
+      if (isHalfDay) {
+        finalJustifications = justifications ? `MEDIA JORNADA • ${justifications}` : 'MEDIA JORNADA LIBRE';
+      } else if (isIncomplete) {
+        finalJustifications = justifications
+          ? `⚠️ MARCAJE INCOMPLETO • ${justifications}`
+          : `⚠️ MARCAJE INCOMPLETO (Faltan marcajes de entrada o salida)`;
+      } else if (!finalJustifications) {
+        finalJustifications = 'Jornada Ordinaria Completa';
+      }
+
+      return {
+        dateKey,
+        dateFormatted,
+        records: dayRecs,
+        in1,
+        out1,
+        in2,
+        out2,
+        isHalfDay,
+        isPendingMarking,
+        totalMinutes,
+        hoursFormatted,
+        decimalHours,
+        hasLate,
+        statusLabel,
+        justifications: finalJustifications
+      };
+    });
+  }, [selectedEmpForAttendance, individualAttendanceRecords, startDate, endDate, settings]);
+
+  // Total acumulado de horas trabajadas para el reporte individual
+  const totalAccumulatedMinutes: number = useMemo(() => {
+    return individualDailyRecords.reduce((acc: number, d: DailyAttendanceSummary) => acc + (d.totalMinutes || 0), 0);
+  }, [individualDailyRecords]);
+
+  const totalAccumulatedHoursFormatted = useMemo(() => {
+    const h = Math.floor(totalAccumulatedMinutes / 60);
+    const m = totalAccumulatedMinutes % 60;
+    return `${h}h ${m.toString().padStart(2, '0')}m`;
+  }, [totalAccumulatedMinutes]);
+
+  const individualStats = useMemo(() => {
+    const pendingDays = individualDailyRecords.filter(d => d.isPendingMarking).length;
+    const registeredDays = individualDailyRecords.filter(d => d.records.length > 0).length;
+
+    return {
+      total: individualAttendanceRecords.length,
+      confirmed: individualAttendanceRecords.filter(a => a.status === 'confirmed').length,
+      lates: individualAttendanceRecords.filter(a => a.isLate).length,
+      justified: individualAttendanceRecords.filter(a => a.justification).length,
+      totalWorkedHoursFormatted: totalAccumulatedHoursFormatted,
+      totalDaysWorked: registeredDays,
+      pendingDays: pendingDays
+    };
+  }, [individualAttendanceRecords, totalAccumulatedHoursFormatted, individualDailyRecords]);
+
+  const filteredEmployeesForSelect = useMemo(() => {
+    if (!searchTerm.trim()) return employees;
+    const term = searchTerm.toLowerCase();
+    return employees.filter(emp =>
+      `${emp.surname || ''} ${emp.name || ''} ${emp.identification || ''}`.toLowerCase().includes(term)
+    );
+  }, [employees, searchTerm]);
+
+  const generateIndividualAttendanceExcel = (targetEmp?: any) => {
+    const emp = (targetEmp && targetEmp.id) ? targetEmp : selectedEmpForAttendance;
+    if (!emp) return;
+    requestConfirmation(
+      "Descargar Asistencia Individual en Excel",
+      `¿Está seguro de descargar el registro de asistencia de ${emp.surname || ''} ${emp.name || ''} en formato Excel?`,
+      () => {
+        let csv = "\uFEFF";
+        csv += "sep=;\r\n";
+        csv += `REPORTE INDIVIDUAL OFICIAL DE ASISTENCIA Y HORAS LABORADAS\r\n`;
+        csv += `"EMPRESA:";"${(company?.name || 'EMPRESA INSTITUCIONAL').replace(/"/g, '""')}";"RUC:";"${company?.ruc || '1790000000001'}"\r\n`;
+        csv += `"COLABORADOR:";"${(emp.surname || '').replace(/"/g, '""')} ${(emp.name || '').replace(/"/g, '""')}";"IDENTIFICACION:";"${emp.identification || ''}";"CARGO:";"${(emp.role || 'General').replace(/"/g, '""')}"\r\n`;
+        csv += `"PERIODO:";"${startDate || 'HISTORICO'} AL ${endDate || 'ACTUALIDAD'}";"FECHA EMISION:";"${new Date().toLocaleString()}"\r\n`;
+        csv += `"TOTAL HORAS LABORADAS:";"${totalAccumulatedHoursFormatted}";"JORNADAS REGISTRADAS:";"${individualStats.totalDaysWorked}";"FECHAS PENDIENTES DE MARCAJE:";"${individualStats.pendingDays}"\r\n\r\n`;
+        csv += `"FECHA";"DETALLE JORNADA";"INGRESO 1";"SALIDA 1";"INGRESO 2";"SALIDA 2";"TOTAL HORAS TRABAJADAS";"PUNTUALIDAD";"ESTADO";"OBSERVACION / JUSTIFICACION"\r\n`;
+
+        individualDailyRecords.forEach(d => {
+          const fecha = (d.dateFormatted || '').replace(/"/g, '""');
+          const jornada = d.isHalfDay ? 'MEDIA JORNADA' : 'JORNADA COMPLETA';
+          const puntualidad = d.isPendingMarking ? 'PENDIENTE' : d.hasLate ? 'CON ATRASO' : 'PUNTUAL';
+          const justif = (d.justifications || '').replace(/"/g, '""');
+          csv += `"${d.dateKey}";"${fecha} - ${jornada}";"${d.in1}";"${d.out1}";"${d.in2}";"${d.out2}";"${d.hoursFormatted}";"${puntualidad}";"${d.statusLabel}";"${justif}"\r\n`;
+        });
+
+        csv += `\r\nRESUMEN DE ASISTENCIA Y JORNADAS:\r\n`;
+        csv += `"TOTAL HORAS LABORADAS:";"${totalAccumulatedHoursFormatted}"\r\n`;
+        csv += `"JORNADAS REGISTRADAS:";"${individualStats.totalDaysWorked}"\r\n`;
+        csv += `"FECHAS CON MARCAJES PENDIENTES:";"${individualStats.pendingDays}"\r\n`;
+        csv += `"TOTAL MARCACIONES FISICAS:";"${individualStats.total}"\r\n`;
+        csv += `"TOTAL ATRASOS:";"${individualStats.lates}"\r\n`;
+        csv += `"JUSTIFICACIONES:";"${individualStats.justified}"\r\n`;
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        const safeSurname = (emp.surname || 'COLABORADOR').replace(/\s+/g, '_');
+        const safeName = (emp.name || '').replace(/\s+/g, '_');
+        link.download = `ASISTENCIA_${safeSurname}_${safeName}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+      },
+      'info',
+      'Descargar Excel'
+    );
+  };
+
+  const handlePrintIndividualAttendance = (targetEmp?: any) => {
+    const emp = (targetEmp && targetEmp.id) ? targetEmp : selectedEmpForAttendance;
+    if (!emp) return;
+    requestConfirmation(
+      "Imprimir Registro Individual de Asistencia",
+      `¿Está seguro de generar e imprimir el registro individual de asistencia oficial para ${emp.surname || ''} ${emp.name || ''}?`,
+      () => {
+        setIsPrinting(true);
+      },
+      'info',
+      'Imprimir Asistencia'
+    );
+  };
+
   const attendanceToDisplay = (attendance || []).filter(a => {
+    if (!a) return false;
     const emp = employees.find(e => e.id === a.employeeId);
-    const matchesSearch = `${emp?.surname} ${emp?.name} ${emp?.identification}`.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = `${emp?.surname || ''} ${emp?.name || ''} ${emp?.identification || ''}`.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch && filterByDate(a.timestamp);
   }).sort((a, b) => {
-    // Ordenamiento obligatorio para UI/PDF: Empleado y luego Cronológico
     const empA = employees.find(e => e.id === a.employeeId);
     const empB = employees.find(e => e.id === b.employeeId);
     const nameA = `${empA?.surname || ''} ${empA?.name || ''}`.toLowerCase();
     const nameB = `${empB?.surname || ''} ${empB?.name || ''}`.toLowerCase();
-    
+
     if (nameA !== nameB) return nameA.localeCompare(nameB);
-    return a.timestamp.localeCompare(b.timestamp);
+    return (a.timestamp || '').localeCompare(b.timestamp || '');
   });
 
   const paymentsToDisplay = payments.filter(p => {
@@ -176,7 +652,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
     if (record.type === 'in') base = record.status === 'confirmed' ? "INGRESO APROBADO" : record.status === 'pending_approval' ? "INGRESO PENDIENTE" : "INGRESO RECHAZADO";
     else if (record.type === 'out') base = record.status === 'confirmed' ? "SALIDA APROBADA" : record.status === 'pending_approval' ? "SALIDA PENDIENTE" : "SALIDA RECHAZADA";
     else if (record.type === 'half_day') base = "MEDIA JORNADA LIBRE";
-    
+
     return (
       <span className="flex flex-col items-end">
         <span>{base}</span>
@@ -187,28 +663,110 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
 
   const renderTableRows = () => {
     switch (reportType) {
-      case 'attendance':
-        return attendanceToDisplay.map(a => (
-          <tr key={a.id}>
-            <td className="p-5">{new Date(a.timestamp).toLocaleString()}</td>
-            <td className="p-5">{employees.find(e => e.id === a.employeeId)?.surname} {employees.find(e => e.id === a.employeeId)?.name}</td>
-            <td className="p-5 text-right font-black">{translateAttendanceStatus(a)}</td>
+      case 'saved_payroll':
+        return savedReports
+          .filter(r => {
+            const matchesSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesMonth = !filterMonth || r.month === filterMonth;
+            // Si el reporte no tiene año (reportes antiguos), lo mostramos si el filtro de año está vacío
+            const matchesYear = !filterYear || r.year === filterYear || (!r.year && filterYear === '');
+            return matchesSearch && matchesMonth && matchesYear;
+          })
+          .sort((a, b) => b.date.localeCompare(a.date)).map(r => (
+          <tr key={r.id}>
+            <td className="p-5">
+              <p className="text-slate-900 font-black">{r.name}</p>
+              <p className="text-[9px] text-slate-400">{new Date(r.date).toLocaleString()}</p>
+            </td>
+            <td className="p-5">Nómina Generada</td>
+            <td className="p-5 text-right">
+              <button
+                onClick={() => {
+                  const blob = new Blob([r.content], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `${r.name}.csv`;
+                  link.click();
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black rounded-lg uppercase shadow-md active:scale-95"
+              >
+                Descargar
+              </button>
+            </td>
           </tr>
         ));
+      case 'attendance':
+        return attendanceToDisplay.map(a => {
+          const emp = employees.find(e => e.id === a.employeeId);
+          return (
+            <tr key={a.id} className="hover:bg-blue-50/20 transition-colors">
+              <td className="p-5">{safeFormatDateTime(a.timestamp)}</td>
+              <td className="p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <span>{emp?.surname || ''} {emp?.name || ''}</span>
+                  {emp && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEmployeeIdForAttendance(emp.id);
+                        setReportType('attendance');
+                      }}
+                      className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[8px] font-black rounded-lg uppercase transition-all shadow-sm no-print cursor-pointer shrink-0"
+                      title="Ver e imprimir registro individual de asistencia"
+                    >
+                      🕒 Asistencia Indiv.
+                    </button>
+                  )}
+                </div>
+              </td>
+              <td className="p-5 text-right font-black">{translateAttendanceStatus(a)}</td>
+            </tr>
+          );
+        });
       case 'payments':
       case 'payroll':
         return paymentsToDisplay.map(p => (
           <tr key={p.id}>
-            <td className="p-5"><p className="text-blue-600">{p.voucherCode}</p><p className="text-[9px] text-slate-400">{new Date(p.date).toLocaleDateString()}</p></td>
-            <td className="p-5">{employees.find(e => e.id === p.employeeId)?.surname}</td>
+            <td className="p-5"><p className="text-blue-600">{p.voucherCode}</p><p className="text-[9px] text-slate-400">{safeFormatDate(p.date)}</p></td>
+            <td className="p-5">{employees.find(e => e.id === p.employeeId)?.surname || ''}</td>
             <td className="p-5 text-right font-[950] text-emerald-700">${p.amount.toFixed(2)}</td>
           </tr>
         ));
       case 'history':
       case 'employees':
         return historyToDisplay.map(e => (
-          <tr key={e.id}>
-            <td className="p-5"><p className="text-slate-900">{e.surname} {e.name}</p><p className="text-[9px] text-slate-400">CI: {e.identification}</p></td>
+          <tr key={e.id} className="hover:bg-blue-50/20 transition-colors">
+            <td className="p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-slate-900 font-black">{e.surname} {e.name}</p>
+                  <p className="text-[9px] text-slate-400">CI: {e.identification}</p>
+                </div>
+                <div className="flex items-center gap-1.5 no-print">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmployeeIdForAttendance(e.id);
+                      setReportType('attendance');
+                    }}
+                    className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[8px] font-black rounded-lg uppercase transition-all shadow-sm border border-blue-200 cursor-pointer flex items-center gap-1 shrink-0"
+                    title="Ver Asistencia Individual del Colaborador"
+                  >
+                    <span>🕒</span>
+                    <span>Asistencia</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmpForFicha(e)}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[8px] font-black rounded-lg uppercase transition-all shadow-sm border border-indigo-200 cursor-pointer flex items-center gap-1 shrink-0"
+                    title="Visualizar e Imprimir Ficha Individual A4"
+                  >
+                    <span>📋</span>
+                    <span>Ficha A4</span>
+                  </button>
+                </div>
+              </div>
+            </td>
             <td className="p-5">{e.role}</td>
             <td className={`p-5 text-right font-[950] ${e.status === 'active' ? 'text-emerald-600' : 'text-red-500'}`}>{e.status}</td>
           </tr>
@@ -238,6 +796,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
 
   const getReportHeaderTitle = () => {
     switch(reportType) {
+      case 'saved_payroll': return 'NÓMINAS GUARDADAS (HISTORIAL)';
       case 'employees': return 'CENSO DE PERSONAL MAESTRO';
       case 'payroll': return 'REGISTRO DE PAGOS DE NÓMINA';
       case 'novedades': return 'HISTORIAL DE NOVEDADES ADMINISTRATIVAS';
@@ -258,35 +817,204 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         </div>
         <div className="flex flex-col gap-4 w-full md:w-auto">
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {['attendance', 'payments', 'history', 'master'].map(t => (
-              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm(''); setStartDate(''); setEndDate('');}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
-                {t === 'attendance' ? 'Asistencia' : t === 'payments' ? 'Pagos' : t === 'history' ? 'Historial' : 'Archivo Maestro'}
+            {['attendance', 'payments', 'history', 'saved_payroll', 'master'].map(t => (
+              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString());}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
+                {t === 'attendance' ? 'Asistencia' : t === 'payments' ? 'Pagos' : t === 'history' ? 'Historial' : t === 'saved_payroll' ? 'Nóminas Guardadas' : 'Archivo Maestro'}
               </button>
             ))}
           </div>
-          
+
           {reportType !== 'master' && (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input type="text" placeholder="Filtrar por nombre o CI..." className="flex-1 p-3 border-2 rounded-xl text-[11px] font-bold uppercase outline-none focus:border-blue-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-              <div className="flex gap-2">
-                 <div className="flex flex-col gap-1">
-                   <label className="text-[7px] font-black uppercase text-slate-400">Desde</label>
-                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                 </div>
-                 <div className="flex flex-col gap-1">
-                   <label className="text-[7px] font-black uppercase text-slate-400">Hasta</label>
-                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                 </div>
-                 <div className="flex gap-1 items-end">
+            <div className="flex flex-col gap-2 w-full">
+              <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="Filtrar por nombre o CI..."
+                  className="flex-1 min-w-[200px] p-3 border-2 rounded-xl text-[11px] font-bold uppercase outline-none focus:border-blue-500"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                />
+
+                {reportType === 'attendance' && (
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[7px] font-black uppercase text-slate-400">Colaborador Individual</label>
+                      <select
+                        className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500 bg-white"
+                        value={selectedEmployeeIdForAttendance}
+                        onChange={e => {
+                          setSelectedEmployeeIdForAttendance(e.target.value);
+                          setReportType('attendance');
+                        }}
+                      >
+                        <option value="">-- TODOS LOS COLABORADORES ({employees.length}) --</option>
+                        {filteredEmployeesForSelect.map(emp => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.surname} {emp.name} ({emp.identification})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {selectedEmpForAttendance && (
+                      <div className="flex gap-1.5 self-end">
+                        <button
+                          onClick={() => handlePrintIndividualAttendance()}
+                          title="Imprimir Registro Individual A4"
+                          className="p-3 bg-slate-900 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase flex items-center gap-1"
+                        >
+                          <span>🖨️</span> Imprimir A4
+                        </button>
+                        <button
+                          onClick={() => generateIndividualAttendanceExcel()}
+                          title="Descargar Excel Individual"
+                          className="p-3 bg-emerald-700 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase flex items-center gap-1"
+                        >
+                          <span>📗</span> Excel
+                        </button>
+                        <button
+                          onClick={() => setSelectedEmployeeIdForAttendance('')}
+                          title="Ver todos"
+                          className="p-3 bg-slate-200 text-slate-700 rounded-xl hover:bg-slate-300 transition-colors text-[10px] font-black uppercase"
+                        >
+                          ✕ Ver Todos
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              {reportType === 'saved_payroll' && (
+                <div className="flex gap-2">
+                  <select
+                    className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500"
+                    value={filterMonth}
+                    onChange={e => setFilterMonth(e.target.value)}
+                  >
+                    <option value="">TODOS LOS MESES</option>
+                    {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500"
+                    value={filterYear}
+                    onChange={e => setFilterYear(e.target.value)}
+                  >
+                    <option value="">TODOS LOS AÑOS</option>
+                    {['2024', '2025', '2026', '2027'].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {reportType !== 'saved_payroll' && (
+                <div className="flex gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[7px] font-black uppercase text-slate-400">Desde</label>
+                    <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[7px] font-black uppercase text-slate-400">Hasta</label>
+                    <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1 items-end">
+                {reportType !== 'saved_payroll' && (
+                  <>
                     <button onClick={() => generateReportExcel(reportType)} title="Excel" className="p-3 bg-emerald-600 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">XLS</button>
                     <button onClick={() => generateReportPDF(reportType)} title="PDF" className="p-3 bg-blue-700 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">PDF</button>
-                    <button onClick={() => {setStartDate(''); setEndDate(''); setSearchTerm(''); setReportType('master');}} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors">✕</button>
-                 </div>
+                  </>
+                )}
+                <button onClick={() => {setStartDate(''); setEndDate(''); setSearchTerm(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString()); setSelectedEmployeeIdForAttendance(''); setReportType('master');}} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors">✕</button>
               </div>
             </div>
-          )}
+
+            {/* CHIPS RÁPIDOS DE COINCIDENCIAS CUANDO SE FILTRA UN COLABORADOR */}
+            {searchTerm.trim() && filteredEmployeesForSelect.length > 0 && filteredEmployeesForSelect.length <= 6 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 w-full no-print">
+                <span className="text-[8px] font-black uppercase text-blue-600">Coincidencias encontradas:</span>
+                {filteredEmployeesForSelect.map(emp => (
+                  <button
+                    key={emp.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmployeeIdForAttendance(emp.id);
+                      setReportType('attendance');
+                    }}
+                    className={`px-2.5 py-1 text-[9px] font-black rounded-lg uppercase transition-all flex items-center gap-1 cursor-pointer border shadow-xs ${selectedEmployeeIdForAttendance === emp.id ? 'bg-blue-600 text-white border-blue-700' : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200'}`}
+                  >
+                    <span>👤 {emp.surname} {emp.name}</span>
+                    <span className="text-[7px] font-mono opacity-80">({emp.identification})</span>
+                    <span className="text-[7px] bg-black/20 px-1 rounded font-bold">Ver Asistencia</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
+
+      {/* BANNER INFORMATIVO CUANDO HAY UN COLABORADOR SELECCIONADO EN ASISTENCIA */}
+      {reportType === 'attendance' && selectedEmpForAttendance && (
+        <div className="bg-gradient-to-r from-blue-900 to-indigo-950 rounded-[2rem] p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 no-print">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-3xl font-black border border-white/20">
+              🕒
+            </div>
+            <div>
+              <span className="text-[9px] font-black uppercase tracking-widest bg-blue-500/40 text-blue-200 px-3 py-1 rounded-full border border-blue-400/30">
+                Registro Individual de Asistencia
+              </span>
+              <h3 className="text-xl font-black uppercase mt-1">
+                {selectedEmpForAttendance.surname} {selectedEmpForAttendance.name}
+              </h3>
+              <p className="text-[11px] text-blue-200/80 font-bold uppercase tracking-wider">
+                C.I.: {selectedEmpForAttendance.identification} &bull; Cargo: {selectedEmpForAttendance.role || "General"} &bull; Dpto: {selectedEmpForAttendance.origin || "Operaciones"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/10">
+              <span className="text-[8px] font-black uppercase text-blue-200 block">Horas Laboradas</span>
+              <span className="text-lg font-black text-white">{individualStats.totalWorkedHoursFormatted}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/10">
+              <span className="text-[8px] font-black uppercase text-blue-200 block">Días / Marcaciones</span>
+              <span className="text-lg font-black">{individualStats.totalDaysWorked}d / {individualStats.total}m</span>
+            </div>
+            {individualStats.pendingDays > 0 && (
+              <div className="bg-amber-500/20 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-amber-400/40">
+                <span className="text-[8px] font-black uppercase text-amber-300 block">Fechas Pendientes</span>
+                <span className="text-lg font-black text-amber-300">{individualStats.pendingDays}</span>
+              </div>
+            )}
+            <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/10">
+              <span className="text-[8px] font-black uppercase text-emerald-300 block">Puntuales</span>
+              <span className="text-lg font-black text-emerald-300">{individualStats.confirmed}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/10">
+              <span className="text-[8px] font-black uppercase text-amber-300 block">Atrasos</span>
+              <span className="text-lg font-black text-amber-300">{individualStats.lates}</span>
+            </div>
+            <button
+              onClick={() => handlePrintIndividualAttendance()}
+              className="px-5 py-3 bg-white text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg hover:bg-slate-100 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <span>🖨️</span> Imprimir Registro A4
+            </button>
+            <button
+              onClick={() => generateIndividualAttendanceExcel()}
+              className="px-5 py-3 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg hover:bg-emerald-600 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <span>📗</span> Excel (.XLS)
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-[2.5rem] shadow-sm border overflow-hidden" id="reports-printable-area">
          {/* CABECERA ESTRICTA PARA IMPRESIÓN */}
@@ -302,7 +1030,19 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                </div>
             </div>
             <div className="pt-4 border-t-2 border-black/10">
-               <p className="text-[12px] font-[950] uppercase tracking-[0.3em]">{getReportHeaderTitle()}</p>
+               <p className="text-[12px] font-[950] uppercase tracking-[0.3em]">
+                 {reportType === 'attendance' && selectedEmpForAttendance
+                   ? 'REGISTRO INDIVIDUAL OFICIAL DE ASISTENCIA Y PUNTUALIDAD'
+                   : getReportHeaderTitle()}
+               </p>
+               {reportType === 'attendance' && selectedEmpForAttendance && (
+                 <div className="mt-2 text-left bg-slate-50 p-4 border border-black/20 grid grid-cols-2 gap-2 text-[10px] font-bold">
+                   <p><span className="font-black">COLABORADOR:</span> {selectedEmpForAttendance.surname} {selectedEmpForAttendance.name}</p>
+                   <p><span className="font-black">CÉDULA:</span> {selectedEmpForAttendance.identification}</p>
+                   <p><span className="font-black">CARGO:</span> {selectedEmpForAttendance.role || "General"}</p>
+                   <p><span className="font-black">MODALIDAD:</span> {selectedEmpForAttendance.isFixed ? 'Fijo' : 'Temporal'}</p>
+                 </div>
+               )}
                {startDate || endDate ? (
                  <p className="text-[10px] font-black uppercase mt-1">Período: {startDate || 'Inicio'} al {endDate || 'Hoy'}</p>
                ) : null}
@@ -317,6 +1057,66 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                 <h3 className="text-2xl font-black text-slate-900 uppercase tracking-widest">Gestión de Archivo Maestro</h3>
                 <p className="text-[11px] font-black text-blue-600 uppercase mt-2 tracking-widest italic leading-relaxed">Consolidado integral para cumplimiento legal y auditorías externas de talento humano</p>
               </header>
+
+              {/* SECCION ESPECIAL: FICHAS INDIVIDUALES DE PERSONAL (EXPEDIENTE OFICIAL A4) */}
+              <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-8 rounded-[2.5rem] shadow-2xl text-left border border-blue-900">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 pb-6 border-b border-white/10">
+                  <div>
+                    <span className="text-[9px] font-black uppercase tracking-widest bg-blue-500/30 text-blue-300 px-3 py-1 rounded-full border border-blue-400/20">
+                      Archivo Maestro Oficial
+                    </span>
+                    <h4 className="text-2xl font-black uppercase tracking-wide mt-2">
+                      Fichas Individuales de Personal (A4)
+                    </h4>
+                    <p className="text-[11px] text-blue-200/80 font-bold uppercase mt-1">
+                      Visualice e imprima el expediente y ficha completa de cada colaborador con cédula, contrato, IESS, utilidades (cargas familiares), vacaciones y novedades.
+                    </p>
+                  </div>
+                  <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-3">
+                    <select
+                      className="p-3.5 bg-white text-slate-900 rounded-xl text-[11px] font-black uppercase outline-none focus:ring-2 focus:ring-blue-400 min-w-[280px]"
+                      value={selectedEmpForFicha?.id || ''}
+                      onChange={e => {
+                        const emp = employees.find(x => x.id === e.target.value);
+                        if (emp) setSelectedEmpForFicha(emp);
+                      }}
+                    >
+                      <option value="">-- SELECCIONAR COLABORADOR --</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.surname} {emp.name} ({emp.identification}) - {emp.role || "General"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-6">
+                  <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest mb-3">
+                    Directorio Rápido de Expedientes ({employees.length} Colaboradores Registrados)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-2">
+                    {employees.map(emp => (
+                      <button
+                        key={emp.id}
+                        onClick={() => setSelectedEmpForFicha(emp)}
+                        className="p-3 bg-white/5 hover:bg-white/15 border border-white/10 rounded-xl text-left transition-all group flex items-center justify-between"
+                      >
+                        <div className="truncate pr-2">
+                          <p className="text-[10px] font-black uppercase text-white group-hover:text-blue-300 transition-colors truncate">
+                            {emp.surname} {emp.name}
+                          </p>
+                          <p className="text-[8px] font-bold text-slate-400 uppercase">
+                            CI: {emp.identification} &bull; {emp.isFixed ? 'Fijo' : 'Temporal'}
+                          </p>
+                        </div>
+                        <span className="text-xs group-hover:scale-125 transition-transform">📋</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
                  {[
                    { id: 'employees', title: 'Censo Personal', icon: '👥', desc: 'Fichas, cargos y sueldos.' },
@@ -341,15 +1141,163 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
                  ))}
               </div>
               <div className="pt-10 border-t flex flex-col items-center gap-6">
-                 <button 
-                   onClick={handleDownloadMasterZip} 
-                   disabled={isZipping} 
+                 <button
+                   onClick={handleDownloadMasterZip}
+                   disabled={isZipping}
                    className="w-full max-w-md py-6 bg-slate-900 text-white font-[950] rounded-[2rem] uppercase text-[12px] tracking-[0.4em] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-4 group"
                  >
                    <span>{isZipping ? '⌛' : '📦'}</span>
                    {isZipping ? 'CONSOLIDANDO DATOS...' : 'Descargar Archivo Maestro .ZIP'}
                  </button>
                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center italic opacity-60">Este paquete comprimido incluye todos los reportes superiores en formato CSV para respaldo institucional.</p>
+              </div>
+           </div>
+         ) : reportType === 'attendance' && selectedEmpForAttendance ? (
+           /* HOJA INDIVIDUAL OFICIAL A4 PARA ASISTENCIA */
+           <div className="p-6 md:p-12 space-y-8">
+              {/* RESUMEN ESTADÍSTICO EN PANTALLA */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-5 bg-slate-50 rounded-2xl border-2 border-slate-200">
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-blue-600 uppercase">Total Horas Laboradas</p>
+                  <p className="text-2xl font-black text-blue-900">{individualStats.totalWorkedHoursFormatted}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-slate-400 uppercase">Jornadas Registradas</p>
+                  <p className="text-2xl font-black text-slate-900">{individualStats.totalDaysWorked} días</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-amber-600 uppercase">Fechas Pendientes</p>
+                  <p className={`text-2xl font-black ${individualStats.pendingDays > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                    {individualStats.pendingDays}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-slate-400 uppercase">Puntuales</p>
+                  <p className="text-2xl font-black text-emerald-600">{individualStats.confirmed}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[8px] font-black text-slate-400 uppercase">Atrasos</p>
+                  <p className="text-2xl font-black text-rose-600">{individualStats.lates}</p>
+                </div>
+              </div>
+
+              {/* TABLA DE DETALLE DIARIO (UNA SOLA LÍNEA/BLOQUE POR DÍA CON SUMATORIA DE HORAS TRABAJADAS) */}
+              <div className="table-responsive">
+                <table className="w-full text-left border-collapse text-[11px] font-bold uppercase">
+                  <thead className="bg-slate-900 text-white text-[9px] font-black tracking-widest uppercase">
+                    <tr>
+                      <th className="p-3 border">Fecha y Jornada</th>
+                      <th className="p-3 border text-center">Ingreso 1</th>
+                      <th className="p-3 border text-center">Salida 1</th>
+                      <th className="p-3 border text-center">Ingreso 2</th>
+                      <th className="p-3 border text-center">Salida 2</th>
+                      <th className="p-3 border text-center bg-blue-950 text-blue-200">Horas Trabajadas</th>
+                      <th className="p-3 border text-center">Puntualidad / Estado</th>
+                      <th className="p-3 border">Novedad / Observación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 border">
+                    {individualDailyRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400 font-bold uppercase italic">
+                          No existen marcaciones registradas para este colaborador en el rango seleccionado.
+                        </td>
+                      </tr>
+                    ) : (
+                      individualDailyRecords.map(day => (
+                        <tr
+                          key={day.dateKey}
+                          className={`transition-colors ${day.isPendingMarking ? 'bg-amber-50/70 hover:bg-amber-100/60 border-l-4 border-l-amber-500' : 'hover:bg-blue-50/30'}`}
+                        >
+                          <td className="p-3 border font-black text-slate-900">
+                            <div className="flex items-center gap-1.5">
+                              {day.isPendingMarking && <span className="text-amber-600 text-xs" title="Marcación pendiente">⚠️</span>}
+                              <span>{day.dateFormatted}</span>
+                            </div>
+                            <span className="text-[8px] font-bold text-slate-400 font-mono">[{day.dateKey}]</span>
+                            {day.isHalfDay && (
+                              <span className="ml-2 px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[7px] font-black">
+                                Media Jornada
+                              </span>
+                            )}
+                            {day.isPendingMarking && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[7px] font-black tracking-wider">
+                                Pendiente
+                              </span>
+                            )}
+                          </td>
+                          <td className={`p-3 border text-center font-mono font-bold ${day.in1 === '--:--' ? 'text-slate-400' : 'text-emerald-800 bg-emerald-50/30'}`}>
+                            {day.in1}
+                          </td>
+                          <td className={`p-3 border text-center font-mono font-bold ${day.out1 === '--:--' ? 'text-slate-400' : 'text-orange-800 bg-orange-50/30'}`}>
+                            {day.out1}
+                          </td>
+                          <td className={`p-3 border text-center font-mono font-bold ${day.in2 === '--:--' ? 'text-slate-400' : 'text-cyan-800 bg-cyan-50/30'}`}>
+                            {day.in2}
+                          </td>
+                          <td className={`p-3 border text-center font-mono font-bold ${day.out2 === '--:--' ? 'text-slate-400' : 'text-pink-800 bg-pink-50/30'}`}>
+                            {day.out2}
+                          </td>
+                          <td className="p-3 border text-center font-mono font-[950] text-sm text-blue-900 bg-blue-50/60">
+                            {day.hoursFormatted}
+                          </td>
+                          <td className="p-3 border text-center">
+                            {day.isPendingMarking ? (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                                {day.statusLabel}
+                              </span>
+                            ) : day.hasLate ? (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-amber-100 text-amber-800">
+                                Atraso
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-100 text-emerald-800">
+                                Puntual
+                              </span>
+                            )}
+                          </td>
+                          <td className={`p-3 border text-[9px] ${day.isPendingMarking ? 'text-amber-900 font-bold' : 'text-slate-600'}`}>
+                            {day.justifications}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {individualDailyRecords.length > 0 && (
+                    <tfoot className="bg-slate-100 font-black text-slate-900 text-xs border-t-2 border-black">
+                      <tr>
+                        <td colSpan={5} className="p-3 border text-right uppercase tracking-wider">
+                          Sumatoria Total de Horas Trabajadas:
+                        </td>
+                        <td className="p-3 border text-center font-mono font-[950] text-blue-950 bg-blue-100">
+                          {individualStats.totalWorkedHoursFormatted}
+                        </td>
+                        <td colSpan={2} className="p-3 border text-[9px] text-slate-500 uppercase tracking-tight">
+                          {individualStats.totalDaysWorked} Jornadas Registradas {individualStats.pendingDays > 0 ? `• ⚠️ ${individualStats.pendingDays} Fechas con Marcajes Pendientes` : '• Al día'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {/* BLOQUE DE FIRMAS PARA IMPRESIÓN Y CONSTANCIA */}
+              <div className="pt-12 grid grid-cols-3 gap-8 text-center">
+                <div className="border-t-2 border-black pt-2">
+                  <p className="text-[10px] font-black uppercase">{selectedEmpForAttendance.surname} {selectedEmpForAttendance.name}</p>
+                  <p className="text-[8px] font-bold text-slate-600 uppercase">C.I.: {selectedEmpForAttendance.identification}</p>
+                  <p className="text-[8px] font-black uppercase text-slate-400 mt-0.5">Colaborador</p>
+                </div>
+                <div className="border-t-2 border-black pt-2">
+                  <p className="text-[10px] font-black uppercase">Talento Humano</p>
+                  <p className="text-[8px] font-bold text-slate-600 uppercase">Control de Asistencia</p>
+                  <p className="text-[8px] font-black uppercase text-slate-400 mt-0.5">Responsable</p>
+                </div>
+                <div className="border-t-2 border-black pt-2">
+                  <p className="text-[10px] font-black uppercase">{company?.legalRep || 'Gerencia General'}</p>
+                  <p className="text-[8px] font-bold text-slate-600 uppercase">Representante Legal</p>
+                  <p className="text-[8px] font-black uppercase text-slate-400 mt-0.5">Aprobación Institucional</p>
+                </div>
               </div>
            </div>
          ) : (
@@ -378,6 +1326,27 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
               <button onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Entendido</button>
           </div>
       </Modal>
+
+      {/* MODAL FICHA INDIVIDUAL DE PERSONAL */}
+      <EmployeeFileModal
+        isOpen={!!selectedEmpForFicha}
+        onClose={() => setSelectedEmpForFicha(null)}
+        employee={selectedEmpForFicha}
+        company={company}
+        attendance={attendance}
+        payments={payments}
+      />
+
+      {/* MODAL DE CONFIRMACIÓN DE ACCIONES */}
+      <ConfirmationModal
+        isOpen={confirmAction.isOpen}
+        title={confirmAction.title}
+        message={confirmAction.message}
+        confirmText={confirmAction.confirmText}
+        type={confirmAction.type}
+        onConfirm={confirmAction.onConfirm}
+        onCancel={() => setConfirmAction(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
