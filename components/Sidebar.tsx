@@ -60,8 +60,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
 
   return (
     <>
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
+      <button
+        onClick={() => setIsOpen(!isOpen)}
         className="fixed top-4 left-4 z-50 p-3 bg-blue-700 text-white rounded-xl md:hidden shadow-xl active:scale-90 transition-all border border-blue-600"
         aria-label="Abrir menú"
       >
@@ -94,7 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
               <p className="text-[7px] md:text-[8px] text-blue-500 font-black tracking-[0.4em] mt-1.5">Enterprise</p>
             </div>
           </div>
-          
+
           <nav className="space-y-1.5 md:space-y-2">
             {menuItems.filter(item => item.roles.includes(role)).map((item) => (
               <button
@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
 
           {!isStandalone && (role === Role.SUPER_ADMIN || role === Role.PARTIAL_ADMIN) && (
             <div className="mt-6 border-t border-white/10 pt-6">
-              <button 
+              <button
                 onClick={handleInstallClick}
                 className="w-full flex items-center gap-3 px-5 py-3.5 bg-blue-600/20 text-blue-400 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all border border-blue-500/30 active:scale-95"
               >
@@ -127,7 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
         </div>
 
         <div className="p-6 md:p-8 border-t border-white/5">
-          <button 
+          <button
             onClick={onLogout}
             className="w-full py-3.5 md:py-4 bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white rounded-xl md:rounded-2xl transition-all font-black border border-red-500/30 uppercase text-[9px] md:text-[10px] tracking-widest active:scale-95"
           >

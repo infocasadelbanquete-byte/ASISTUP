@@ -18,7 +18,7 @@ const NotificationsModule: React.FC<NotificationsModuleProps> = ({ notifications
           <h2 className="text-xl font-[950] text-slate-900 tracking-tighter uppercase leading-none">Buzón de Notificaciones</h2>
           <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mt-2">Alertas y Eventos del Sistema</p>
         </div>
-        <button 
+        <button
           onClick={onClearAll}
           className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all"
         >
@@ -34,16 +34,16 @@ const NotificationsModule: React.FC<NotificationsModuleProps> = ({ notifications
       ) : (
         <div className="space-y-4">
           {sorted.map(notif => (
-            <div 
-              key={notif.id} 
+            <div
+              key={notif.id}
               className={`p-6 rounded-[2.5rem] border transition-all flex flex-col gap-4 ${
                 notif.isRead ? 'bg-white border-slate-100 opacity-70' : 'bg-white border-blue-200 shadow-md scale-[1.01]'
               } ${notif.isProcessed ? 'border-emerald-200 bg-emerald-50/20' : ''}`}
             >
               <div className="flex items-start gap-5">
                 <div className={`w-3 h-3 rounded-full mt-2 shrink-0 ${
-                  notif.type === 'critical' ? 'bg-red-500 shadow-[0_0_10px_red]' : 
-                  notif.type === 'alert' ? 'bg-yellow-500 shadow-[0_0_10px_yellow]' : 
+                  notif.type === 'critical' ? 'bg-red-500 shadow-[0_0_10px_red]' :
+                  notif.type === 'alert' ? 'bg-yellow-500 shadow-[0_0_10px_yellow]' :
                   'bg-blue-500'
                 }`}></div>
                 <div className="flex-1">
@@ -62,21 +62,21 @@ const NotificationsModule: React.FC<NotificationsModuleProps> = ({ notifications
               </div>
 
               <div className="flex gap-2 pt-4 border-t border-slate-50">
-                <button 
+                <button
                   onClick={() => onToggleRead(notif.id)}
                   className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all ${
-                    notif.isRead 
-                      ? 'bg-slate-100 text-slate-500' 
+                    notif.isRead
+                      ? 'bg-slate-100 text-slate-500'
                       : 'bg-blue-50 text-blue-600 border border-blue-200'
                   }`}
                 >
                   {notif.isRead ? 'Marcar como No Leído' : 'Marcar como Leído'}
                 </button>
-                <button 
+                <button
                   onClick={() => onToggleProcessed(notif.id)}
                   className={`flex-1 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all ${
-                    notif.isProcessed 
-                      ? 'bg-emerald-600 text-white shadow-lg' 
+                    notif.isProcessed
+                      ? 'bg-emerald-600 text-white shadow-lg'
                       : 'bg-slate-900 text-white'
                   }`}
                 >
