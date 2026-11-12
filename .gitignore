@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Imported project configuration
+.env
+.env.local
+firebase-applet-config.json
+firebase-blueprint.json
+migrated_prompt_history
+.netlify

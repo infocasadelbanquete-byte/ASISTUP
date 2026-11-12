@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Employee, Payment, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
+import { Employee, Payment, CompanyConfig, GlobalSettings, Role, SavedReport } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 
 interface PayrollModuleProps {
@@ -12,14 +12,15 @@ interface PayrollModuleProps {
   company: CompanyConfig | null;
   settings: GlobalSettings;
   role: Role;
+  onSaveReport?: (report: SavedReport) => void;
 }
 
-const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUpdatePayments, onUpdateEmployees, attendance = [], company, settings, role }) => {
+const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUpdatePayments, onUpdateEmployees, attendance = [], company, settings, role, onSaveReport }) => {
   const [selectedMonth, setSelectedMonth] = useState('FEBRERO');
   const [individualPayroll, setIndividualPayroll] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
-  
+
   // Estado para capturar ediciones locales antes de persistir
   // Ahora almacenamos la CANTIDAD DE HORAS para el cálculo preciso
   const [gridEdits, setGridEdits] = useState<Record<string, {
@@ -49,7 +50,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const attendanceDates = new Set(empAttendance.map(a => a.timestamp.split('T')[0]));
     let autoWorkedDays = attendanceDates.size >= 22 ? 30 : attendanceDates.size;
     const workedDays = gridEdits[emp.id]?.workedDays !== undefined ? gridEdits[emp.id].workedDays : autoWorkedDays;
-    
+
     // 2. Cálculo de Tasas Horarias (Ecuador: Sueldo / 240 horas mensuales)
     const baseHourlyRate = emp.salary / 240;
     const rate50 = baseHourlyRate * 1.5;   // Hora Suplementaria
@@ -57,19 +58,15 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
 
     // 3. Cantidad de Horas (Manual o desde Pagos previos)
     const monthlyPayments = payments.filter(p => p.employeeId === emp.id && p.month === selectedMonth && p.status === 'paid');
-    
+
     // Suplementarias (50%)
-    const hours50 = gridEdits[emp.id]?.hours50 !== undefined 
-      ? gridEdits[emp.id].hours50 
-      : 0; // En este flujo priorizamos la entrada manual de horas para el rol mensual
-    
+    const hours50 = gridEdits[emp.id]?.hours50 ?? 0;
+
     const amount50 = hours50 * rate50;
 
     // Extraordinarias (100%)
-    const hours100 = gridEdits[emp.id]?.hours100 !== undefined 
-      ? gridEdits[emp.id].hours100 
-      : 0;
-    
+    const hours100 = gridEdits[emp.id]?.hours100 ?? 0;
+
     const amount100 = hours100 * rate100;
 
     // 4. Sueldo Base Proporcional
@@ -77,20 +74,20 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const baseSalaryEarned = valuePerDay * (workedDays || 0);
 
     // 5. Otros Rubros
-    const otherIncomes = gridEdits[emp.id]?.otherIncomes !== undefined 
-      ? gridEdits[emp.id].otherIncomes 
+    const otherIncomes = gridEdits[emp.id]?.otherIncomes !== undefined
+      ? gridEdits[emp.id].otherIncomes
       : monthlyPayments.filter(p => p.type === 'Bonus' || p.type === 'Vacation').reduce((sum, p) => sum + p.amount, 0);
 
-    const fines = gridEdits[emp.id]?.fines !== undefined 
-      ? gridEdits[emp.id].fines 
+    const fines = gridEdits[emp.id]?.fines !== undefined
+      ? gridEdits[emp.id].fines
       : monthlyPayments.filter(p => p.type === 'Fine').reduce((sum, p) => sum + p.amount, 0);
 
-    const advances = gridEdits[emp.id]?.advances !== undefined 
-      ? gridEdits[emp.id].advances 
+    const advances = gridEdits[emp.id]?.advances !== undefined
+      ? gridEdits[emp.id].advances
       : monthlyPayments.filter(p => p.type === 'Advance' || p.type === 'Loan' || p.type === 'Emergency').reduce((sum, p) => sum + p.amount, 0);
 
-    const otherDiscounts = gridEdits[emp.id]?.otherDiscounts !== undefined 
-      ? gridEdits[emp.id].otherDiscounts 
+    const otherDiscounts = gridEdits[emp.id]?.otherDiscounts !== undefined
+      ? gridEdits[emp.id].otherDiscounts
       : monthlyPayments.filter(p => p.type === 'BackPay').reduce((sum, p) => sum + p.amount, 0);
 
     // 6. Beneficios de Ley (Base: Sueldo + Horas Extras/Suplementarias + Bonos)
@@ -110,7 +107,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const totalExpenses = iessContribution + (fines || 0) + (advances || 0) + (otherDiscounts || 0);
     const netToReceive = totalIncomes - totalExpenses;
 
-    return { 
+    return {
       baseSalary: baseSalaryEarned,
       hours50,
       amount50,
@@ -166,7 +163,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
           voucherCode: `ADJ-S50-${Date.now().toString().slice(-5)}`
         });
       }
-      
+
       // Si hay monto calculado para horas extraordinarias
       if (d.amount100 > 0) {
         newPayments.push({
@@ -203,8 +200,34 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     });
 
     onUpdatePayments(newPayments);
+
+    // Generar archivo de texto para Excel (delimitado por columnas)
+    let csv = "\uFEFFColaborador,Identificación,Días,Sueldo Base,Cant. H. 50%,Monto H. 50%,Cant. H. 100%,Monto H. 100%,F. Reserva,13ero,14to,Otros Ing.,IESS,Multas,Anticipos,Otros Desc.,Neto\n";
+    employees.filter(e => e.status === 'active').forEach((emp) => {
+      const d = calculatePayrollData(emp);
+      csv += `"${emp.surname} ${emp.name}","${emp.identification}","${d.workedDays}","${d.baseSalary.toFixed(2)}","${d.hours50}","${d.amount50.toFixed(2)}","${d.hours100}","${d.amount100.toFixed(2)}","${d.reserveFund.toFixed(2)}","${d.monthly13th.toFixed(2)}","${d.monthly14th.toFixed(2)}","${d.otherIncomes.toFixed(2)}","${d.iessContribution.toFixed(2)}","${d.fines.toFixed(2)}","${d.advances.toFixed(2)}","${d.otherDiscounts.toFixed(2)}","${d.netToReceive.toFixed(2)}"\n`;
+    });
+
+    if (onSaveReport) {
+      const report: SavedReport = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: `NOMINA_${selectedMonth}_${new Date().getFullYear()}_${new Date().toISOString().split('T')[0]}`,
+        date: now,
+        content: csv,
+        type: 'payroll',
+        month: selectedMonth,
+        year: new Date().getFullYear().toString()
+      };
+      onSaveReport(report);
+    }
+
     setGridEdits({});
-    setFeedback({ isOpen: true, title: "Nómina Procesada", message: "Los cálculos de horas y ajustes han sido sincronizados.", type: "success" });
+    setFeedback({
+      isOpen: true,
+      title: "Éxito al guardar",
+      message: `Los ajustes han sido guardados correctamente. El archivo de nómina ha sido generado y guardado en el módulo de reportes (Ubicación: Reportes > Nóminas Guardadas).`,
+      type: "success"
+    });
   };
 
   const exportGeneralExcel = () => {
@@ -281,7 +304,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
                        <input type="number" className="w-12 p-1 border border-slate-200 rounded text-center font-black" value={d.workedDays} onChange={e => handleGridEdit(emp.id, 'workedDays', Number(e.target.value))} />
                     </td>
                     <td className="p-4 text-center font-mono">${d.baseSalary.toFixed(2)}</td>
-                    
+
                     {/* Horas Suplementarias (50%) */}
                     <td className="p-2 text-center bg-blue-50/30">
                        <input type="number" step="0.5" className="w-16 p-1 border border-blue-200 rounded text-center font-black text-blue-700 focus:bg-white" value={d.hours50} onChange={e => handleGridEdit(emp.id, 'hours50', Number(e.target.value))} />
@@ -328,11 +351,11 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
         </div>
       </div>
 
-      <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol Individual de Pagos">
+      <Modal isOpen={!!individualPayroll} onClose={() => setIndividualPayroll(null)} title="Rol Individual de Pagos" maxWidth="max-w-5xl">
         {individualPayroll && (() => {
            const d = calculatePayrollData(individualPayroll);
            return (
-             <div className="space-y-8 bg-white p-6" id="individual-role-print">
+             <div className="a4-sheet space-y-8 bg-white p-6 sm:p-10 border shadow-lg print:border-none print:shadow-none print:p-0" id="individual-role-print">
                <div className="flex justify-between items-center border-b-4 border-black pb-8">
                   <div className="flex items-center gap-6">
                     <div className="w-24 h-24 border-2 border-black flex items-center justify-center overflow-hidden">
@@ -349,7 +372,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
                      <p className="font-bold uppercase text-[12px]">{selectedMonth} / 2026</p>
                   </div>
                </div>
-               
+
                <div className="grid grid-cols-2 gap-6 text-[11px] font-bold uppercase border p-4 bg-slate-50/30 rounded-2xl">
                   <div>
                     <p className="text-[9px] text-slate-400">COLABORADOR:</p>
@@ -384,7 +407,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
                   <p className="text-[16px] font-[950] uppercase tracking-[0.5em]">Líquido a Recibir</p>
                   <p className="text-5xl font-[950] tracking-tighter">${d.netToReceive.toFixed(2)}</p>
                </div>
-               
+
                <div className="mt-20 grid grid-cols-2 gap-24 text-center text-[10px] font-black uppercase">
                   <div className="border-t-2 border-black pt-6">Firma del Colaborador</div>
                   <div className="border-t-2 border-black pt-6">Gerencia / Tesorería</div>
