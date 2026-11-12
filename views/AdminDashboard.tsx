@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage, SavedReport } from '../types.ts';
+import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage, SavedReport, SystemBackupData } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
 import EmployeeModule from './modules/EmployeeModule.tsx';
@@ -35,6 +34,7 @@ interface AdminDashboardProps {
   onUpdateSavedReports: (reports: SavedReport[]) => void;
   settings: GlobalSettings;
   onUpdateSettings: (settings: GlobalSettings) => void;
+  onRestoreBackup?: (backup: SystemBackupData) => Promise<{ syncedOnline: boolean }>;
   onUpdateAppMode: (mode: 'full' | 'attendance') => void;
   appMode: 'full' | 'attendance';
 }
@@ -49,7 +49,7 @@ const getLocalDateKey = (ts?: string): string => {
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  role, isDbConnected, isOnline = true, pendingSyncCount = 0, onSyncNow, isSyncing = false, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, onDeleteAttendance, payments, onUpdatePayments, savedReports, onUpdateSavedReports, settings, onUpdateSettings, onUpdateAppMode, appMode
+  role, isDbConnected, isOnline = true, pendingSyncCount = 0, onSyncNow, isSyncing = false, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, onDeleteAttendance, payments, onUpdatePayments, savedReports, onUpdateSavedReports, settings, onUpdateSettings, onRestoreBackup, onUpdateAppMode, appMode
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai' | 'notifications'>('dashboard');
   const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
@@ -954,6 +954,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               onUpdate={onUpdateSettings}
               role={role}
               onPurge={handlePurgeData}
+              onRestoreBackup={onRestoreBackup}
               allData={{ company, employees, attendance, payments, settings, savedReports }}
             />
           )}

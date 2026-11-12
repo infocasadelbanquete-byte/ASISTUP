@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings, SavedReport } from './types.ts';
+import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings, SavedReport, SystemBackupData } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
@@ -758,6 +758,181 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRestoreBackup = async (backup: SystemBackupData): Promise<{ syncedOnline: boolean }> => {
+    const syncTasks: Promise<any>[] = [];
+    let anyOfflineOrError = !navigator.onLine;
+
+    if (backup.company && typeof backup.company === 'object') {
+      const nextCompany = backup.company;
+      setCompany(nextCompany);
+      localStorage.setItem('cache_company', JSON.stringify(nextCompany));
+      if (!navigator.onLine) {
+        enqueueOfflineAction('company_config', nextCompany, `Restauración empresa: ${nextCompany.name || 'Compañía'}`);
+      } else {
+        syncTasks.push(
+          setDoc(doc(db, "config", "company"), { payload: compressData(nextCompany) }).catch(() => {
+            anyOfflineOrError = true;
+            enqueueOfflineAction('company_config', nextCompany, `Restauración empresa: ${nextCompany.name || 'Compañía'}`);
+          })
+        );
+      }
+    }
+
+    if (backup.settings && typeof backup.settings === 'object') {
+      const s = backup.settings;
+      const mergedSettings: GlobalSettings = {
+        ...defaultSettings,
+        ...s,
+        holidays: Array.isArray(s.holidays) ? s.holidays : [],
+        schedule: {
+          ...defaultSettings.schedule,
+          ...(s.schedule || {}),
+          monFri: {
+            ...defaultSettings.schedule.monFri,
+            ...(s.schedule?.monFri || {}),
+          },
+          sat: {
+            ...defaultSettings.schedule.sat,
+            ...(s.schedule?.sat || {}),
+          },
+        },
+        systemUpdate: {
+          ...DEFAULT_SYSTEM_UPDATE,
+          ...(s.systemUpdate || {}),
+          changelog: Array.isArray(s.systemUpdate?.changelog)
+            ? s.systemUpdate!.changelog
+            : DEFAULT_SYSTEM_UPDATE.changelog,
+        },
+      };
+      setSettings(mergedSettings);
+      localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
+      if (!navigator.onLine) {
+        enqueueOfflineAction('settings_config', mergedSettings, 'Restauración de configuración global');
+      } else {
+        syncTasks.push(
+          setDoc(doc(db, "config", "settings"), { payload: compressData(mergedSettings) }).catch(() => {
+            anyOfflineOrError = true;
+            enqueueOfflineAction('settings_config', mergedSettings, 'Restauración de configuración global');
+          })
+        );
+      }
+    }
+
+    if (Array.isArray(backup.employees)) {
+      const validEmps = backup.employees.filter(e => e && typeof e.id === 'string' && e.id.trim().length > 0);
+      const nextIds = new Set(validEmps.map(e => e.id));
+      const deletedEmpIds = employees.filter(e => !nextIds.has(e.id)).map(e => e.id);
+      setEmployees(validEmps);
+      localStorage.setItem('cache_employees', JSON.stringify(validEmps));
+      if (!navigator.onLine) {
+        enqueueOfflineAction('employee_batch', { emps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
+      } else {
+        const empOps = [
+          ...deletedEmpIds.map(id => deleteDoc(doc(db, "employees", id))),
+          ...validEmps.map(e => setDoc(doc(db, "employees", e.id), { payload: compressData(e) })),
+        ];
+        syncTasks.push(
+          Promise.allSettled(empOps).then(results => {
+            if (results.some(r => r.status === 'rejected')) {
+              anyOfflineOrError = true;
+              enqueueOfflineAction('employee_batch', { emps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
+            }
+          })
+        );
+      }
+    }
+
+    if (Array.isArray(backup.payments)) {
+      const validPayments = backup.payments.filter(p => p && typeof p.id === 'string' && p.id.trim().length > 0);
+      const nextIds = new Set(validPayments.map(p => p.id));
+      const deletedPayIds = payments.filter(p => !nextIds.has(p.id)).map(p => p.id);
+      setPayments(validPayments);
+      localStorage.setItem('cache_payments', JSON.stringify(validPayments));
+      if (!navigator.onLine) {
+        enqueueOfflineAction('payment_batch', { payments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
+      } else {
+        const payOps = [
+          ...deletedPayIds.map(id => deleteDoc(doc(db, "payments", id))),
+          ...validPayments.map(p => setDoc(doc(db, "payments", p.id), { payload: compressData(p) })),
+        ];
+        syncTasks.push(
+          Promise.allSettled(payOps).then(results => {
+            if (results.some(r => r.status === 'rejected')) {
+              anyOfflineOrError = true;
+              enqueueOfflineAction('payment_batch', { payments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
+            }
+          })
+        );
+      }
+    }
+
+    if (Array.isArray(backup.attendance)) {
+      const validAtt = backup.attendance.filter(a => a && typeof a.id === 'string' && a.id.trim().length > 0);
+      const nextIds = new Set(validAtt.map(a => a.id));
+      const deletedAttIds = attendance.filter(a => !nextIds.has(a.id)).map(a => a.id);
+      setAttendance(validAtt);
+      localStorage.setItem('cache_attendance', JSON.stringify(validAtt));
+      if (!navigator.onLine) {
+        if (deletedAttIds.length > 0) {
+          enqueueOfflineAction('attendance_delete', deletedAttIds, `Limpieza de asistencia por respaldo (${deletedAttIds.length})`);
+        }
+        if (validAtt.length > 0) {
+          enqueueOfflineAction('attendance_batch', validAtt, `Restauración de asistencias (${validAtt.length})`);
+        }
+      } else {
+        const attOps = [
+          ...deletedAttIds.map(id => deleteDoc(doc(db, "attendance", id))),
+          ...validAtt.map(a => setDoc(doc(db, "attendance", a.id), { payload: compressData(a), timestamp: a.timestamp })),
+        ];
+        syncTasks.push(
+          Promise.allSettled(attOps).then(results => {
+            if (results.some(r => r.status === 'rejected')) {
+              anyOfflineOrError = true;
+              if (deletedAttIds.length > 0) {
+                enqueueOfflineAction('attendance_delete', deletedAttIds, `Limpieza de asistencia por respaldo (${deletedAttIds.length})`);
+              }
+              if (validAtt.length > 0) {
+                enqueueOfflineAction('attendance_batch', validAtt, `Restauración de asistencias (${validAtt.length})`);
+              }
+            }
+          })
+        );
+      }
+    }
+
+    if (Array.isArray(backup.savedReports)) {
+      const validReps = backup.savedReports.filter(r => r && typeof r.id === 'string' && r.id.trim().length > 0);
+      const nextIds = new Set(validReps.map(r => r.id));
+      const deletedRepIds = savedReports.filter(r => !nextIds.has(r.id)).map(r => r.id);
+      setSavedReports(validReps);
+      localStorage.setItem('cache_saved_reports', JSON.stringify(validReps));
+      if (!navigator.onLine) {
+        enqueueOfflineAction('saved_reports_batch', validReps, `Restauración de reportes (${validReps.length})`);
+      } else {
+        const repOps = [
+          ...deletedRepIds.map(id => deleteDoc(doc(db, "saved_reports", id))),
+          ...validReps.map(r => setDoc(doc(db, "saved_reports", r.id), { payload: compressData(r) })),
+        ];
+        syncTasks.push(
+          Promise.allSettled(repOps).then(results => {
+            if (results.some(r => r.status === 'rejected')) {
+              anyOfflineOrError = true;
+              enqueueOfflineAction('saved_reports_batch', validReps, `Restauración de reportes (${validReps.length})`);
+            }
+          })
+        );
+      }
+    }
+
+    if (syncTasks.length > 0) {
+      await Promise.all(syncTasks);
+    }
+
+    setPendingSyncCount(getPendingSyncCount());
+    setIsDbConnected(!anyOfflineOrError);
+    return { syncedOnline: !anyOfflineOrError };
+  };
+
   if (isLoadingData) return null;
 
   return (
@@ -916,6 +1091,7 @@ const App: React.FC = () => {
           onUpdateSavedReports={handleUpdateSavedReports}
           settings={settings}
           onUpdateSettings={handleUpdateSettings}
+          onRestoreBackup={handleRestoreBackup}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}
           appMode={appMode}
         />

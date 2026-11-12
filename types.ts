@@ -1,4 +1,3 @@
-
 export enum Role {
   SUPER_ADMIN = 'Super Administrador',
   PARTIAL_ADMIN = 'Administrador Parcial',
@@ -278,4 +277,15 @@ export interface GlobalSettings {
     halfDayOff: string;
   };
   systemUpdate?: SystemUpdateConfig;
+}
+
+export interface SystemBackupData {
+  exportedAt?: string;
+  appVersion?: string;
+  company?: CompanyConfig | null;
+  employees?: Employee[];
+  attendance?: AttendanceRecord[];
+  payments?: Payment[];
+  settings?: GlobalSettings;
+  savedReports?: SavedReport[];
 }

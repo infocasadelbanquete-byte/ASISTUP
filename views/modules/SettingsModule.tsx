@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { GlobalSettings, Role, SystemUpdateConfig } from '../../types.ts';
+import React, { useState, useRef } from 'react';
+import { GlobalSettings, Role, SystemUpdateConfig, SystemBackupData } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 import ConfirmationModal from '../../components/ConfirmationModal.tsx';
 import LZString from 'lz-string';
@@ -11,6 +11,7 @@ interface SettingsModuleProps {
   onUpdate: (settings: GlobalSettings) => void;
   role: Role;
   onPurge?: () => void;
+  onRestoreBackup?: (backup: SystemBackupData) => Promise<{ syncedOnline: boolean }>;
   allData?: {
     company?: any;
     employees?: any[];
@@ -51,7 +52,7 @@ const buildSafeSettings = (s?: Partial<GlobalSettings> | null): GlobalSettings =
   },
 });
 
-const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role, onPurge, allData }) => {
+const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, role, onPurge, onRestoreBackup, allData }) => {
   const [local, setLocal] = useState<GlobalSettings>(() => buildSafeSettings(settings));
 
   // Mantener sincronizado el estado local cuando las configuraciones se carguen o cambien
@@ -61,10 +62,26 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
     }
   }, [settings]);
 
+  const backupFileInputRef = useRef<HTMLInputElement | null>(null);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [purgePassword, setPurgePassword] = useState('');
   const [showBackupZipConfirm, setShowBackupZipConfirm] = useState(false);
   const [isGeneratingZip, setIsGeneratingZip] = useState(false);
+  const [isReadingBackup, setIsReadingBackup] = useState(false);
+  const [isImportingBackup, setIsImportingBackup] = useState(false);
+  const [importPreview, setImportPreview] = useState<{
+    fileName: string;
+    data: SystemBackupData;
+    summary: {
+      companyName: string;
+      exportedAt: string;
+      employees: number;
+      attendance: number;
+      payments: number;
+      savedReports: number;
+      hasSettings: boolean;
+    };
+  } | null>(null);
   const [newHolidayDate, setNewHolidayDate] = useState('');
   const [newChangelogItem, setNewChangelogItem] = useState('');
   const [localDeviceVersion, setLocalDeviceVersion] = useState<string>(() => {
@@ -299,6 +316,222 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
       });
     } finally {
       setIsGeneratingZip(false);
+    }
+  };
+
+  const handleOpenBackupSelector = () => {
+    if (role !== Role.SUPER_ADMIN) {
+      setFeedback({
+        isOpen: true,
+        title: "Acceso Denegado",
+        message: "Solo el Super Administrador tiene autorización para importar un respaldo del sistema.",
+        type: "error"
+      });
+      return;
+    }
+    backupFileInputRef.current?.click();
+  };
+
+  const handleBackupFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setIsReadingBackup(true);
+    try {
+      const lowerName = file.name.toLowerCase();
+      let parsedData: SystemBackupData | null = null;
+
+      if (lowerName.endsWith('.zip')) {
+        const zip = await JSZip.loadAsync(file);
+        const consolidatedFile = zip.file('RESPALDO_COMPLETO_SISTEMA.json');
+        if (consolidatedFile) {
+          const rawJson = await consolidatedFile.async('string');
+          parsedData = JSON.parse(rawJson);
+        } else {
+          const readZipJson = async (filename: string) => {
+            const entry = zip.file(filename);
+            if (!entry) return undefined;
+            const txt = await entry.async('string');
+            return JSON.parse(txt);
+          };
+
+          const [companyPart, employeesPart, attendancePart, paymentsPart, settingsPart, reportsPart] = await Promise.all([
+            readZipJson('1_empresa.json'),
+            readZipJson('2_colaboradores.json'),
+            readZipJson('3_asistencia.json'),
+            readZipJson('4_pagos_nomina.json'),
+            readZipJson('5_configuracion_global.json'),
+            readZipJson('6_reportes_guardados.json'),
+          ]);
+
+          if (
+            companyPart !== undefined ||
+            employeesPart !== undefined ||
+            attendancePart !== undefined ||
+            paymentsPart !== undefined ||
+            settingsPart !== undefined ||
+            reportsPart !== undefined
+          ) {
+            parsedData = {
+              company: companyPart,
+              employees: employeesPart,
+              attendance: attendancePart,
+              payments: paymentsPart,
+              settings: settingsPart,
+              savedReports: reportsPart,
+            };
+          } else {
+            // Intentar detectar cualquier archivo .json válido dentro del ZIP
+            const jsonEntries = Object.values(zip.files).filter(f => !f.dir && f.name.toLowerCase().endsWith('.json'));
+            for (const entry of jsonEntries) {
+              try {
+                const candidate = JSON.parse(await entry.async('string'));
+                if (candidate && typeof candidate === 'object' && ('employees' in candidate || 'attendance' in candidate || 'company' in candidate || 'settings' in candidate)) {
+                  parsedData = candidate;
+                  break;
+                }
+              } catch {
+                // Continuar buscando
+              }
+            }
+          }
+        }
+      } else if (lowerName.endsWith('.bin')) {
+        const rawText = (await file.text()).trim();
+        const decompressed =
+          LZString.decompressFromEncodedURIComponent(rawText) ||
+          LZString.decompressFromUTF16(rawText) ||
+          LZString.decompress(rawText) ||
+          rawText;
+        parsedData = JSON.parse(decompressed);
+      } else if (lowerName.endsWith('.json')) {
+        const rawText = await file.text();
+        parsedData = JSON.parse(rawText);
+      } else {
+        throw new Error('Formato de archivo no compatible. Use un respaldo .zip, .bin o .json.');
+      }
+
+      if (!parsedData || typeof parsedData !== 'object') {
+        throw new Error('El archivo no contiene una estructura de respaldo válida.');
+      }
+
+      const hasAnyCoreSection =
+        parsedData.company !== undefined ||
+        Array.isArray(parsedData.employees) ||
+        Array.isArray(parsedData.attendance) ||
+        Array.isArray(parsedData.payments) ||
+        parsedData.settings !== undefined ||
+        Array.isArray(parsedData.savedReports);
+
+      if (!hasAnyCoreSection) {
+        throw new Error('El archivo seleccionado no corresponde a un respaldo válido de ASIST UP.');
+      }
+
+      const validEmployees = Array.isArray(parsedData.employees)
+        ? parsedData.employees.filter(emp => emp && typeof emp.id === 'string' && emp.id.trim().length > 0)
+        : undefined;
+      const validAttendance = Array.isArray(parsedData.attendance)
+        ? parsedData.attendance.filter(att => att && typeof att.id === 'string' && att.id.trim().length > 0)
+        : undefined;
+      const validPayments = Array.isArray(parsedData.payments)
+        ? parsedData.payments.filter(pay => pay && typeof pay.id === 'string' && pay.id.trim().length > 0)
+        : undefined;
+      const validReports = Array.isArray(parsedData.savedReports)
+        ? parsedData.savedReports.filter(rep => rep && typeof rep.id === 'string' && rep.id.trim().length > 0)
+        : undefined;
+
+      const normalizedBackup: SystemBackupData = {
+        exportedAt: parsedData.exportedAt,
+        appVersion: parsedData.appVersion,
+        company: parsedData.company && typeof parsedData.company === 'object' ? parsedData.company : undefined,
+        employees: validEmployees,
+        attendance: validAttendance,
+        payments: validPayments,
+        settings: parsedData.settings && typeof parsedData.settings === 'object' ? buildSafeSettings(parsedData.settings) : undefined,
+        savedReports: validReports,
+      };
+
+      const exportedDateLabel = normalizedBackup.exportedAt && !isNaN(new Date(normalizedBackup.exportedAt).getTime())
+        ? new Date(normalizedBackup.exportedAt).toLocaleString('es-EC')
+        : 'Fecha no especificada';
+
+      setImportPreview({
+        fileName: file.name,
+        data: normalizedBackup,
+        summary: {
+          companyName: normalizedBackup.company?.name || allData?.company?.name || 'Empresa sin especificar',
+          exportedAt: exportedDateLabel,
+          employees: validEmployees ? validEmployees.length : 0,
+          attendance: validAttendance ? validAttendance.length : 0,
+          payments: validPayments ? validPayments.length : 0,
+          savedReports: validReports ? validReports.length : 0,
+          hasSettings: !!normalizedBackup.settings,
+        },
+      });
+    } catch (err: any) {
+      setFeedback({
+        isOpen: true,
+        title: "Archivo de Respaldo Inválido",
+        message: err?.message || "No se pudo leer o validar el archivo de respaldo seleccionado.",
+        type: "error"
+      });
+    } finally {
+      setIsReadingBackup(false);
+    }
+  };
+
+  const handleConfirmImportBackup = async () => {
+    if (!importPreview || isImportingBackup) return;
+    if (role !== Role.SUPER_ADMIN) {
+      setImportPreview(null);
+      setFeedback({
+        isOpen: true,
+        title: "Acceso Denegado",
+        message: "Solo el Super Administrador puede restaurar respaldos del sistema.",
+        type: "error"
+      });
+      return;
+    }
+    if (!onRestoreBackup) {
+      setImportPreview(null);
+      setFeedback({
+        isOpen: true,
+        title: "Función No Disponible",
+        message: "No se pudo conectar con el restaurador maestro del sistema.",
+        type: "error"
+      });
+      return;
+    }
+
+    setIsImportingBackup(true);
+    try {
+      const { data, summary, fileName } = importPreview;
+      const result = await onRestoreBackup(data);
+      if (data.settings) {
+        setLocal(buildSafeSettings(data.settings));
+      }
+      setImportPreview(null);
+      setFeedback({
+        isOpen: true,
+        title: "Respaldo Importado con Éxito",
+        message: `Se restauró correctamente "${fileName}" (${summary.employees} colaboradores, ${summary.attendance} marcaciones, ${summary.payments} pagos y ${summary.savedReports} reportes). ${
+          result.syncedOnline
+            ? 'La información quedó sincronizada en línea con la base de datos.'
+            : 'Los cambios quedaron guardados localmente y se sincronizarán automáticamente al restablecerse la conexión.'
+        }`,
+        type: "success"
+      });
+    } catch (err: any) {
+      setImportPreview(null);
+      setFeedback({
+        isOpen: true,
+        title: "Error al Importar Respaldo",
+        message: err?.message || "Ocurrió un error al restaurar los datos del respaldo.",
+        type: "error"
+      });
+    } finally {
+      setIsImportingBackup(false);
     }
   };
 
@@ -651,7 +884,14 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
 
         <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 space-y-6">
            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Mantenimiento Crítico</h3>
-           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           <input
+              ref={backupFileInputRef}
+              type="file"
+              accept=".zip,.bin,.json"
+              onChange={handleBackupFileSelected}
+              className="hidden"
+           />
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button
                  type="button"
                  onClick={() => setShowBackupZipConfirm(true)}
@@ -662,6 +902,18 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
                  <div>
                     <p className="text-[11px] font-black text-slate-900 uppercase">{isGeneratingZip ? 'Comprimiendo...' : 'Respaldo Comprimido'}</p>
                     <p className="text-[9px] text-emerald-600 font-bold uppercase mt-1">Exportar Sistema .ZIP</p>
+                 </div>
+              </button>
+              <button
+                 type="button"
+                 onClick={handleOpenBackupSelector}
+                 disabled={isReadingBackup || isImportingBackup}
+                 className="p-6 bg-white border-2 border-indigo-200 rounded-2xl hover:border-indigo-500 hover:shadow-md transition-all text-left flex items-center gap-4 group cursor-pointer disabled:opacity-60"
+              >
+                 <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xl shrink-0">📥</div>
+                 <div>
+                    <p className="text-[11px] font-black text-slate-900 uppercase">{isReadingBackup ? 'Leyendo archivo...' : 'Importar Respaldo'}</p>
+                    <p className="text-[9px] text-indigo-600 font-bold uppercase mt-1">Restaurar .ZIP / .BIN / .JSON</p>
                  </div>
               </button>
               <button type="button" onClick={handleBackup} className="p-6 bg-white border border-slate-200 rounded-2xl hover:border-blue-500 transition-all text-left flex items-center gap-4 group cursor-pointer">
@@ -701,6 +953,77 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ settings, onUpdate, rol
         onConfirm={handleCompressedBackup}
         onCancel={() => setShowBackupZipConfirm(false)}
       />
+
+      {importPreview && (
+        <Modal
+          isOpen={true}
+          onClose={() => { if (!isImportingBackup) setImportPreview(null); }}
+          title="Confirmar Importación de Respaldo"
+          type="warning"
+          maxWidth="max-w-lg"
+        >
+          <div className="space-y-5 p-2">
+            <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+              <span className="text-2xl shrink-0">⚠️</span>
+              <p className="text-[10px] font-bold text-amber-900 uppercase leading-relaxed">
+                Esta acción restaurará y reemplazará la información actual del sistema con el contenido del archivo de respaldo seleccionado.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-[10px] uppercase">
+              <div className="flex justify-between gap-2">
+                <span className="font-bold text-slate-400">Archivo:</span>
+                <span className="font-black text-slate-900 truncate">{importPreview.fileName}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="font-bold text-slate-400">Empresa:</span>
+                <span className="font-black text-slate-900 truncate">{importPreview.summary.companyName}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="font-bold text-slate-400">Generado:</span>
+                <span className="font-black text-slate-700">{importPreview.summary.exportedAt}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[8px] font-bold text-slate-400 block">Colaboradores</span>
+                  <span className="text-sm font-black text-blue-700">{importPreview.summary.employees}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[8px] font-bold text-slate-400 block">Marcaciones</span>
+                  <span className="text-sm font-black text-emerald-700">{importPreview.summary.attendance}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[8px] font-bold text-slate-400 block">Pagos / Nómina</span>
+                  <span className="text-sm font-black text-indigo-700">{importPreview.summary.payments}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[8px] font-bold text-slate-400 block">Reportes / Ajustes</span>
+                  <span className="text-sm font-black text-slate-800">{importPreview.summary.savedReports} / {importPreview.summary.hasSettings ? 'Sí' : 'No'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isImportingBackup}
+                onClick={() => setImportPreview(null)}
+                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-xl uppercase text-[10px] tracking-wider cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isImportingBackup}
+                onClick={handleConfirmImportBackup}
+                className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl uppercase text-[10px] tracking-wider shadow-lg active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isImportingBackup ? 'Importando...' : 'Sí, Importar Respaldo'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <Modal isOpen={showPurgeConfirm} onClose={() => { setShowPurgeConfirm(false); setPurgePassword(''); }} title="AUTORIZACIÓN ADMINISTRATIVA" type="error">
          <div className="space-y-8 text-center p-4">
