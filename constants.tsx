@@ -60,6 +60,32 @@ export const ACTIVE_BREAKS = [
 
 export const APP_NAME = "ASIST UP";
 
+export const SYSTEM_VERSION = "v3.6.0";
+
+export const DEFAULT_SYSTEM_UPDATE = {
+  version: "v3.6.0",
+  releaseDate: "2026-04-02",
+  title: "Actualización v3.6.0: Regularización Aprobada por Administración, Difusión PWA y Reportes Excel Multi-Columna",
+  description: "Actualización obligatoria para todas las terminales y dispositivos instalados. Integra el flujo completo de solicitud, revisión y registro administrativo de regularización de marcajes pendientes con confirmación modal para el colaborador, exclusión de días/horas de permiso o libres en el cálculo de pendientes, difusión instantánea a dispositivos y exportación columna por columna en Excel.",
+  changelog: [
+    "Flujo de regularización administrativa: el Administrador acepta y registra las marcaciones pendientes con guardado oficial.",
+    "Notificación modal de éxito para el colaborador informando la aprobación de su regularización al ingresar al sistema.",
+    "Exclusión de días y horas de permiso autorizado o libres de la lista y conteo de marcaciones pendientes.",
+    "Exportación individual en Excel (.CSV) con delimitación nativa columna por columna y compatibilidad con Microsoft Excel.",
+    "Difusión automática y forzada de nueva versión v3.6.0 a todos los dispositivos instalados mediante Service Worker Network-First y sincronización Firestore.",
+    "Control obligatorio de marcaciones pendientes del mes con bloqueo de marcado hasta regularizar o solicitar auditoría.",
+    "Sumatoria de horas trabajadas y consolidación de jornada en una sola línea diaria en reporte individual.",
+    "Registro administrativo de vacaciones gozadas y recálculo automático en liquidaciones.",
+    "Cláusula de finiquito con declaración de no reclamo en copias de archivo y colaborador.",
+    "Bitácora administrativa de novedades con catálogo dinámico de conceptos y desglose por jornada o número de horas.",
+    "Clasificación de trabajador Fijo/Temporal con activación a criterio administrativo de beneficios sociales.",
+    "Censo de cargas familiares e hijos para distribución legal del 5% de utilidades.",
+    "Fichas individuales completas de colaboradores en Personal y Archivo Maestro en formato oficial A4."
+  ],
+  isMandatory: true,
+  publishedAt: "2026-04-02T08:00:00.000Z"
+};
+
 export const ECUADOR_HOLIDAYS = [
   { name: "Año Nuevo", month: 0, day: 1, duration: 7 },
   { name: "San Valentín", month: 1, day: 14 },
