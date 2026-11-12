@@ -1,15 +1,20 @@
 import { initializeApp } from "firebase/app";
-import { 
-  initializeFirestore, 
-  persistentLocalCache, 
+import {
+  initializeFirestore,
+  persistentLocalCache,
   persistentMultipleTabManager,
-  collection, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc 
+  enableNetwork,
+  disableNetwork,
+  waitForPendingWrites,
+  getDocFromServer,
+  getDocsFromServer,
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc
 } from "firebase/firestore";
 import LZString from "lz-string";
 
@@ -22,7 +27,7 @@ import LZString from "lz-string";
  */
 
 const firebaseConfig = {
-  apiKey: (process.env.API_KEY as string) || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: "asist-up-6ccd1.firebaseapp.com",
   projectId: "asist-up-6ccd1",
   storageBucket: "asist-up-6ccd1.firebasestorage.app",
@@ -32,12 +37,18 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Inicializar Firestore con persistencia optimizada para PWA y múltiples pestañas
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+// Inicializar Firestore con persistencia optimizada, ignoreUndefinedProperties y autodetección de long-polling
+const db = initializeFirestore(
+  app,
+  {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    }),
+    experimentalAutoDetectLongPolling: true,
+    ignoreUndefinedProperties: true
+  },
+  import.meta.env.VITE_FIREBASE_DATABASE_ID || undefined
+);
 
 const safeStringify = (obj: any) => {
   const cache = new Set();
@@ -52,7 +63,7 @@ const safeStringify = (obj: any) => {
 
 export const compressData = (data: any): string => {
   try {
-    if (!data) return "";
+    if (data === undefined || data === null) return "";
     return LZString.compressToEncodedURIComponent(safeStringify(data));
   } catch (e) {
     console.error("Compresión fallida:", e);
@@ -64,11 +75,27 @@ export const decompressData = (compressed: any): any => {
   try {
     if (!compressed || typeof compressed !== 'string') return null;
     const decompressed = LZString.decompressFromEncodedURIComponent(compressed);
-    return decompressed ? JSON.parse(decompressed) : null;
+    if (!decompressed) return null;
+    const parsed = JSON.parse(decompressed);
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch (e) {
     console.error("Descompresión fallida:", e);
     return null;
   }
 };
 
-export { db, collection, doc, onSnapshot, setDoc, addDoc, updateDoc, deleteDoc };
+export {
+  db,
+  enableNetwork,
+  disableNetwork,
+  waitForPendingWrites,
+  getDocFromServer,
+  getDocsFromServer,
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc
+};

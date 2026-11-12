@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import { Employee, AttendanceRecord, Payment, Role } from '../../types.ts';
 
 interface AiAssistantProps {
@@ -16,38 +15,32 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
   const [isTyping, setIsTyping] = useState(false);
 
   const handleAskAi = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isTyping) return;
     setIsTyping(true);
     setResponse('');
 
     try {
-      // Fix: Initialize GoogleGenAI with named parameter apiKey as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const activeEmps = employees.filter(e => e.status === 'active').length;
       const totalPayments = payments.reduce((acc, p) => acc + (p.status === 'paid' ? p.amount : 0), 0);
-      
+
       const context = `
-        Eres un consultor experto en Talento Humano y legislación laboral ecuatoriana. 
+        Eres un consultor experto en Talento Humano y legislación laboral ecuatoriana.
         Contexto de la empresa actual:
         - Colaboradores activos: ${activeEmps}
         - Total nómina procesada este mes: $${totalPayments.toFixed(2)}
         - Registros de asistencia totales: ${attendance.length}
-        
+
         Pregunta del administrador: ${prompt}
       `;
 
-      // Fix: Using gemini-3-pro-preview for complex reasoning tasks as per guidelines
-      const result = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: context,
-        config: {
-          systemInstruction: "Proporciona respuestas profesionales, concisas y basadas en mejores prácticas de RRHH en Ecuador. Si la pregunta es sobre leyes ecuatorianas, menciona que es una guía general.",
-          temperature: 0.7,
-        }
+      const result = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: context }),
       });
-
-      // Fix: Access .text property instead of calling .text() as per guidelines
-      setResponse(result.text || "No pude generar una respuesta en este momento.");
+      if (!result.ok) throw new Error('Assistant unavailable');
+      const data = await result.json();
+      setResponse(data.text || "No pude generar una respuesta en este momento.");
     } catch (error) {
       console.error("Gemini Error:", error);
       setResponse("Error al conectar con la inteligencia artificial. Verifique su conexión y configuración de API.");
@@ -64,23 +57,23 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
             <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-2xl animate-pulse">✨</div>
             <div>
               <h2 className="text-2xl font-[950] uppercase tracking-tighter italic">Asistente IA Estratégico</h2>
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">Powered by Gemini 3 Pro</p>
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.4em]">Consultoría de talento humano</p>
             </div>
           </div>
           <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8">
             Analiza patrones de asistencia, solicita recomendaciones para mejorar el clima laboral o resuelve dudas sobre el Código de Trabajo.
           </p>
-          
+
           <div className="flex gap-4">
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAskAi()}
               placeholder="Ej: ¿Cómo puedo reducir el ausentismo este mes?"
               className="flex-1 bg-white/10 border border-white/20 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-blue-500 placeholder:text-white/30"
             />
-            <button 
+            <button
               onClick={handleAskAi}
               disabled={isTyping}
               className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest transition-all active:scale-95 disabled:opacity-50"
@@ -104,7 +97,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
           </div>
         </div>
       )}
-      
+
       {!response && !isTyping && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
            {[
@@ -112,7 +105,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
              "Analiza la productividad según la nómina actual",
              "Estrategias para retención de talento humano"
            ].map((q, i) => (
-             <button 
+             <button
                key={i}
                onClick={() => { setPrompt(q); }}
                className="p-6 bg-white border border-slate-100 rounded-3xl text-left hover:border-blue-500 transition-all group"

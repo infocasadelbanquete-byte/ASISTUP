@@ -1,8 +1,43 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
 import Modal from '../components/Modal.tsx';
+import ConfirmationModal from '../components/ConfirmationModal.tsx';
+import RetroactiveAttendanceModal, { RetroactiveMissingSlot } from '../components/RetroactiveAttendanceModal.tsx';
+import MandatoryUpdateModal from '../components/MandatoryUpdateModal.tsx';
+
+const toLocalDateStr = (d: Date = new Date()): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const toLocalDateTimeISO = (d: Date = new Date()): string => {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${toLocalDateStr(d)}T${hh}:${mm}:${ss}`;
+};
+
+const getLocalDateKey = (ts?: string): string => {
+  if (!ts) return '';
+  if (ts.includes('Z') || /[+-]\d{2}:\d{2}$/.test(ts)) {
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) return toLocalDateStr(d);
+  }
+  return ts.includes('T') ? ts.split('T')[0] : (ts.includes(' ') ? ts.split(' ')[0] : ts);
+};
+
+const extractHHMM = (ts?: string): string => {
+  if (!ts) return '08:30';
+  const d = new Date(ts);
+  if (!isNaN(d.getTime())) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  if (ts.includes('T')) return ts.split('T')[1].slice(0, 5);
+  return '08:30';
+};
 
 const APP_ICON_SVG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%233b82f6;'/%3E%3Cstop offset='100%25' style='stop-color:%231e3a8a;'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='url(%23g)' stroke-width='6' stroke-dasharray='15 5'/%3E%3Ccircle cx='50' cy='50' r='32' fill='none' stroke='url(%23g)' stroke-width='5' stroke-dasharray='10 4' opacity='0.7'/%3E%3Ccircle cx='50' cy='50' r='18' fill='none' stroke='url(%23g)' stroke-width='4' opacity='0.4'/%3E%3Ccircle cx='50' cy='50' r='6' fill='%233b82f6'/%3E%3C/svg%3E";
 
@@ -10,26 +45,153 @@ interface AttendanceSystemProps {
   employees: Employee[];
   attendance: AttendanceRecord[];
   onRegister: (record: AttendanceRecord) => void;
+  onUpdateAttendance?: (records: AttendanceRecord[]) => void;
+  onDeleteAttendance?: (ids: string[]) => void;
   onBack: () => void;
   onUpdateEmployees: (employees: Employee[]) => void;
   settings: GlobalSettings;
+  isOnline?: boolean;
+  pendingSyncCount?: number;
+  onSyncNow?: () => Promise<void>;
+  isSyncing?: boolean;
 }
 
-const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendance, onRegister, onBack, onUpdateEmployees, settings }) => {
+const AttendanceSystem: React.FC<AttendanceSystemProps> = ({
+  employees,
+  attendance,
+  onRegister,
+  onUpdateAttendance,
+  onDeleteAttendance,
+  onBack,
+  onUpdateEmployees,
+  settings,
+  isOnline = true,
+  pendingSyncCount = 0,
+  onSyncNow,
+  isSyncing = false
+}) => {
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin' | 'regularize_form'>('idle');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
+
+  useEffect(() => {
+    if (!currentEmp) return;
+    const latest = employees.find(e => e.id === currentEmp.id);
+    if (latest && latest !== currentEmp) {
+      setCurrentEmp(latest);
+    }
+  }, [employees, currentEmp]);
   const [newPin, setNewPin] = useState('');
   const [forgotCi, setForgotCi] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isBirthdaySuccess, setIsBirthdaySuccess] = useState(false);
+  const [isRegularizationNoticeModalOpen, setIsRegularizationNoticeModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<{isOpen: boolean, title: string, message: string, type: 'success' | 'error' | 'info'}>({
     isOpen: false, title: '', message: '', type: 'success'
   });
 
+  // Estado de versión y control de actualización obligatoria de terminal
+  const [deviceVersion, setDeviceVersion] = useState<string>(() => {
+    return localStorage.getItem('asistup_device_version') || 'v3.2.0';
+  });
+
+  const isUpdateRequired = useMemo(() => {
+    if (!settings.systemUpdate || !settings.systemUpdate.version) return false;
+    return deviceVersion !== settings.systemUpdate.version;
+  }, [settings.systemUpdate, deviceVersion]);
+
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [hasDismissedOptionalUpdate, setHasDismissedOptionalUpdate] = useState(false);
+
+  // Al abrir el terminal, persuadir y exigir la actualización obligatoria antes de permitir marcaciones
+  useEffect(() => {
+    if (isUpdateRequired && (!hasDismissedOptionalUpdate || settings.systemUpdate?.isMandatory)) {
+      setIsUpdateModalOpen(true);
+    }
+  }, [isUpdateRequired, hasDismissedOptionalUpdate, settings.systemUpdate]);
+
+  // Comprobar Service Worker al montar y cada vez que el terminal se enfoca
+  useEffect(() => {
+    const checkSW = () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg) reg.update().catch(() => {});
+        });
+      }
+    };
+    checkSW();
+    document.addEventListener('visibilitychange', checkSW);
+    return () => document.removeEventListener('visibilitychange', checkSW);
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    if ('serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      } catch (e) {}
+    }
+    if (isUpdateRequired) {
+      setIsUpdateModalOpen(true);
+    } else {
+      setFeedback({
+        isOpen: true,
+        title: "Terminal Actualizada",
+        message: `Este dispositivo se encuentra actualizado con la versión oficial más reciente (${deviceVersion}). Todos los parches legales ecuatorianos y de marcaciones están activos.`,
+        type: "success"
+      });
+    }
+  };
+
+  // Estados para marcaciones pendientes retroactivas
+  const [pendingMissingSlots, setPendingMissingSlots] = useState<RetroactiveMissingSlot[]>([]);
+  const [isRetroactiveModalOpen, setIsRetroactiveModalOpen] = useState(false);
+  const [retroactiveInitialMode, setRetroactiveInitialMode] = useState<'selection' | 'regularize' | 'review'>('selection');
+  const [isPersuasivePendingModalOpen, setIsPersuasivePendingModalOpen] = useState(false);
+
+  // Modal de confirmación general
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    type?: 'warning' | 'danger' | 'info';
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Modal de Jornada de Corrido (1 hora libre automática)
+  const [continuousModal, setContinuousModal] = useState<{
+    isOpen: boolean;
+    endTime: string;
+    includeMorningIn: boolean;
+    morningInTime: string;
+  }>({
+    isOpen: false,
+    endTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+    includeMorningIn: false,
+    morningInTime: settings.schedule?.monFri?.in1 || '08:30'
+  });
+
+  // Modal para corregir una marcación errónea (fuera de horario habitual o tipo equivocado)
+  const [editTodayMarkModal, setEditTodayMarkModal] = useState<{
+    isOpen: boolean;
+    record: AttendanceRecord | null;
+    type: 'in' | 'out';
+    time: string;
+    isContinuousShift: boolean;
+    reason: string;
+  }>({
+    isOpen: false,
+    record: null,
+    type: 'in',
+    time: '08:30',
+    isContinuousShift: false,
+    reason: 'CORRECCIÓN POR ERROR FUERA DE HORARIO HABITUAL'
+  });
+
   const [regularizeData, setRegularizeData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: toLocalDateStr(new Date()),
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
     type: 'in' as 'in' | 'out',
     justification: 'SIN ACCESO AL PANEL',
@@ -37,7 +199,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   });
 
   const today = useMemo(() => new Date(), []);
-  const todayDateStr = today.toISOString().split('T')[0];
+  const todayDateStr = toLocalDateStr(today);
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
 
@@ -54,7 +216,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
   const empTodayRecords = useMemo(() => {
     if (!currentEmp) return [];
-    return attendance.filter(a => a.employeeId === currentEmp.id && a.timestamp.startsWith(todayDateStr));
+    return attendance
+      .filter(a => a.employeeId === currentEmp.id && getLocalDateKey(a.timestamp) === todayDateStr && a.status !== 'rejected')
+      .sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
   }, [attendance, currentEmp, todayDateStr]);
 
   const halfDayDoneThisWeek = useMemo(() => {
@@ -64,21 +228,22 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
     const startOfWeek = new Date(now.setDate(diff));
     startOfWeek.setHours(0, 0, 0, 0);
-    
+
     return attendance.some(a => {
       const aDate = new Date(a.timestamp);
-      return a.employeeId === currentEmp.id && a.type === 'half_day' && aDate >= startOfWeek;
+      return a.employeeId === currentEmp.id && a.type === 'half_day' && a.status !== 'rejected' && aDate >= startOfWeek;
     });
   }, [attendance, currentEmp]);
 
   const insCount = empTodayRecords.filter(r => r.type === 'in').length;
   const outsCount = empTodayRecords.filter(r => r.type === 'out').length;
   const halfDayDoneToday = empTodayRecords.some(r => r.type === 'half_day');
+  const continuousDoneToday = empTodayRecords.some(r => r.isContinuousShift);
 
   const processRegistration = useCallback((type: 'in' | 'out' | 'half_day', isLate: boolean, shiftLabel: string, justification?: string) => {
     if (isProcessing) return;
     setIsProcessing(true);
-    
+
     try {
       if (isLate && Notification.permission === "granted") {
         new Notification("ALERTA DE ASISTENCIA", {
@@ -90,7 +255,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       const record: AttendanceRecord = {
         id: Math.random().toString(36).substr(2, 9),
         employeeId: currentEmp!.id,
-        timestamp: new Date().toISOString(),
+        timestamp: toLocalDateTimeISO(new Date()),
         type,
         status: 'confirmed',
         isLate,
@@ -99,11 +264,11 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
 
       // Registrar inmediatamente para persistencia offline. No esperamos respuesta del servidor.
       onRegister(record);
-      
+
       let msg = `ÉXITO AL REALIZAR EL MARCAJE: ${shiftLabel}`;
       const bDate = currentEmp?.birthDate ? new Date(currentEmp.birthDate) : null;
       const isTodayBirthday = bDate && (bDate.getMonth() === currentMonth && bDate.getDate() + 1 === currentDay);
-      
+
       if (isTodayBirthday) {
          msg = `¡FELIZ CUMPLEAÑOS! 🎂🎈 | ${msg}`;
          setIsBirthdaySuccess(true);
@@ -114,7 +279,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
       setSuccessMsg(msg);
       setStatus('success');
       setPin('');
-      
+
       // Liberar estado de procesamiento después de la marcación exitosa en la UI
       setTimeout(() => {
         setStatus('idle');
@@ -131,8 +296,12 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   }, [currentEmp, isProcessing, onRegister, currentMonth, currentDay]);
 
   const handleMark = useCallback((type: 'in' | 'out' | 'half_day', shiftLabel: string) => {
+    if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+      setIsUpdateModalOpen(true);
+      return;
+    }
     if (!currentEmp || isProcessing) return;
-    
+
     const now = new Date();
     const day = now.getDay();
     let isCriticalLate = false;
@@ -161,42 +330,189 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     }
 
     processRegistration(type, isCriticalLate, shiftLabel);
-  }, [currentEmp, isProcessing, settings, processRegistration]);
+  }, [currentEmp, isProcessing, settings, processRegistration, isUpdateRequired]);
+
+  const handleOpenContinuousShiftModal = () => {
+    if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+      setIsUpdateModalOpen(true);
+      return;
+    }
+    const nowHHMM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+    const schedIn1 = new Date().getDay() === 6 ? (settings.schedule?.sat?.in || '08:30') : (settings.schedule?.monFri?.in1 || '08:30');
+    setContinuousModal({
+      isOpen: true,
+      endTime: nowHHMM,
+      includeMorningIn: insCount === 0,
+      morningInTime: schedIn1
+    });
+  };
+
+  const handleConfirmContinuousShift = () => {
+    if (!currentEmp || isProcessing) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Confirmar Jornada Única De Corrido',
+      message: `¿Está seguro de registrar su salida de Jornada de Corrido a las ${continuousModal.endTime}? El sistema asignará automáticamente 1 hora libre dentro de su jornada diaria.`,
+      confirmLabel: 'Sí, Registrar Jornada De Corrido',
+      type: 'info',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        try {
+          if (continuousModal.includeMorningIn && insCount === 0) {
+            const inRec: AttendanceRecord = {
+              id: Math.random().toString(36).substr(2, 9),
+              employeeId: currentEmp.id,
+              timestamp: `${todayDateStr}T${continuousModal.morningInTime}:00`,
+              type: 'in',
+              status: 'confirmed',
+              isLate: false,
+              isContinuousShift: true,
+              justification: 'INGRESO JORNADA DE CORRIDO'
+            };
+            onRegister(inRec);
+          }
+
+          const outRec: AttendanceRecord = {
+            id: Math.random().toString(36).substr(2, 9),
+            employeeId: currentEmp.id,
+            timestamp: `${todayDateStr}T${continuousModal.endTime}:00`,
+            type: 'out',
+            status: 'confirmed',
+            isLate: false,
+            isContinuousShift: true,
+            freeBreakMinutes: 60,
+            justification: 'JORNADA ÚNICA DE CORRIDO (1 HORA LIBRE ASIGNADA AUTOMÁTICAMENTE)'
+          };
+          onRegister(outRec);
+
+          setContinuousModal(prev => ({ ...prev, isOpen: false }));
+          setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: JORNADA DE CORRIDO (${continuousModal.endTime} • 1H LIBRE ASIGNADA)`);
+          setStatus('success');
+          setPin('');
+
+          setTimeout(() => {
+            setStatus('idle');
+            setCurrentEmp(null);
+            setIsProcessing(false);
+          }, 2800);
+        } catch (err) {
+          setIsProcessing(false);
+          setFeedback({ isOpen: true, title: "Fallo", message: "No se pudo registrar la jornada de corrido.", type: "error" });
+        }
+      }
+    });
+  };
+
+  const handleSaveCorrectedTodayMark = () => {
+    if (!editTodayMarkModal.record || !currentEmp) return;
+    const orig = editTodayMarkModal.record;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Confirmar Corrección de Marcación',
+      message: `¿Está seguro de corregir esta marcación a ${editTodayMarkModal.type === 'in' ? 'INGRESO' : (editTodayMarkModal.isContinuousShift ? 'SALIDA DE CORRIDO' : 'SALIDA')} a las ${editTodayMarkModal.time}?`,
+      confirmLabel: 'Sí, Corregir Marcación',
+      type: 'warning',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        const datePart = getLocalDateKey(orig.timestamp) || todayDateStr;
+        const updatedTimestamp = `${datePart}T${editTodayMarkModal.time}:00`;
+        const updatedRecord: AttendanceRecord = {
+          ...orig,
+          timestamp: updatedTimestamp,
+          type: editTodayMarkModal.type,
+          isContinuousShift: editTodayMarkModal.type === 'out' ? editTodayMarkModal.isContinuousShift : false,
+          freeBreakMinutes: editTodayMarkModal.type === 'out' && editTodayMarkModal.isContinuousShift ? 60 : undefined,
+          isLate: false,
+          justification: editTodayMarkModal.reason
+        };
+
+        if (onUpdateAttendance) {
+          onUpdateAttendance([updatedRecord]);
+        } else {
+          onRegister(updatedRecord);
+        }
+
+        setEditTodayMarkModal(prev => ({ ...prev, isOpen: false, record: null }));
+        setFeedback({
+          isOpen: true,
+          title: 'Marcación Corregida',
+          message: `La marcación ha sido actualizada a las ${editTodayMarkModal.time} correctamente.`,
+          type: 'success'
+        });
+      }
+    });
+  };
+
+  const handleAnnulTodayMark = (rec: AttendanceRecord) => {
+    const label = rec.type === 'in' ? 'INGRESO' : (rec.isContinuousShift ? 'SALIDA DE CORRIDO' : (rec.type === 'half_day' ? 'MEDIA JORNADA' : 'SALIDA'));
+    const timeStr = extractHHMM(rec.timestamp);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Anular Marcación por Error',
+      message: `¿Está seguro de anular la marcación de ${label} registrada a las ${timeStr}? El espacio quedará libre para volver a marcar si corresponde.`,
+      confirmLabel: 'Sí, Anular Marcación',
+      type: 'danger',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        if (onDeleteAttendance) {
+          onDeleteAttendance([rec.id]);
+        } else if (onUpdateAttendance) {
+          onUpdateAttendance([{ ...rec, status: 'rejected', justification: 'ANULADA POR ERROR DE MARCACIÓN' }]);
+        }
+        setFeedback({
+          isOpen: true,
+          title: 'Marcación Anulada',
+          message: `Se anuló exitosamente la marcación de ${label} (${timeStr}).`,
+          type: 'info'
+        });
+      }
+    });
+  };
 
   const handleRegularize = () => {
     if (!currentEmp || isProcessing) return;
-    setIsProcessing(true);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Confirmar Solicitud de Regularización',
+      message: `¿Está seguro de enviar la regularización de ${regularizeData.type === 'in' ? 'INGRESO' : 'SALIDA'} del ${regularizeData.date} a las ${regularizeData.time} para autorización del Administrador?`,
+      confirmLabel: 'Sí, Enviar Solicitud',
+      type: 'info',
+      onConfirm: () => {
+        setConfirmDialog(null);
+        setIsProcessing(true);
+        try {
+          const fullTimestamp = `${regularizeData.date}T${regularizeData.time}:00`;
+          const finalJustification = regularizeData.justification === 'OTRO (DETALLAR)'
+            ? `OTRO: ${regularizeData.otherDetails.toUpperCase()}`
+            : regularizeData.justification;
 
-    try {
-      const fullTimestamp = `${regularizeData.date}T${regularizeData.time}:00.000Z`;
-      const finalJustification = regularizeData.justification === 'OTRO (DETALLAR)' 
-        ? `OTRO: ${regularizeData.otherDetails.toUpperCase()}` 
-        : regularizeData.justification;
+          const record: AttendanceRecord = {
+            id: Math.random().toString(36).substr(2, 9),
+            employeeId: currentEmp.id,
+            timestamp: fullTimestamp,
+            type: regularizeData.type,
+            status: 'pending_approval',
+            justification: finalJustification,
+            isForgotten: true
+          };
 
-      const record: AttendanceRecord = {
-        id: Math.random().toString(36).substr(2, 9),
-        employeeId: currentEmp.id,
-        timestamp: fullTimestamp,
-        type: regularizeData.type,
-        status: 'pending_approval',
-        justification: finalJustification,
-        isForgotten: true
-      };
+          onRegister(record);
+          const typeLabel = regularizeData.type === 'in' ? 'ENTRADA' : 'SALIDA';
+          setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: ${typeLabel} (REGULARIZACIÓN)`);
+          setStatus('success');
+          setPin('');
 
-      onRegister(record);
-      const typeLabel = regularizeData.type === 'in' ? 'ENTRADA' : 'SALIDA';
-      setSuccessMsg(`ÉXITO AL REALIZAR EL MARCAJE: ${typeLabel} (REGULARIZACIÓN)`);
-      setStatus('success');
-      setPin('');
-
-      setTimeout(() => {
-        setStatus('idle');
-        setCurrentEmp(null);
-        setIsProcessing(false);
-      }, 3000);
-    } catch (e) {
-      setIsProcessing(false);
-    }
+          setTimeout(() => {
+            setStatus('idle');
+            setCurrentEmp(null);
+            setIsProcessing(false);
+          }, 3000);
+        } catch (e) {
+          setIsProcessing(false);
+        }
+      }
+    });
   };
 
   const handlePinChange = () => {
@@ -212,12 +528,18 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
   };
 
   const handleRequestPinReset = () => {
-    const emp = employees.find(e => e.identification === forgotCi && e.status === 'active');
+    const rawCi = forgotCi.trim();
+    const cleanCi = rawCi.replace(/\D/g, '');
+    const emp = employees.find(e => {
+      if (e.status !== 'active') return false;
+      const empCiClean = (e.identification || '').trim().replace(/\D/g, '');
+      return e.identification === rawCi || (cleanCi && empCiClean === cleanCi);
+    });
     if (emp) {
       const updated = employees.map(e => e.id === emp.id ? { ...e, pinResetRequested: true } : e);
       onUpdateEmployees(updated);
       if (Notification.permission === "granted") {
-        new Notification("SOLICITUD DE ACCESO", { body: `El colaborador ${emp.name} solicita resetear su PIN de asistencia.`, icon: APP_ICON_SVG });
+        new Notification("SOLICITUD DE ACCESO", { body: `El colaborador ${emp.name} ${emp.surname} solicita resetear su PIN de asistencia.`, icon: APP_ICON_SVG });
       }
       setFeedback({ isOpen: true, title: "Solicitud Recibida", message: "Su solicitud ha sido enviada al administrador. RRHH autorizará su nuevo acceso a la brevedad.", type: "info" });
       setStatus('idle');
@@ -227,27 +549,270 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     }
   };
 
+  const checkRetroactiveMarkingsForEmp = useCallback((emp: Employee) => {
+    const missing: RetroactiveMissingSlot[] = [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const currentDay = now.getDate();
+    const empStart = emp.startDate ? new Date(emp.startDate + 'T00:00:00') : new Date(currentYear, currentMonth, 1);
+
+    // Revisar todos los días del mes en curso hasta ayer
+    for (let day = 1; day < currentDay; day++) {
+      const targetDate = new Date(currentYear, currentMonth, day, 12, 0, 0);
+      if (targetDate < empStart) continue;
+
+      const dateStr = toLocalDateStr(targetDate);
+      const dayOfWeek = targetDate.getDay();
+      if (dayOfWeek === 0) continue; // Domingo no laborable
+      if ((settings.holidays || []).includes(dateStr)) continue;
+
+      // 1. Vacaciones aprobadas
+      const isApprovedVacation = (emp.vacations || []).some(
+        v => dateStr >= v.startDate && dateStr <= v.endDate
+      );
+      if (isApprovedVacation) continue;
+
+      // 2. Días u horas de permiso o libres en la bitácora administrativa
+      const dayObs = (emp.observations || []).filter(o => o.date && o.date.startsWith(dateStr));
+      const isFullDayPermissionOrFree = dayObs.some(o => {
+        const pType = (o.permissionType || '').toUpperCase();
+        const r = (o.reason || '').toUpperCase();
+        return pType === 'DIA LABORAL ENTERO' || pType === 'ENTERO' ||
+          (pType === '' && (r.includes('PERMISO MATERNAL') || r.includes('PERMISO MEDICO') || r.includes('PERMISO PERSONAL') || r.includes('FALTA JUSTIFICADA'))) ||
+          (typeof o.permissionHours === 'number' && o.permissionHours >= 8);
+      });
+      if (isFullDayPermissionOrFree) continue;
+
+      const hasHalfDayPermission = dayObs.some(o => {
+        const pType = (o.permissionType || '').toUpperCase();
+        return pType.includes('MEDIA') || pType === 'MEDIA_AM' || pType === 'MEDIA_PM' || (typeof o.permissionHours === 'number' && o.permissionHours >= 4);
+      });
+
+      const dayRecords = attendance.filter(a => a.employeeId === emp.id && getLocalDateKey(a.timestamp) === dateStr && a.status !== 'rejected');
+      const hasHalfDay = dayRecords.some(a => a.type === 'half_day') || hasHalfDayPermission;
+      if (hasHalfDay) continue;
+
+      const ins = dayRecords.filter(a => a.type === 'in');
+      const outs = dayRecords.filter(a => a.type === 'out');
+      const isContinuousCompleted = dayRecords.some(a => a.isContinuousShift) && ins.length >= 1 && outs.length >= 1;
+      if (isContinuousCompleted) continue;
+
+      const dayName = new Intl.DateTimeFormat('es-EC', { weekday: 'long', day: 'numeric', month: 'short' }).format(targetDate);
+      const capDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        if (ins.length < 1) {
+          missing.push({
+            id: `missing-${dateStr}-in1`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Jornada Mañana - Ingreso',
+            type: 'in',
+            suggestedTime: settings.schedule?.monFri?.in1 || '08:30',
+            selectedTime: settings.schedule?.monFri?.in1 || '08:30',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+        if (outs.length < 1) {
+          missing.push({
+            id: `missing-${dateStr}-out1`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Jornada Mañana - Salida',
+            type: 'out',
+            suggestedTime: settings.schedule?.monFri?.out1 || '13:00',
+            selectedTime: settings.schedule?.monFri?.out1 || '13:00',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+        if (ins.length < 2) {
+          missing.push({
+            id: `missing-${dateStr}-in2`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Jornada Tarde - Ingreso',
+            type: 'in',
+            suggestedTime: settings.schedule?.monFri?.in2 || '15:00',
+            selectedTime: settings.schedule?.monFri?.in2 || '15:00',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+        if (outs.length < 2) {
+          missing.push({
+            id: `missing-${dateStr}-out2`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Jornada Tarde - Salida',
+            type: 'out',
+            suggestedTime: settings.schedule?.monFri?.out2 || '18:00',
+            selectedTime: settings.schedule?.monFri?.out2 || '18:00',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+      } else if (dayOfWeek === 6) {
+        if (ins.length < 1) {
+          missing.push({
+            id: `missing-${dateStr}-sat-in`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Sábado - Ingreso',
+            type: 'in',
+            suggestedTime: settings.schedule?.sat?.in || '08:30',
+            selectedTime: settings.schedule?.sat?.in || '08:30',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+        if (outs.length < 1) {
+          missing.push({
+            id: `missing-${dateStr}-sat-out`,
+            date: dateStr,
+            dateFormatted: capDay,
+            shiftLabel: 'Sábado - Salida',
+            type: 'out',
+            suggestedTime: settings.schedule?.sat?.out || '13:00',
+            selectedTime: settings.schedule?.sat?.out || '13:00',
+            justification: 'OLVIDO INVOLUNTARIO'
+          });
+        }
+      }
+    }
+
+    setPendingMissingSlots(missing);
+    if (missing.length > 0) {
+      setIsPersuasivePendingModalOpen(true);
+    }
+  }, [attendance, settings]);
+
+  const handleBatchRegisterRetroactive = (newRecords: AttendanceRecord[]) => {
+    if (onUpdateAttendance) {
+      onUpdateAttendance(newRecords);
+    } else {
+      newRecords.forEach(r => onRegister(r));
+    }
+    setPendingMissingSlots([]);
+    setIsRetroactiveModalOpen(false);
+    setIsPersuasivePendingModalOpen(false);
+
+    if (currentEmp) {
+      const newObs = {
+        date: new Date().toISOString(),
+        text: `SOLICITUD DE REGULARIZACIÓN DE MARCAJES: ${newRecords.length} marcaciones pendientes enviadas a Administración para registro y validación.`
+      };
+      const updated = employees.map(e => e.id === currentEmp.id ? {
+        ...e,
+        observations: [newObs, ...(e.observations || [])]
+      } : e);
+      onUpdateEmployees(updated);
+
+      if (Notification.permission === "granted") {
+        new Notification("SOLICITUD DE REGULARIZACIÓN DE MARCAJES", {
+          body: `El colaborador ${currentEmp.name} ${currentEmp.surname} ha solicitado regularizar ${newRecords.length} marcaciones pendientes.`,
+          icon: APP_ICON_SVG
+        });
+      }
+    }
+
+    setFeedback({
+      isOpen: true,
+      title: "Solicitud de Regularización Enviada",
+      message: `Se ha remitido su solicitud de regularización de ${newRecords.length} marcaciones pendientes al Administrador. Una vez que la administración apruebe y registre oficialmente la información, recibirá una confirmación en pantalla al ingresar.`,
+      type: "info"
+    });
+  };
+
+  const handleDismissRegularizationNotice = () => {
+    if (!currentEmp) return;
+    const updated = employees.map(e => e.id === currentEmp.id ? {
+      ...e,
+      regularizationApprovedNotice: e.regularizationApprovedNotice ? { ...e.regularizationApprovedNotice, seen: true } : undefined
+    } : e);
+    onUpdateEmployees(updated);
+    setIsRegularizationNoticeModalOpen(false);
+    checkRetroactiveMarkingsForEmp(currentEmp);
+    setStatus('confirm');
+  };
+
+  const handleRequestAdminReviewRetroactive = (reason: string, details: string, slots: RetroactiveMissingSlot[]) => {
+    if (!currentEmp) return;
+
+    const reviewRecord: AttendanceRecord = {
+      id: Math.random().toString(36).substr(2, 9),
+      employeeId: currentEmp.id,
+      timestamp: new Date().toISOString(),
+      type: 'in',
+      status: 'pending_approval',
+      isForgotten: true,
+      justification: `[AUDITORÍA RETROACTIVA]: ${reason} - ${details} (${slots.length} marcaciones)`
+    };
+    onRegister(reviewRecord);
+
+    const newObs = {
+      date: new Date().toISOString(),
+      text: `SOLICITUD AUDITORÍA MARCACIONES RETROACTIVAS: ${reason} - ${details}`
+    };
+    const updated = employees.map(e => e.id === currentEmp.id ? {
+      ...e,
+      observations: [newObs, ...(e.observations || [])]
+    } : e);
+    onUpdateEmployees(updated);
+
+    if (Notification.permission === "granted") {
+      new Notification("SOLICITUD DE AUDITORÍA RETROACTIVA", {
+        body: `El colaborador ${currentEmp.name} ${currentEmp.surname} solicita revisión de ${slots.length} marcaciones retroactivas.`,
+        icon: APP_ICON_SVG
+      });
+    }
+
+    setPendingMissingSlots([]);
+    setIsRetroactiveModalOpen(false);
+    setIsPersuasivePendingModalOpen(false);
+    setFeedback({
+      isOpen: true,
+      title: "Solicitud Enviada a Administración",
+      message: "Tu requerimiento ha sido remitido a Gerencia y RRHH para auditoría y resolución formal. Puedes continuar realizando tu marcado habitual.",
+      type: "info"
+    });
+  };
+
   useEffect(() => {
     if (pin.length === 6 && status === 'idle' && !isProcessing) {
+      if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+        setIsUpdateModalOpen(true);
+        setPin('');
+        return;
+      }
       const emp = employees.find(e => e.pin === pin && e.status === 'active');
       if (emp) {
         setCurrentEmp(emp);
-        if (!emp.pinChanged || emp.pinNeedsReset) setStatus('change_pin');
-        else setStatus('confirm');
+        if (emp.regularizationApprovedNotice && !emp.regularizationApprovedNotice.seen) {
+          setIsRegularizationNoticeModalOpen(true);
+        } else if (!emp.pinChanged || emp.pinNeedsReset) {
+          setStatus('change_pin');
+        } else {
+          checkRetroactiveMarkingsForEmp(emp);
+          setStatus('confirm');
+        }
       } else {
         setStatus('error');
         setTimeout(() => { setStatus('idle'); setPin(''); }, 1500);
       }
     }
-  }, [pin, employees, status, isProcessing]);
+  }, [pin, employees, status, isProcessing, checkRetroactiveMarkingsForEmp, isUpdateRequired, settings.systemUpdate]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onBack();
       if (isProcessing) return;
-      
+
       if (status === 'idle') {
-        if (e.key >= '0' && e.key <= '9' && pin.length < 6) setPin(p => p + e.key);
+        if (e.key >= '0' && e.key <= '9') {
+          if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+            setIsUpdateModalOpen(true);
+            return;
+          }
+          if (pin.length < 6) setPin(p => p + e.key);
+        }
         if (e.key === 'Backspace') setPin(p => p.slice(0, -1));
       } else if (status === 'change_pin') {
         if (e.key >= '0' && e.key <= '9' && newPin.length < 6) setNewPin(p => p + e.key);
@@ -257,7 +822,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [pin, newPin, status, isProcessing]);
+  }, [pin, newPin, status, isProcessing, isUpdateRequired, settings.systemUpdate]);
 
   return (
     <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-4">
@@ -269,12 +834,48 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               </div>
               <h2 className={`font-[950] text-xl uppercase tracking-tighter leading-none ${isBirthdaySuccess ? 'text-yellow-600 animate-pulse' : 'text-slate-900'}`}>{successMsg}</h2>
               {isBirthdaySuccess && <p className="text-xl mt-2 animate-bounce">🎈🎊🎁</p>}
-              <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-2 italic">Registrado Offline / Sincronizando...</p>
+              <p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest mt-2">
+                {!isOnline
+                  ? '✓ Guardado en este terminal (Modo Offline) • Se sincronizará automáticamente al conectar'
+                  : '✓ Registrado y sincronizado con el servidor central'}
+              </p>
            </div>
         </div>
       )}
 
       <div className={`w-full max-w-lg bg-white/95 backdrop-blur-3xl rounded-3xl md:rounded-[3.5rem] shadow-2xl p-6 md:p-12 flex flex-col items-center relative overflow-hidden ${status === 'success' ? 'opacity-0' : 'fade-in'}`}>
+        {/* Barra de Estado de Conexión y Sincronización Offline */}
+        <div className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl mb-4">
+          <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${
+              !isOnline
+                ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse'
+                : (pendingSyncCount > 0
+                    ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse'
+                    : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]')
+            }`}></div>
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-600">
+              {!isOnline
+                ? `Modo Desconectado (Offline)${pendingSyncCount > 0 ? ` • ${pendingSyncCount} pendientes` : ''}`
+                : (pendingSyncCount > 0
+                    ? `${pendingSyncCount} registro(s) por sincronizar`
+                    : 'Terminal en Línea • Sincronizado')}
+            </span>
+          </div>
+
+          {isOnline && pendingSyncCount > 0 && onSyncNow && (
+            <button
+              type="button"
+              onClick={onSyncNow}
+              disabled={isSyncing}
+              className="text-[8px] font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-full shadow-sm transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <span className={isSyncing ? 'animate-spin' : ''}>🔄</span>
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
+            </button>
+          )}
+        </div>
+
         <div className="mb-4 md:mb-6 transform scale-[0.6] sm:scale-[0.8]"><Clock /></div>
 
         {status === 'idle' && (
@@ -294,6 +895,28 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                 </div>
               </div>
             )}
+            {isUpdateRequired && settings.systemUpdate && (
+              <div
+                onClick={() => setIsUpdateModalOpen(true)}
+                className="mb-6 p-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-2xl shadow-lg border border-amber-300/40 flex items-center justify-between gap-3 text-left cursor-pointer transition-all animate-pulse active:scale-98"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">⚠️</span>
+                  <div>
+                    <p className="text-[10px] font-[950] uppercase tracking-tight">
+                      Actualización Obligatoria Requerida ({settings.systemUpdate.version})
+                    </p>
+                    <p className="text-[8px] font-bold text-amber-100 uppercase">
+                      Imprescindible antes de marcar • Toca aquí para actualizar
+                    </p>
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 bg-white text-amber-700 font-black text-[9px] uppercase tracking-wider rounded-xl shadow-md shrink-0">
+                  Actualizar
+                </span>
+              </div>
+            )}
+
             <h2 className="text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 md:mb-6">Ingresar PIN de 6 dígitos</h2>
             <div className="flex gap-1.5 md:gap-2 justify-center mb-8 md:mb-10">
               {[...Array(6)].map((_, i) => (
@@ -304,10 +927,37 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             </div>
             <div className="grid grid-cols-3 gap-2 md:gap-3 max-w-[280px] md:max-w-[340px] mx-auto mb-8 md:mb-10">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '←'].map(btn => (
-                <button key={btn} type="button" onClick={() => { if (btn === 'C') setPin(''); else if (btn === '←') setPin(p => p.slice(0, -1)); else if (pin.length < 6) setPin(p => p + btn); }} className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center cursor-pointer">{btn}</button>
+                <button
+                  key={btn}
+                  type="button"
+                  onClick={() => {
+                    if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+                      setIsUpdateModalOpen(true);
+                      return;
+                    }
+                    if (btn === 'C') setPin('');
+                    else if (btn === '←') setPin(p => p.slice(0, -1));
+                    else if (pin.length < 6) setPin(p => p + btn);
+                  }}
+                  className="h-14 md:h-18 bg-white hover:bg-blue-700 hover:text-white rounded-xl md:rounded-2xl text-xl md:text-2xl font-black border border-slate-200 active:scale-90 transition-all shadow-sm flex items-center justify-center cursor-pointer"
+                >
+                  {btn}
+                </button>
               ))}
             </div>
-            <button type="button" onClick={() => setStatus('forgotten_form')} className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95 cursor-pointer">¿Olvidó su PIN? Solicitar Reseteo</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isUpdateRequired && settings.systemUpdate?.isMandatory) {
+                  setIsUpdateModalOpen(true);
+                  return;
+                }
+                setStatus('forgotten_form');
+              }}
+              className="w-full py-3 md:py-4 bg-slate-50 border border-slate-100 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black text-blue-600 uppercase tracking-widest hover:bg-blue-50 transition-all active:scale-95 cursor-pointer"
+            >
+              ¿Olvidó su PIN? Solicitar Reseteo
+            </button>
           </div>
         )}
 
@@ -315,11 +965,11 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
            <div className="text-center w-full space-y-6 animate-in zoom-in">
               <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Solicitud de Reseteo de Acceso</h2>
               <div className="space-y-4">
-                 <input 
-                   type="text" 
-                   value={forgotCi} 
-                   onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))} 
-                   placeholder="INGRESE SU N° IDENTIFICACIÓN" 
+                 <input
+                   type="text"
+                   value={forgotCi}
+                   onChange={e => setForgotCi(e.target.value.replace(/\D/g,''))}
+                   placeholder="INGRESE SU N° IDENTIFICACIÓN"
                    className="w-full p-4 border-2 rounded-2xl text-center text-lg font-black focus:border-blue-600 outline-none uppercase"
                    autoFocus
                  />
@@ -336,7 +986,7 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
             <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full mx-auto flex items-center justify-center text-4xl mb-4">🔐</div>
             <h2 className="text-[11px] font-[950] text-slate-900 uppercase tracking-[0.2em]">Actualización Obligatoria de PIN</h2>
             <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">Por seguridad, debe establecer una clave personal de 6 dígitos para sus próximos marcajes.</p>
-            
+
             <div className="flex gap-2 justify-center mb-6">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className={`w-8 h-12 border-b-4 flex items-center justify-center text-2xl font-black transition-all ${newPin.length > i ? 'border-blue-600 text-slate-900' : 'border-slate-100'}`}>
@@ -382,9 +1032,9 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Motivo de Justificación</label>
-                    <select 
-                      value={regularizeData.justification} 
-                      onChange={e => setRegularizeData({...regularizeData, justification: e.target.value})} 
+                    <select
+                      value={regularizeData.justification}
+                      onChange={e => setRegularizeData({...regularizeData, justification: e.target.value})}
                       className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase focus:border-blue-500 outline-none"
                     >
                       <option value="SIN ACCESO AL PANEL">SIN ACCESO AL PANEL</option>
@@ -395,12 +1045,12 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                   {regularizeData.justification === 'OTRO (DETALLAR)' && (
                     <div className="space-y-1 animate-in slide-in-from-top-2">
                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Detalle del Motivo</label>
-                       <input 
-                         type="text" 
-                         value={regularizeData.otherDetails} 
-                         onChange={e => setRegularizeData({...regularizeData, otherDetails: e.target.value})} 
-                         className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase focus:border-blue-500 outline-none" 
-                         placeholder="DESCRIBA AQUÍ..." 
+                       <input
+                         type="text"
+                         value={regularizeData.otherDetails}
+                         onChange={e => setRegularizeData({...regularizeData, otherDetails: e.target.value})}
+                         className="w-full p-4 border-2 rounded-xl text-[10px] font-black uppercase focus:border-blue-500 outline-none"
+                         placeholder="DESCRIBA AQUÍ..."
                        />
                     </div>
                   )}
@@ -418,29 +1068,133 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
                  {currentEmp.photo ? <img src={currentEmp.photo} className="w-full h-full object-cover" /> : <span>{currentEmp.name[0]}</span>}
             </div>
             <h2 className="text-xl md:text-2xl font-[950] text-slate-900 mb-1 uppercase tracking-tighter leading-none">{currentEmp.name} {currentEmp.surname}</h2>
-            <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] mb-6 md:mb-8">{currentEmp.role}</p>
-            
+            <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4 md:mb-6">{currentEmp.role}</p>
+
+            {pendingMissingSlots.length > 0 && (
+              <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-3xl shadow-sm text-left animate-in slide-in-from-top-2 space-y-2.5">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">⚠️</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 bg-amber-500 text-white font-black text-[8px] uppercase rounded-full">
+                        Aviso de Control
+                      </span>
+                      <span className="text-[9px] font-black text-amber-900 uppercase">
+                        {pendingMissingSlots.length} Marcaciones Pendientes en el Mes
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-bold text-slate-700 uppercase mt-1 leading-snug">
+                      Su panel de marcación de hoy está habilitado. Puede registrar su asistencia habitual o regularizar sus jornadas pendientes cuando lo desee.
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-amber-200/80 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRetroactiveInitialMode('selection');
+                      setIsPersuasivePendingModalOpen(true);
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-[9px] uppercase tracking-wider rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>✍️</span> Ver Opciones de Regularización
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <section className="space-y-3">
                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-emerald-500 pl-2">Primera Jornada (Mañana)</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <button type="button" disabled={insCount >= 1 || halfDayDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 1 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-800'}`}>Ingreso</button>
-                  <button type="button" disabled={outsCount >= 1 || halfDayDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 1 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-orange-600 text-white border-orange-800'}`}>Salida</button>
+                  <button type="button" disabled={insCount >= 1 || halfDayDoneToday || continuousDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 1 || halfDayDoneToday || continuousDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-emerald-600 text-white border-emerald-800'}`}>Ingreso</button>
+                  <button type="button" disabled={outsCount >= 1 || halfDayDoneToday || continuousDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA MAÑANA')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 1 || halfDayDoneToday || continuousDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-orange-600 text-white border-orange-800'}`}>Salida</button>
                 </div>
               </section>
 
               <section className="space-y-3">
                 <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.3em] text-left border-l-2 border-cyan-500 pl-2">Segunda Jornada (Tarde)</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <button type="button" disabled={insCount >= 2 || halfDayDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 2 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-cyan-600 text-white border-cyan-800'}`}>Ingreso</button>
-                  <button type="button" disabled={outsCount >= 2 || halfDayDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 2 || halfDayDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-pink-600 text-white border-pink-800'}`}>Salida</button>
+                  <button type="button" disabled={insCount >= 2 || halfDayDoneToday || continuousDoneToday || isProcessing} onClick={() => handleMark('in', 'ENTRADA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${insCount >= 2 || halfDayDoneToday || continuousDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-cyan-600 text-white border-cyan-800'}`}>Ingreso</button>
+                  <button type="button" disabled={outsCount >= 2 || halfDayDoneToday || continuousDoneToday || isProcessing} onClick={() => handleMark('out', 'SALIDA JORNADA TARDE')} className={`py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 cursor-pointer ${outsCount >= 2 || halfDayDoneToday || continuousDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-pink-600 text-white border-pink-800'}`}>Salida</button>
                 </div>
               </section>
 
-              <div className="grid grid-cols-1 gap-3">
-                  <button type="button" disabled={halfDayDoneThisWeek || isProcessing} onClick={() => handleMark('half_day', 'REGISTRO MEDIA JORNADA LIBRE')} className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 cursor-pointer ${halfDayDoneThisWeek || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-amber-500 text-white border-amber-700'}`}><span>📅</span> Media Jornada Libre</button>
+              <div className="grid grid-cols-1 gap-2.5">
+                  <button
+                    type="button"
+                    disabled={halfDayDoneToday || continuousDoneToday || outsCount > 0 || isProcessing}
+                    onClick={handleOpenContinuousShiftModal}
+                    className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 cursor-pointer ${
+                      halfDayDoneToday || continuousDoneToday || outsCount > 0 || isProcessing
+                        ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-800'
+                    }`}
+                  >
+                    <span>⏱️</span> Jornada De Corrido (Finalizar + 1h Libre)
+                  </button>
+                  <button type="button" disabled={halfDayDoneThisWeek || continuousDoneToday || isProcessing} onClick={() => handleMark('half_day', 'REGISTRO MEDIA JORNADA LIBRE')} className={`w-full py-4 rounded-xl font-black text-xs uppercase shadow-lg active:scale-95 transition-all border-b-4 flex items-center justify-center gap-2 cursor-pointer ${halfDayDoneThisWeek || continuousDoneToday || isProcessing ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed' : 'bg-amber-500 text-white border-amber-700'}`}><span>📅</span> Media Jornada Libre</button>
                   <button type="button" onClick={() => setStatus('regularize_form')} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 cursor-pointer"><span>💡</span> Regularizar Marcación Olvidada</button>
               </div>
+
+              {/* MARCACIONES REGISTRADAS HOY CON OPCIÓN DE CORREGIR O ANULAR */}
+              {empTodayRecords.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-200 text-left space-y-2">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    Marcaciones de Hoy ({empTodayRecords.length}) • Corregir o Anular Error
+                  </p>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scroll pr-1">
+                    {empTodayRecords.map(rec => {
+                      const timeStr = extractHHMM(rec.timestamp);
+                      const typeLabel = rec.type === 'in'
+                        ? 'Ingreso'
+                        : (rec.isContinuousShift ? 'Salida De Corrido (1h Libre)' : (rec.type === 'half_day' ? 'Media Jornada' : 'Salida'));
+                      return (
+                        <div key={rec.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${
+                                rec.type === 'in' ? 'bg-emerald-100 text-emerald-800' : (rec.isContinuousShift ? 'bg-indigo-100 text-indigo-800' : 'bg-orange-100 text-orange-800')
+                              }`}>
+                                {typeLabel}
+                              </span>
+                              <span className="font-mono font-black text-xs text-slate-900">{timeStr}</span>
+                              {rec.isLate && <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[7px] font-black uppercase">Atraso</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {rec.type !== 'half_day' && (
+                              <button
+                                type="button"
+                                onClick={() => setEditTodayMarkModal({
+                                  isOpen: true,
+                                  record: rec,
+                                  type: rec.type === 'in' ? 'in' : 'out',
+                                  time: timeStr,
+                                  isContinuousShift: !!rec.isContinuousShift,
+                                  reason: 'CORRECCIÓN POR ERROR FUERA DE HORARIO HABITUAL'
+                                })}
+                                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[8px] font-black uppercase cursor-pointer active:scale-95"
+                                title="Corregir hora o tipo si marcó por error fuera de horario"
+                              >
+                                ✏️ Corregir
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleAnnulTodayMark(rec)}
+                              className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-[8px] font-black uppercase cursor-pointer active:scale-95"
+                              title="Anular marcación realizada por error"
+                            >
+                              🗑️ Anular
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -453,7 +1207,21 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
           </div>
         )}
       </div>
-      <button type="button" onClick={onBack} className="mt-8 md:mt-10 text-white/30 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.4em] md:tracking-[0.6em] p-4 transition-all active:scale-95 cursor-pointer">Salir del Terminal</button>
+      <div className="mt-8 flex flex-col sm:flex-row items-center gap-4 text-center">
+        <button type="button" onClick={onBack} className="text-white/40 hover:text-white font-black text-[10px] md:text-[11px] uppercase tracking-[0.3em] transition-all active:scale-95 cursor-pointer">
+          Salir del Terminal
+        </button>
+        <span className="text-white/20 hidden sm:inline">•</span>
+        <button
+          type="button"
+          onClick={handleCheckForUpdates}
+          className="text-blue-300/80 hover:text-blue-200 font-bold text-[9px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full border border-white/10"
+          title="Comprobar e instalar actualizaciones disponibles"
+        >
+          <span>🔄</span>
+          <span>Terminal {deviceVersion} {isUpdateRequired ? '• ⚠️ Actualización Requerida' : '• ✓ Al Día'}</span>
+        </button>
+      </div>
 
       <Modal isOpen={feedback.isOpen} onClose={() => setFeedback({...feedback, isOpen: false})} title={feedback.title} type={feedback.type}>
           <div className="text-center space-y-4 md:space-y-6">
@@ -461,6 +1229,354 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({ employees, attendan
               <button type="button" onClick={() => setFeedback({...feedback, isOpen: false})} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest cursor-pointer">Aceptar</button>
           </div>
       </Modal>
+
+      {currentEmp && (
+        <RetroactiveAttendanceModal
+          isOpen={isRetroactiveModalOpen}
+          onClose={() => setIsRetroactiveModalOpen(false)}
+          employee={currentEmp}
+          missingSlots={pendingMissingSlots}
+          initialMode={retroactiveInitialMode}
+          onBatchRegister={handleBatchRegisterRetroactive}
+          onRequestAdminReview={handleRequestAdminReviewRetroactive}
+          onProceedToToday={() => setIsRetroactiveModalOpen(false)}
+        />
+      )}
+
+      {/* MODAL PERSUASIVO DE MARCACIONES PENDIENTES - NO BLOQUEA EL PANEL */}
+      {currentEmp && pendingMissingSlots.length > 0 && (
+        <Modal
+          isOpen={isPersuasivePendingModalOpen}
+          onClose={() => setIsPersuasivePendingModalOpen(false)}
+          title="MARCACIONES PENDIENTES DE REGULARIZACIÓN"
+          type="warning"
+          maxWidth="max-w-xl"
+        >
+          <div className="text-center p-3 sm:p-5 space-y-5 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 border-2 border-amber-300 flex items-center justify-center text-3xl mx-auto shadow-inner">
+              ⚠️
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="px-3 py-0.5 bg-amber-500 text-white font-black text-[8px] uppercase rounded-full">
+                Control Institucional de Asistencia
+              </span>
+              <h3 className="text-base sm:text-lg font-[950] text-slate-900 uppercase">
+                {currentEmp.name} {currentEmp.surname}
+              </h3>
+              <p className="text-xs text-slate-600 font-bold uppercase leading-relaxed">
+                Se registran <span className="text-amber-800 font-black">{pendingMissingSlots.length} marcaciones pendientes</span> dentro del mes en curso. Para mantener al día su cómputo de horas de nómina y puntualidad, le invitamos a ponerse al día regularizando su horario personalmente o solicitar asistencia al administrador.
+              </p>
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                <p className="text-[10px] font-black text-emerald-800 uppercase">
+                  ✓ Su panel de marcación de hoy está habilitado y no se bloqueará. Puede continuar marcando normalmente.
+                </p>
+              </div>
+            </div>
+
+            {/* Listado de fechas pendientes */}
+            <div className="max-h-44 overflow-y-auto space-y-1.5 p-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-left custom-scroll">
+              <p className="text-[8px] font-black uppercase text-slate-400 tracking-wider px-1">Jornadas pendientes detectadas:</p>
+              {pendingMissingSlots.map(slot => (
+                <div key={slot.id} className="p-2 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 text-[9px] font-black uppercase">
+                  <span className="text-slate-800 font-bold">{slot.dateFormatted} ({slot.date})</span>
+                  <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">{slot.shiftLabel}</span>
+                  <span className="text-slate-400 font-mono">{slot.suggestedTime}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Acciones */}
+            <div className="space-y-2 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRetroactiveInitialMode('regularize');
+                    setIsPersuasivePendingModalOpen(false);
+                    setIsRetroactiveModalOpen(true);
+                  }}
+                  className="py-3 px-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase rounded-xl shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>✍️</span> Regularizar Personalmente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDialog({
+                      isOpen: true,
+                      title: 'Solicitar Asistencia al Administrador',
+                      message: `¿Está seguro de enviar una solicitud al Administrador para regularizar las ${pendingMissingSlots.length} marcaciones pendientes detectadas?`,
+                      confirmLabel: 'Sí, Solicitar Asistencia',
+                      type: 'info',
+                      onConfirm: () => {
+                        setConfirmDialog(null);
+                        setIsPersuasivePendingModalOpen(false);
+                        handleRequestAdminReviewRetroactive(
+                          'AUDITORÍA DE HORARIOS',
+                          'SOLICITUD DE ASISTENCIA Y AUDITORÍA AL ADMINISTRADOR',
+                          pendingMissingSlots
+                        );
+                      }
+                    });
+                  }}
+                  className="py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] uppercase rounded-xl shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>📨</span> Solicitar Asistencia al Admin
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsPersuasivePendingModalOpen(false)}
+                className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase rounded-xl shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>⏱️</span> Continuar al Marcado Habitual
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL PARA REGISTRAR JORNADA ÚNICA DE CORRIDO */}
+      {currentEmp && (
+        <Modal
+          isOpen={continuousModal.isOpen}
+          onClose={() => setContinuousModal(prev => ({ ...prev, isOpen: false }))}
+          title="JORNADA ÚNICA DE CORRIDO (1 HORA LIBRE)"
+          maxWidth="max-w-md"
+        >
+          <div className="p-3 sm:p-4 space-y-5 text-slate-900">
+            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl space-y-1.5 text-left">
+              <div className="flex items-center gap-2 text-indigo-900 font-black text-xs uppercase">
+                <span>⏱️</span> Trabajo Continuo Sin Salida a Mediodía
+              </div>
+              <p className="text-[10px] font-bold text-indigo-700 uppercase leading-relaxed">
+                Al trabajar de corrido sin registrar salida de descanso al mediodía, el sistema asignará automáticamente <span className="text-indigo-950 font-black">1 hora libre</span> en el cómputo de su jornada diaria.
+              </p>
+            </div>
+
+            {insCount === 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-left">
+                <label className="flex items-center gap-2 text-[9px] font-black text-amber-900 uppercase cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={continuousModal.includeMorningIn}
+                    onChange={e => setContinuousModal(prev => ({ ...prev, includeMorningIn: e.target.checked }))}
+                    className="w-4 h-4 text-indigo-600 rounded"
+                  />
+                  Registrar también hora de ingreso inicial
+                </label>
+                {continuousModal.includeMorningIn && (
+                  <input
+                    type="time"
+                    value={continuousModal.morningInTime}
+                    onChange={e => setContinuousModal(prev => ({ ...prev, morningInTime: e.target.value }))}
+                    className="w-full p-2.5 bg-white border-2 border-amber-300 rounded-xl text-sm font-black font-mono text-center outline-none focus:border-indigo-500"
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5 text-left">
+              <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                Hora de Finalización de Jornada Diaria
+              </label>
+              <input
+                type="time"
+                value={continuousModal.endTime}
+                onChange={e => setContinuousModal(prev => ({ ...prev, endTime: e.target.value }))}
+                className="w-full p-4 bg-slate-50 border-2 border-indigo-300 rounded-2xl text-xl font-black font-mono text-center text-slate-900 focus:border-indigo-600 outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setContinuousModal(prev => ({ ...prev, isOpen: false }))}
+                className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-xl uppercase text-[10px] tracking-wider cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmContinuousShift}
+                className="flex-2 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl uppercase text-[10px] tracking-wider shadow-lg active:scale-95 transition-all cursor-pointer"
+              >
+                Confirmar Jornada De Corrido
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL PARA CORREGIR MARCACIÓN ERRÓNEA DEL COLABORADOR */}
+      {editTodayMarkModal.isOpen && editTodayMarkModal.record && (
+        <Modal
+          isOpen={editTodayMarkModal.isOpen}
+          onClose={() => setEditTodayMarkModal(prev => ({ ...prev, isOpen: false, record: null }))}
+          title="CORREGIR MARCACIÓN REALIZADA POR ERROR"
+          maxWidth="max-w-md"
+        >
+          <div className="p-3 sm:p-4 space-y-4 text-slate-900 text-left">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl">
+              <p className="text-[10px] font-black text-blue-900 uppercase">
+                Corrección de Ingreso o Salida Fuera de Horario
+              </p>
+              <p className="text-[9px] font-bold text-blue-700 uppercase mt-0.5">
+                Ajuste el tipo y la hora real de su marcación de hoy.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[8px] font-black uppercase text-slate-400">Tipo de Marcación</label>
+                <select
+                  value={editTodayMarkModal.isContinuousShift ? 'continuous_out' : editTodayMarkModal.type}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === 'continuous_out') {
+                      setEditTodayMarkModal(prev => ({ ...prev, type: 'out', isContinuousShift: true }));
+                    } else {
+                      setEditTodayMarkModal(prev => ({ ...prev, type: val as 'in' | 'out', isContinuousShift: false }));
+                    }
+                  }}
+                  className="w-full p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="in">Ingreso</option>
+                  <option value="out">Salida</option>
+                  <option value="continuous_out">Salida De Corrido (1h Libre)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[8px] font-black uppercase text-slate-400">Hora Correcta</label>
+                <input
+                  type="time"
+                  value={editTodayMarkModal.time}
+                  onChange={e => setEditTodayMarkModal(prev => ({ ...prev, time: e.target.value }))}
+                  className="w-full p-3 border-2 rounded-xl text-sm font-black font-mono text-center outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[8px] font-black uppercase text-slate-400">Motivo de Corrección</label>
+              <select
+                value={editTodayMarkModal.reason}
+                onChange={e => setEditTodayMarkModal(prev => ({ ...prev, reason: e.target.value }))}
+                className="w-full p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500 bg-white"
+              >
+                <option value="CORRECCIÓN POR ERROR FUERA DE HORARIO HABITUAL">CORRECCIÓN POR ERROR FUERA DE HORARIO HABITUAL</option>
+                <option value="ERROR AL SELECCIONAR INGRESO / SALIDA">ERROR AL SELECCIONAR INGRESO / SALIDA</option>
+                <option value="CAMBIO A JORNADA DE CORRIDO">CAMBIO A JORNADA DE CORRIDO</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditTodayMarkModal(prev => ({ ...prev, isOpen: false, record: null }))}
+                className="flex-1 py-3 bg-slate-100 text-slate-600 font-black rounded-xl uppercase text-[10px] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCorrectedTodayMark}
+                className="flex-2 py-3 bg-blue-700 hover:bg-blue-800 text-white font-black rounded-xl uppercase text-[10px] shadow-lg active:scale-95 transition-all cursor-pointer"
+              >
+                Guardar Corrección
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {confirmDialog && (
+        <ConfirmationModal
+          isOpen={confirmDialog.isOpen}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          type={confirmDialog.type}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE REGULARIZACIÓN EXITOSA PARA EL COLABORADOR */}
+      {currentEmp && currentEmp.regularizationApprovedNotice && (
+        <Modal
+          isOpen={isRegularizationNoticeModalOpen}
+          onClose={handleDismissRegularizationNotice}
+          title="¡REGULARIZACIÓN APROBADA CON ÉXITO!"
+          type="success"
+        >
+          <div className="text-center p-3 sm:p-5 space-y-5 animate-in zoom-in-95">
+            <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-4xl mx-auto shadow-inner animate-bounce">
+              ✓
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-[950] text-slate-900 uppercase">
+                Solicitud de Regularización Procesada
+              </h3>
+              <p className="text-xs text-slate-600 font-bold uppercase leading-relaxed">
+                Estimado/a <span className="text-blue-900 font-black">{currentEmp.name} {currentEmp.surname}</span>, el Administrador ha aprobado su solicitud de regularización y ha procedido a registrar oficialmente sus marcaciones pendientes.
+              </p>
+            </div>
+
+            <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-2xl text-left space-y-1.5">
+              <p className="text-[10px] font-black text-emerald-900 uppercase flex items-center gap-1.5">
+                <span>⚖️</span> Estado: Regularización Aprobada y Asentada
+              </p>
+              {currentEmp.regularizationApprovedNotice.approvedAt && (
+                <p className="text-[9px] font-bold text-slate-500 uppercase">
+                  Fecha de Validación: {new Date(currentEmp.regularizationApprovedNotice.approvedAt).toLocaleString('es-EC')}
+                </p>
+              )}
+              {currentEmp.regularizationApprovedNotice.count && (
+                <p className="text-[9px] font-black text-emerald-700 uppercase">
+                  Marcaciones Asentadas: {currentEmp.regularizationApprovedNotice.count} registros confirmados
+                </p>
+              )}
+              <p className="text-[10px] font-bold text-emerald-800 italic bg-white/70 p-2.5 rounded-xl border border-emerald-100">
+                "{currentEmp.regularizationApprovedNotice.message}"
+              </p>
+            </div>
+
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              Su historial laboral está completamente al día. Ya puede continuar con su registro de asistencia habitual.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleDismissRegularizationNotice}
+              className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-xs shadow-xl active:scale-95 transition-all cursor-pointer"
+            >
+              Aceptar y Continuar al Marcaje Habitual
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {settings.systemUpdate && (
+        <MandatoryUpdateModal
+          isOpen={isUpdateModalOpen}
+          updateConfig={settings.systemUpdate}
+          currentVersion={deviceVersion}
+          onUpdateSuccess={() => {
+            if (settings.systemUpdate) {
+              localStorage.setItem('asistup_device_version', settings.systemUpdate.version);
+              setDeviceVersion(settings.systemUpdate.version);
+            }
+            setIsUpdateModalOpen(false);
+          }}
+          onBypass={!settings.systemUpdate.isMandatory ? () => {
+            setHasDismissedOptionalUpdate(true);
+            setIsUpdateModalOpen(false);
+          } : undefined}
+        />
+      )}
     </div>
   );
 };
