@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Employee, AttendanceRecord, GlobalSettings } from '../types.ts';
 import Clock from '../components/Clock.tsx';
@@ -75,6 +74,14 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({
   const [status, setStatus] = useState<'idle' | 'confirm' | 'forgotten_form' | 'success' | 'error' | 'change_pin' | 'regularize_form'>('idle');
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentEmp, setCurrentEmp] = useState<Employee | null>(null);
+
+  useEffect(() => {
+    if (!currentEmp) return;
+    const latest = employees.find(e => e.id === currentEmp.id);
+    if (latest && latest !== currentEmp) {
+      setCurrentEmp(latest);
+    }
+  }, [employees, currentEmp]);
   const [newPin, setNewPin] = useState('');
   const [forgotCi, setForgotCi] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -678,7 +685,11 @@ const AttendanceSystem: React.FC<AttendanceSystemProps> = ({
   }, [attendance, settings]);
 
   const handleBatchRegisterRetroactive = (newRecords: AttendanceRecord[]) => {
-    newRecords.forEach(r => onRegister(r));
+    if (onUpdateAttendance) {
+      onUpdateAttendance(newRecords);
+    } else {
+      newRecords.forEach(r => onRegister(r));
+    }
     setPendingMissingSlots([]);
     setIsRetroactiveModalOpen(false);
     setIsPersuasivePendingModalOpen(false);

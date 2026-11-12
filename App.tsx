@@ -3,9 +3,9 @@ import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSetting
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
-import { db, enableNetwork, collection, doc, onSnapshot, setDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
+import { db, enableNetwork, getDocFromServer, getDocsFromServer, collection, doc, onSnapshot, setDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
 import { DEFAULT_SYSTEM_UPDATE } from './constants.tsx';
-import { enqueueOfflineAction, processOfflineSync, getPendingSyncCount } from './utils/offlineSync.ts';
+import { enqueueOfflineAction, processOfflineSync, getPendingSyncCount, mergePendingEntityQueue, hasPendingOfflineForTypes } from './utils/offlineSync.ts';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
@@ -108,6 +108,59 @@ const App: React.FC = () => {
     }
   });
 
+  const companyRef = useRef<CompanyConfig | null>(company);
+  const employeesRef = useRef<Employee[]>(employees);
+  const attendanceRef = useRef<AttendanceRecord[]>(attendance);
+  const paymentsRef = useRef<Payment[]>(payments);
+  const savedReportsRef = useRef<SavedReport[]>(savedReports);
+  const settingsRef = useRef<GlobalSettings>(settings);
+  const lastServerPullRef = useRef<number>(0);
+
+  useEffect(() => { companyRef.current = company; }, [company]);
+  useEffect(() => { employeesRef.current = employees; }, [employees]);
+  useEffect(() => { attendanceRef.current = attendance; }, [attendance]);
+  useEffect(() => { paymentsRef.current = payments; }, [payments]);
+  useEffect(() => { savedReportsRef.current = savedReports; }, [savedReports]);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+  const compareSemver = (a?: string, b?: string): number => {
+    const parse = (v?: string) => String(v || '0.0.0').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+    const pa = parse(a);
+    const pb = parse(b);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const va = pa[i] || 0;
+      const vb = pb[i] || 0;
+      if (va > vb) return 1;
+      if (va < vb) return -1;
+    }
+    return 0;
+  };
+
+  const withWriteTimeout = <T,>(promise: Promise<T>, ms = 10000): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error('FIRESTORE_WRITE_TIMEOUT')), ms);
+      promise
+        .then(res => {
+          window.clearTimeout(timer);
+          resolve(res);
+        })
+        .catch(err => {
+          window.clearTimeout(timer);
+          reject(err);
+        });
+    });
+  };
+
+  const decodeDocData = <T,>(raw: any, id?: string): T | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    if (typeof raw.payload === 'string' && raw.payload.trim().length > 0) {
+      const decompressed = decompressData(raw.payload);
+      if (!decompressed || typeof decompressed !== 'object') return null;
+      return id ? ({ ...decompressed, id } as T) : (decompressed as T);
+    }
+    return id ? ({ ...raw, id } as T) : (raw as T);
+  };
+
   useEffect(() => {
     if (settings.systemUpdate && settings.systemUpdate.version) {
       const currentInstalled = localStorage.getItem('asistup_device_version');
@@ -145,6 +198,192 @@ const App: React.FC = () => {
     unsubscribesRef.current = [];
   };
 
+  const applyServerCompany = useCallback((docSnap: any, allowEmptyOverwrite = false) => {
+    if (hasPendingOfflineForTypes(['company_config'])) return;
+    const fromCache = !!docSnap?.metadata?.fromCache;
+    if (docSnap.exists()) {
+      const decoded = decodeDocData<CompanyConfig>(docSnap.data());
+      if (decoded) {
+        companyRef.current = decoded;
+        setCompany(decoded);
+        localStorage.setItem('cache_company', JSON.stringify(decoded));
+      }
+    } else if (!fromCache && allowEmptyOverwrite) {
+      companyRef.current = null;
+      setCompany(null);
+      localStorage.removeItem('cache_company');
+    }
+  }, []);
+
+  const applyServerSettings = useCallback((docSnap: any) => {
+    if (hasPendingOfflineForTypes(['settings_config'])) return;
+    const fromCache = !!docSnap?.metadata?.fromCache;
+    if (docSnap.exists()) {
+      const dbSettings = decodeDocData<GlobalSettings>(docSnap.data());
+      if (dbSettings) {
+        const dbVersion = dbSettings.systemUpdate?.version;
+        const isCodebaseStrictlyNewer = !dbVersion || compareSemver(DEFAULT_SYSTEM_UPDATE.version, dbVersion) > 0;
+        const effectiveUpdate = isCodebaseStrictlyNewer
+          ? DEFAULT_SYSTEM_UPDATE
+          : (dbSettings.systemUpdate || DEFAULT_SYSTEM_UPDATE);
+
+        const mergedSettings: GlobalSettings = {
+          ...defaultSettings,
+          ...dbSettings,
+          holidays: Array.isArray(dbSettings.holidays) ? dbSettings.holidays : [],
+          systemUpdate: effectiveUpdate,
+          schedule: {
+            ...defaultSettings.schedule,
+            ...(dbSettings.schedule || {}),
+            monFri: {
+              ...defaultSettings.schedule.monFri,
+              ...(dbSettings.schedule?.monFri || {})
+            },
+            sat: {
+              ...defaultSettings.schedule.sat,
+              ...(dbSettings.schedule?.sat || {})
+            }
+          }
+        };
+        settingsRef.current = mergedSettings;
+        setSettings(mergedSettings);
+        localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
+
+        if (!fromCache && isCodebaseStrictlyNewer && navigator.onLine) {
+          const payload = compressData(mergedSettings);
+          if (payload) {
+            setDoc(doc(db, "config", "settings"), { payload }).catch(() => {});
+          }
+        }
+      }
+    } else if (!fromCache) {
+      const currentLocal = settingsRef.current || defaultSettings;
+      const payload = compressData(currentLocal);
+      if (payload && navigator.onLine) {
+        setDoc(doc(db, "config", "settings"), { payload }).catch(() => {});
+      }
+    }
+  }, []);
+
+  const applyServerEmployees = useCallback((snapshot: any) => {
+    const fromCache = !!snapshot?.metadata?.fromCache;
+    const rawItems = snapshot.docs
+      .map((d: any) => decodeDocData<Employee>(d.data(), d.id))
+      .filter((item: Employee | null): item is Employee => !!item && typeof item.id === 'string');
+
+    if (fromCache && rawItems.length === 0 && employeesRef.current.length > 0) {
+      return;
+    }
+
+    const reconciled = mergePendingEntityQueue<Employee>(
+      rawItems,
+      ['employee_batch'],
+      'employee_single',
+      'employee_delete'
+    );
+    employeesRef.current = reconciled;
+    setEmployees(reconciled);
+    localStorage.setItem('cache_employees', JSON.stringify(reconciled));
+  }, []);
+
+  const applyServerAttendance = useCallback((snapshot: any) => {
+    const fromCache = !!snapshot?.metadata?.fromCache;
+    const rawItems = snapshot.docs
+      .map((d: any) => decodeDocData<AttendanceRecord>(d.data(), d.id))
+      .filter((item: AttendanceRecord | null): item is AttendanceRecord => !!item && typeof item.id === 'string');
+
+    if (fromCache && rawItems.length === 0 && attendanceRef.current.length > 0) {
+      return;
+    }
+
+    const reconciled = mergePendingEntityQueue<AttendanceRecord>(
+      rawItems,
+      ['attendance_batch', 'attendance_delete'],
+      'attendance_record'
+    );
+    attendanceRef.current = reconciled;
+    setAttendance(reconciled);
+    localStorage.setItem('cache_attendance', JSON.stringify(reconciled));
+  }, []);
+
+  const applyServerPayments = useCallback((snapshot: any) => {
+    const fromCache = !!snapshot?.metadata?.fromCache;
+    const rawItems = snapshot.docs
+      .map((d: any) => decodeDocData<Payment>(d.data(), d.id))
+      .filter((item: Payment | null): item is Payment => !!item && typeof item.id === 'string');
+
+    if (fromCache && rawItems.length === 0 && paymentsRef.current.length > 0) {
+      return;
+    }
+
+    const reconciled = mergePendingEntityQueue<Payment>(rawItems, ['payment_batch']);
+    paymentsRef.current = reconciled;
+    setPayments(reconciled);
+    localStorage.setItem('cache_payments', JSON.stringify(reconciled));
+  }, []);
+
+  const applyServerSavedReports = useCallback((snapshot: any) => {
+    const fromCache = !!snapshot?.metadata?.fromCache;
+    const rawItems = snapshot.docs
+      .map((d: any) => decodeDocData<SavedReport>(d.data(), d.id))
+      .filter((item: SavedReport | null): item is SavedReport => !!item && typeof item.id === 'string');
+
+    if (fromCache && rawItems.length === 0 && savedReportsRef.current.length > 0) {
+      return;
+    }
+
+    const reconciled = mergePendingEntityQueue<SavedReport>(rawItems, ['saved_reports_batch']);
+    savedReportsRef.current = reconciled;
+    setSavedReports(reconciled);
+    localStorage.setItem('cache_saved_reports', JSON.stringify(reconciled));
+  }, []);
+
+  const refreshFromServer = useCallback(async () => {
+    if (!navigator.onLine) return;
+    lastServerPullRef.current = Date.now();
+    try {
+      const [compRes, settRes, empRes, attRes, payRes, repRes] = await Promise.allSettled([
+        getDocFromServer(doc(db, "config", "company")),
+        getDocFromServer(doc(db, "config", "settings")),
+        getDocsFromServer(collection(db, "employees")),
+        getDocsFromServer(collection(db, "attendance")),
+        getDocsFromServer(collection(db, "payments")),
+        getDocsFromServer(collection(db, "saved_reports"))
+      ]);
+
+      let anySuccess = false;
+      if (compRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerCompany(compRes.value, true);
+      }
+      if (settRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerSettings(settRes.value);
+      }
+      if (empRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerEmployees(empRes.value);
+      }
+      if (attRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerAttendance(attRes.value);
+      }
+      if (payRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerPayments(payRes.value);
+      }
+      if (repRes.status === 'fulfilled') {
+        anySuccess = true;
+        applyServerSavedReports(repRes.value);
+      }
+      if (anySuccess) {
+        setIsDbConnected(true);
+      }
+    } catch (e) {
+      console.warn("Refresh from server warning:", e);
+    }
+  }, [applyServerCompany, applyServerSettings, applyServerEmployees, applyServerAttendance, applyServerPayments, applyServerSavedReports]);
+
   const attachListeners = useCallback(() => {
     cleanListeners();
     if (reconnectTimerRef.current) {
@@ -159,24 +398,35 @@ const App: React.FC = () => {
         if (navigator.onLine) {
           enableNetwork(db).catch(() => {});
           attachListeners();
+          refreshFromServer();
         }
       }, 5000);
+    };
+
+    const cacheKeyByModule: Record<string, string> = {
+      Company: 'cache_company',
+      Settings: 'cache_settings',
+      Employees: 'cache_employees',
+      Attendance: 'cache_attendance',
+      Payments: 'cache_payments',
+      SavedReports: 'cache_saved_reports'
     };
 
     const handleFirestoreError = (module: string, error: any) => {
       console.warn(`Firestore Error [${module}]:`, error?.message || error);
       setIsDbConnected(false);
 
-      const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
+      const cacheKey = cacheKeyByModule[module];
+      const cached = cacheKey ? localStorage.getItem(cacheKey) : null;
       if (cached) {
         try {
           const data = JSON.parse(cached);
           if (module === 'Company') setCompany(data);
           if (module === 'Settings') setSettings(data);
-          if (module === 'Employees') setEmployees(data);
-          if (module === 'Attendance') setAttendance(data);
-          if (module === 'Payments') setPayments(data);
-          if (module === 'SavedReports') setSavedReports(data);
+          if (module === 'Employees' && Array.isArray(data)) setEmployees(data);
+          if (module === 'Attendance' && Array.isArray(data)) setAttendance(data);
+          if (module === 'Payments' && Array.isArray(data)) setPayments(data);
+          if (module === 'SavedReports' && Array.isArray(data)) setSavedReports(data);
         } catch (e) {
           console.error("Error al restaurar caché:", e);
         }
@@ -189,189 +439,49 @@ const App: React.FC = () => {
       const unsubCompany = onSnapshot(doc(db, "config", "company"), { includeMetadataChanges: true }, (docSnap) => {
         if (!docSnap.metadata.fromCache && navigator.onLine) {
           setIsDbConnected(true);
-        } else if (navigator.onLine && docSnap.exists()) {
-          setIsDbConnected(true);
         }
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const decompressed = data.payload ? decompressData(data.payload as string) : data as any;
-          if (decompressed) {
-            setCompany(decompressed);
-            localStorage.setItem('cache_company', JSON.stringify(decompressed));
-          }
-        } else {
-          const cached = localStorage.getItem('cache_company');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              setCompany(parsed);
-              setDoc(doc(db, "config", "company"), { payload: compressData(parsed) }).catch(() => {});
-            } catch (e) {}
-          }
-        }
+        applyServerCompany(docSnap, true);
         setIsLoadingData(false);
       }, (err) => handleFirestoreError('Company', err));
       unsubscribesRef.current.push(unsubCompany);
 
-      const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
-        if (!docSnap.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
-          if (dbSettings) {
-            const dbVersion = dbSettings.systemUpdate?.version;
-            const isCodebaseNewer = !dbVersion || dbVersion !== DEFAULT_SYSTEM_UPDATE.version;
-
-            const effectiveUpdate = isCodebaseNewer
-              ? DEFAULT_SYSTEM_UPDATE
-              : (dbSettings.systemUpdate || DEFAULT_SYSTEM_UPDATE);
-
-            const mergedSettings = {
-              ...defaultSettings,
-              ...dbSettings,
-              systemUpdate: effectiveUpdate,
-              schedule: {
-                ...defaultSettings.schedule,
-                ...(dbSettings.schedule || {}),
-                monFri: {
-                  ...defaultSettings.schedule.monFri,
-                  ...(dbSettings.schedule?.monFri || {})
-                },
-                sat: {
-                  ...defaultSettings.schedule.sat,
-                  ...(dbSettings.schedule?.sat || {})
-                }
-              }
-            };
-            setSettings(mergedSettings);
-            localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
-
-            if (isCodebaseNewer) {
-              setDoc(doc(db, "config", "settings"), { payload: compressData(mergedSettings) }).catch(() => {});
-            }
-          }
-        } else {
-          const cached = localStorage.getItem('cache_settings');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              const withLatestUpdate = { ...defaultSettings, ...parsed, systemUpdate: DEFAULT_SYSTEM_UPDATE };
-              setSettings(withLatestUpdate);
-              setDoc(doc(db, "config", "settings"), { payload: compressData(withLatestUpdate) }).catch(() => {});
-            } catch (e) {
-              setSettings(defaultSettings);
-              setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
-            }
-          } else {
-            setSettings(defaultSettings);
-            setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
-          }
+      const unsubSettings = onSnapshot(doc(db, "config", "settings"), { includeMetadataChanges: true }, (docSnap) => {
+        if (!docSnap.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
         }
+        applyServerSettings(docSnap);
       }, (err) => handleFirestoreError('Settings', err));
       unsubscribesRef.current.push(unsubSettings);
 
-      const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
-        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }).filter(Boolean) as Employee[];
-
-        if (data.length > 0) {
-          setEmployees(data);
-          localStorage.setItem('cache_employees', JSON.stringify(data));
-        } else {
-          const cached = localStorage.getItem('cache_employees');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setEmployees(parsed);
-                parsed.forEach(e => {
-                  setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(() => {});
-                });
-              }
-            } catch (e) {}
-          }
+      const unsubEmployees = onSnapshot(collection(db, "employees"), { includeMetadataChanges: true }, (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
         }
+        applyServerEmployees(snapshot);
       }, (err) => handleFirestoreError('Employees', err));
       unsubscribesRef.current.push(unsubEmployees);
 
-      const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
-        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }).filter(Boolean) as AttendanceRecord[];
-
-        if (data.length > 0) {
-          setAttendance(data);
-          localStorage.setItem('cache_attendance', JSON.stringify(data));
-        } else {
-          const cached = localStorage.getItem('cache_attendance');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setAttendance(parsed);
-                parsed.forEach(r => {
-                  setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(() => {});
-                });
-              }
-            } catch (e) {}
-          }
+      const unsubAttendance = onSnapshot(collection(db, "attendance"), { includeMetadataChanges: true }, (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
         }
+        applyServerAttendance(snapshot);
       }, (err) => handleFirestoreError('Attendance', err));
       unsubscribesRef.current.push(unsubAttendance);
 
-      const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
-        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }).filter(Boolean) as Payment[];
-
-        if (data.length > 0) {
-          setPayments(data);
-          localStorage.setItem('cache_payments', JSON.stringify(data));
-        } else {
-          const cached = localStorage.getItem('cache_payments');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setPayments(parsed);
-                parsed.forEach(p => {
-                  setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(() => {});
-                });
-              }
-            } catch (e) {}
-          }
+      const unsubPayments = onSnapshot(collection(db, "payments"), { includeMetadataChanges: true }, (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
         }
+        applyServerPayments(snapshot);
       }, (err) => handleFirestoreError('Payments', err));
       unsubscribesRef.current.push(unsubPayments);
 
-      const unsubSavedReports = onSnapshot(collection(db, "saved_reports"), (snapshot) => {
-        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }).filter(Boolean) as SavedReport[];
-
-        if (data.length > 0) {
-          setSavedReports(data);
-          localStorage.setItem('cache_saved_reports', JSON.stringify(data));
-        } else {
-          const cached = localStorage.getItem('cache_saved_reports');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setSavedReports(parsed);
-              }
-            } catch (e) {}
-          }
+      const unsubSavedReports = onSnapshot(collection(db, "saved_reports"), { includeMetadataChanges: true }, (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
         }
+        applyServerSavedReports(snapshot);
       }, (err) => handleFirestoreError('SavedReports', err));
       unsubscribesRef.current.push(unsubSavedReports);
 
@@ -379,7 +489,7 @@ const App: React.FC = () => {
       console.error("Initial load failed:", e);
       setIsLoadingData(false);
     }
-  }, []);
+  }, [applyServerCompany, applyServerSettings, applyServerEmployees, applyServerAttendance, applyServerPayments, applyServerSavedReports, refreshFromServer]);
 
   useEffect(() => {
     if ("Notification" in window) {
@@ -463,7 +573,7 @@ const App: React.FC = () => {
     }
   }, [showLogoutFeedback]);
 
-  // Sincronización manual y automática contra Firestore sin intermitencias
+  // Sincronización manual y automática contra Firestore sin intermitencias ni pérdidas entre equipos
   const triggerSync = useCallback(async () => {
     if (isSyncingRef.current || !navigator.onLine) return;
     isSyncingRef.current = true;
@@ -475,6 +585,7 @@ const App: React.FC = () => {
       setPendingSyncCount(remaining);
       if (errors === 0) {
         setIsDbConnected(true);
+        await refreshFromServer();
       }
       if (syncedCount > 0) {
         setSyncFeedbackBanner({
@@ -490,9 +601,13 @@ const App: React.FC = () => {
       isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, []);
+  }, [refreshFromServer]);
 
   useEffect(() => {
+    if (navigator.onLine && getPendingSyncCount() > 0) {
+      triggerSync();
+    }
+
     const handleOnline = () => {
       setIsOnline(true);
       enableNetwork(db).then(() => {
@@ -513,26 +628,71 @@ const App: React.FC = () => {
       setTimeout(() => setSyncFeedbackBanner(null), 5000);
     };
 
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        if (getPendingSyncCount() > 0) {
+          triggerSync();
+        } else if (Date.now() - lastServerPullRef.current > 8000) {
+          enableNetwork(db).catch(() => {});
+          refreshFromServer();
+        }
+      }
+    };
+
+    const handleStorageSync = (e: StorageEvent) => {
+      if (e.key === 'asistup_offline_sync_queue') {
+        setPendingSyncCount(getPendingSyncCount());
+      } else if (e.key === 'cache_employees' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) { employeesRef.current = parsed; setEmployees(parsed); }
+        } catch {}
+      } else if (e.key === 'cache_attendance' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) { attendanceRef.current = parsed; setAttendance(parsed); }
+        } catch {}
+      } else if (e.key === 'cache_payments' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) { paymentsRef.current = parsed; setPayments(parsed); }
+        } catch {}
+      } else if (e.key === 'cache_saved_reports' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) { savedReportsRef.current = parsed; setSavedReports(parsed); }
+        } catch {}
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('storage', handleStorageSync);
 
-    // Sincronización periódica y verificación de salud de conexión automática
+    // Sincronización periódica y respaldo de salud contra desconexiones silenciosas entre dispositivos
     const interval = setInterval(() => {
-      if (navigator.onLine) {
-        if (getPendingSyncCount() > 0 && !isSyncingRef.current) {
-          triggerSync();
-        }
+      if (!navigator.onLine) return;
+      if (getPendingSyncCount() > 0 && !isSyncingRef.current) {
+        triggerSync();
+      } else if (Date.now() - lastServerPullRef.current > 45000) {
+        refreshFromServer();
       }
     }, 15000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('storage', handleStorageSync);
       clearInterval(interval);
     };
-  }, [triggerSync, attachListeners]);
+  }, [triggerSync, attachListeners, refreshFromServer]);
 
   const handleUpdateCompany = async (c: CompanyConfig) => {
+    companyRef.current = c;
     setCompany(c);
     localStorage.setItem('cache_company', JSON.stringify(c));
     if (!navigator.onLine) {
@@ -541,7 +701,9 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await setDoc(doc(db, "config", "company"), { payload: compressData(c) });
+      const payload = compressData(c);
+      if (!payload) throw new Error('Serialization failed');
+      await withWriteTimeout(setDoc(doc(db, "config", "company"), { payload }));
       setIsDbConnected(true);
     } catch (e) {
       console.warn("Update company in Firestore failed, enqueuing offline:", e);
@@ -552,6 +714,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateSettings = async (s: GlobalSettings) => {
+    settingsRef.current = s;
     setSettings(s);
     localStorage.setItem('cache_settings', JSON.stringify(s));
     if (!navigator.onLine) {
@@ -560,7 +723,9 @@ const App: React.FC = () => {
       return;
     }
     try {
-      await setDoc(doc(db, "config", "settings"), { payload: compressData(s) });
+      const payload = compressData(s);
+      if (!payload) throw new Error('Serialization failed');
+      await withWriteTimeout(setDoc(doc(db, "config", "settings"), { payload }));
       setIsDbConnected(true);
     } catch (e) {
       console.warn("Update settings in Firestore failed, enqueuing offline:", e);
@@ -571,29 +736,43 @@ const App: React.FC = () => {
   };
 
   const handleUpdateEmployees = async (emps: Employee[]) => {
+    const prevMap = new Map<string, Employee>(employeesRef.current.map(e => [e.id, e]));
     const currentIds = new Set<string>(emps.map(e => e.id));
-    const previousIds = new Set<string>(employees.map(e => e.id));
     const deletedIds: string[] = [];
-    for (const id of previousIds) {
+    for (const id of prevMap.keys()) {
       if (!currentIds.has(id)) {
         deletedIds.push(id);
       }
     }
 
-    // Actualización inmediata en memoria y caché local
+    // Enviar únicamente los registros realmente creados o modificados para evitar sobrescribir cambios concurrentes de otros equipos
+    const changedEmps = emps.filter(e => {
+      const prev = prevMap.get(e.id);
+      return !prev || JSON.stringify(prev) !== JSON.stringify(e);
+    });
+
+    employeesRef.current = emps;
     setEmployees(emps);
     localStorage.setItem('cache_employees', JSON.stringify(emps));
 
+    if (changedEmps.length === 0 && deletedIds.length === 0) {
+      return;
+    }
+
     if (!navigator.onLine) {
-      enqueueOfflineAction('employee_batch', { emps, deletedIds }, `Gestión de personal (${emps.length} colaboradores)`);
+      enqueueOfflineAction('employee_batch', { changedEmps, deletedIds }, `Gestión de personal (${changedEmps.length} act., ${deletedIds.length} elim.)`);
       setPendingSyncCount(getPendingSyncCount());
       return;
     }
 
     try {
       const deletePromises = deletedIds.map(id => deleteDoc(doc(db, "employees", id)));
-      const savePromises = emps.map(e => setDoc(doc(db, "employees", e.id), { payload: compressData(e) }));
-      const results = await Promise.allSettled([...deletePromises, ...savePromises]);
+      const savePromises = changedEmps.map(e => {
+        const payload = compressData(e);
+        if (!payload) return Promise.reject(new Error(`Empty payload for employee ${e.id}`));
+        return setDoc(doc(db, "employees", e.id), { payload });
+      });
+      const results = await withWriteTimeout(Promise.allSettled([...deletePromises, ...savePromises]), 12000);
       if (results.some(r => r.status === 'rejected')) {
         throw new Error('Partial employee sync failure');
       }
@@ -601,34 +780,48 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn("Update employees Firestore sync error, enqueuing offline:", e);
       setIsDbConnected(false);
-      enqueueOfflineAction('employee_batch', { emps, deletedIds }, `Gestión de personal (${emps.length} colaboradores)`);
+      enqueueOfflineAction('employee_batch', { changedEmps, deletedIds }, `Gestión de personal (${changedEmps.length} act., ${deletedIds.length} elim.)`);
       setPendingSyncCount(getPendingSyncCount());
     }
   };
 
   const handleUpdatePayments = async (pys: Payment[]) => {
+    const prevMap = new Map<string, Payment>(paymentsRef.current.map(p => [p.id, p]));
     const currentIds = new Set<string>(pys.map(p => p.id));
-    const previousIds = new Set<string>(payments.map(p => p.id));
     const deletedIds: string[] = [];
-    for (const id of previousIds) {
+    for (const id of prevMap.keys()) {
       if (!currentIds.has(id)) {
         deletedIds.push(id);
       }
     }
 
+    const changedPayments = pys.filter(p => {
+      const prev = prevMap.get(p.id);
+      return !prev || JSON.stringify(prev) !== JSON.stringify(p);
+    });
+
+    paymentsRef.current = pys;
     setPayments(pys);
     localStorage.setItem('cache_payments', JSON.stringify(pys));
 
+    if (changedPayments.length === 0 && deletedIds.length === 0) {
+      return;
+    }
+
     if (!navigator.onLine) {
-      enqueueOfflineAction('payment_batch', { payments: pys, deletedIds }, `Registro de nómina y pagos (${pys.length} registros)`);
+      enqueueOfflineAction('payment_batch', { changedPayments, deletedIds }, `Registro de nómina y pagos (${changedPayments.length} act., ${deletedIds.length} elim.)`);
       setPendingSyncCount(getPendingSyncCount());
       return;
     }
 
     try {
       const deletePromises = deletedIds.map(id => deleteDoc(doc(db, "payments", id)));
-      const savePromises = pys.map(p => setDoc(doc(db, "payments", p.id), { payload: compressData(p) }));
-      const results = await Promise.allSettled([...deletePromises, ...savePromises]);
+      const savePromises = changedPayments.map(p => {
+        const payload = compressData(p);
+        if (!payload) return Promise.reject(new Error(`Empty payload for payment ${p.id}`));
+        return setDoc(doc(db, "payments", p.id), { payload });
+      });
+      const results = await withWriteTimeout(Promise.allSettled([...deletePromises, ...savePromises]), 12000);
       if (results.some(r => r.status === 'rejected')) {
         throw new Error('Partial payment sync failure');
       }
@@ -636,23 +829,25 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn("Update payments Firestore sync error, enqueuing offline:", e);
       setIsDbConnected(false);
-      enqueueOfflineAction('payment_batch', { payments: pys, deletedIds }, `Registro de nómina y pagos (${pys.length} registros)`);
+      enqueueOfflineAction('payment_batch', { changedPayments, deletedIds }, `Registro de nómina y pagos (${changedPayments.length} act., ${deletedIds.length} elim.)`);
       setPendingSyncCount(getPendingSyncCount());
     }
   };
 
   const handleUpdateAttendance = async (recs: AttendanceRecord[]) => {
-    setAttendance(prev => {
-      const recMap = new Map(recs.map(r => [r.id, r]));
-      const updated = prev.map(item => recMap.has(item.id) ? recMap.get(item.id)! : item);
-      for (const r of recs) {
-        if (!prev.some(item => item.id === r.id)) {
-          updated.push(r);
-        }
+    if (!recs || recs.length === 0) return;
+
+    const prev = attendanceRef.current;
+    const recMap = new Map(recs.map(r => [r.id, r]));
+    const updated = prev.map(item => recMap.has(item.id) ? recMap.get(item.id)! : item);
+    for (const r of recs) {
+      if (!prev.some(item => item.id === r.id)) {
+        updated.push(r);
       }
-      localStorage.setItem('cache_attendance', JSON.stringify(updated));
-      return updated;
-    });
+    }
+    attendanceRef.current = updated;
+    setAttendance(updated);
+    localStorage.setItem('cache_attendance', JSON.stringify(updated));
 
     if (!navigator.onLine) {
       enqueueOfflineAction('attendance_batch', recs, `Lote de asistencia (${recs.length} registros)`);
@@ -661,10 +856,12 @@ const App: React.FC = () => {
     }
 
     try {
-      const savePromises = recs.map(r =>
-        setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp })
-      );
-      const results = await Promise.allSettled(savePromises);
+      const savePromises = recs.map(r => {
+        const payload = compressData(r);
+        if (!payload) return Promise.reject(new Error(`Empty payload for attendance ${r.id}`));
+        return setDoc(doc(db, "attendance", r.id), { payload, timestamp: r.timestamp || new Date().toISOString() });
+      });
+      const results = await withWriteTimeout(Promise.allSettled(savePromises), 12000);
       if (results.some(r => r.status === 'rejected')) {
         throw new Error('Partial attendance sync failure');
       }
@@ -677,40 +874,44 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRegisterAttendance = (r: AttendanceRecord) => {
-    setAttendance(prev => {
-      const updated = [r, ...prev.filter(item => item.id !== r.id)];
-      localStorage.setItem('cache_attendance', JSON.stringify(updated));
-      return updated;
-    });
+  const handleRegisterAttendance = async (r: AttendanceRecord) => {
+    const safeRec: AttendanceRecord = {
+      ...r,
+      timestamp: r.timestamp || new Date().toISOString()
+    };
+
+    const updated = [safeRec, ...attendanceRef.current.filter(item => item.id !== safeRec.id)];
+    attendanceRef.current = updated;
+    setAttendance(updated);
+    localStorage.setItem('cache_attendance', JSON.stringify(updated));
 
     if (!navigator.onLine) {
-      enqueueOfflineAction('attendance_record', r, `Marcación de asistencia (${r.type})`);
+      enqueueOfflineAction('attendance_record', safeRec, `Marcación de asistencia (${safeRec.type})`);
       setPendingSyncCount(getPendingSyncCount());
       return;
     }
 
-    setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp })
-      .then(() => {
-        setIsDbConnected(true);
-      })
-      .catch(e => {
-        console.warn("Marcación encolada para sincronización offline:", e);
-        setIsDbConnected(false);
-        enqueueOfflineAction('attendance_record', r, `Marcación de asistencia (${r.type})`);
-        setPendingSyncCount(getPendingSyncCount());
-      });
+    try {
+      const payload = compressData(safeRec);
+      if (!payload) throw new Error('Serialization failed');
+      await withWriteTimeout(setDoc(doc(db, "attendance", safeRec.id), { payload, timestamp: safeRec.timestamp }), 10000);
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Marcación encolada para sincronización offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('attendance_record', safeRec, `Marcación de asistencia (${safeRec.type})`);
+      setPendingSyncCount(getPendingSyncCount());
+    }
   };
 
   const handleDeleteAttendance = async (ids: string[]) => {
     if (!ids || ids.length === 0) return;
     const idSet = new Set(ids);
 
-    setAttendance(prev => {
-      const updated = prev.filter(item => !idSet.has(item.id));
-      localStorage.setItem('cache_attendance', JSON.stringify(updated));
-      return updated;
-    });
+    const updated = attendanceRef.current.filter(item => !idSet.has(item.id));
+    attendanceRef.current = updated;
+    setAttendance(updated);
+    localStorage.setItem('cache_attendance', JSON.stringify(updated));
 
     if (!navigator.onLine) {
       enqueueOfflineAction('attendance_delete', ids, `Anulación/reemplazo de asistencia (${ids.length} registros)`);
@@ -720,7 +921,7 @@ const App: React.FC = () => {
 
     try {
       const deletePromises = ids.map(id => deleteDoc(doc(db, "attendance", id)));
-      const results = await Promise.allSettled(deletePromises);
+      const results = await withWriteTimeout(Promise.allSettled(deletePromises), 12000);
       if (results.some(r => r.status === 'rejected')) {
         throw new Error('Partial delete attendance sync failure');
       }
@@ -734,18 +935,42 @@ const App: React.FC = () => {
   };
 
   const handleUpdateSavedReports = async (reps: SavedReport[]) => {
+    const prevMap = new Map<string, SavedReport>(savedReportsRef.current.map(r => [r.id, r]));
+    const currentIds = new Set<string>(reps.map(r => r.id));
+    const deletedIds: string[] = [];
+    for (const id of prevMap.keys()) {
+      if (!currentIds.has(id)) {
+        deletedIds.push(id);
+      }
+    }
+
+    const changedReports = reps.filter(r => {
+      const prev = prevMap.get(r.id);
+      return !prev || JSON.stringify(prev) !== JSON.stringify(r);
+    });
+
+    savedReportsRef.current = reps;
     setSavedReports(reps);
     localStorage.setItem('cache_saved_reports', JSON.stringify(reps));
 
+    if (changedReports.length === 0 && deletedIds.length === 0) {
+      return;
+    }
+
     if (!navigator.onLine) {
-      enqueueOfflineAction('saved_reports_batch', reps, `Guardado de reportes (${reps.length})`);
+      enqueueOfflineAction('saved_reports_batch', { changedReports, deletedIds }, `Guardado de reportes (${changedReports.length})`);
       setPendingSyncCount(getPendingSyncCount());
       return;
     }
 
     try {
-      const savePromises = reps.map(r => setDoc(doc(db, "saved_reports", r.id), { payload: compressData(r) }));
-      const results = await Promise.allSettled(savePromises);
+      const deletePromises = deletedIds.map(id => deleteDoc(doc(db, "saved_reports", id)));
+      const savePromises = changedReports.map(r => {
+        const payload = compressData(r);
+        if (!payload) return Promise.reject(new Error(`Empty payload for report ${r.id}`));
+        return setDoc(doc(db, "saved_reports", r.id), { payload });
+      });
+      const results = await withWriteTimeout(Promise.allSettled([...deletePromises, ...savePromises]), 12000);
       if (results.some(r => r.status === 'rejected')) {
         throw new Error('Partial saved reports sync failure');
       }
@@ -753,7 +978,7 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn("Update saved reports Firestore sync error, enqueuing offline:", e);
       setIsDbConnected(false);
-      enqueueOfflineAction('saved_reports_batch', reps, `Guardado de reportes (${reps.length})`);
+      enqueueOfflineAction('saved_reports_batch', { changedReports, deletedIds }, `Guardado de reportes (${changedReports.length})`);
       setPendingSyncCount(getPendingSyncCount());
     }
   };
@@ -764,17 +989,21 @@ const App: React.FC = () => {
 
     if (backup.company && typeof backup.company === 'object') {
       const nextCompany = backup.company;
+      companyRef.current = nextCompany;
       setCompany(nextCompany);
       localStorage.setItem('cache_company', JSON.stringify(nextCompany));
       if (!navigator.onLine) {
         enqueueOfflineAction('company_config', nextCompany, `Restauración empresa: ${nextCompany.name || 'Compañía'}`);
       } else {
-        syncTasks.push(
-          setDoc(doc(db, "config", "company"), { payload: compressData(nextCompany) }).catch(() => {
-            anyOfflineOrError = true;
-            enqueueOfflineAction('company_config', nextCompany, `Restauración empresa: ${nextCompany.name || 'Compañía'}`);
-          })
-        );
+        const payload = compressData(nextCompany);
+        if (payload) {
+          syncTasks.push(
+            withWriteTimeout(setDoc(doc(db, "config", "company"), { payload }), 12000).catch(() => {
+              anyOfflineOrError = true;
+              enqueueOfflineAction('company_config', nextCompany, `Restauración empresa: ${nextCompany.name || 'Compañía'}`);
+            })
+          );
+        }
       }
     }
 
@@ -804,39 +1033,47 @@ const App: React.FC = () => {
             : DEFAULT_SYSTEM_UPDATE.changelog,
         },
       };
+      settingsRef.current = mergedSettings;
       setSettings(mergedSettings);
       localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
       if (!navigator.onLine) {
         enqueueOfflineAction('settings_config', mergedSettings, 'Restauración de configuración global');
       } else {
-        syncTasks.push(
-          setDoc(doc(db, "config", "settings"), { payload: compressData(mergedSettings) }).catch(() => {
-            anyOfflineOrError = true;
-            enqueueOfflineAction('settings_config', mergedSettings, 'Restauración de configuración global');
-          })
-        );
+        const payload = compressData(mergedSettings);
+        if (payload) {
+          syncTasks.push(
+            withWriteTimeout(setDoc(doc(db, "config", "settings"), { payload }), 12000).catch(() => {
+              anyOfflineOrError = true;
+              enqueueOfflineAction('settings_config', mergedSettings, 'Restauración de configuración global');
+            })
+          );
+        }
       }
     }
 
     if (Array.isArray(backup.employees)) {
       const validEmps = backup.employees.filter(e => e && typeof e.id === 'string' && e.id.trim().length > 0);
       const nextIds = new Set(validEmps.map(e => e.id));
-      const deletedEmpIds = employees.filter(e => !nextIds.has(e.id)).map(e => e.id);
+      const deletedEmpIds = employeesRef.current.filter(e => !nextIds.has(e.id)).map(e => e.id);
+      employeesRef.current = validEmps;
       setEmployees(validEmps);
       localStorage.setItem('cache_employees', JSON.stringify(validEmps));
       if (!navigator.onLine) {
-        enqueueOfflineAction('employee_batch', { emps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
+        enqueueOfflineAction('employee_batch', { changedEmps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
       } else {
         const empOps = [
           ...deletedEmpIds.map(id => deleteDoc(doc(db, "employees", id))),
           ...validEmps.map(e => setDoc(doc(db, "employees", e.id), { payload: compressData(e) })),
         ];
         syncTasks.push(
-          Promise.allSettled(empOps).then(results => {
+          withWriteTimeout(Promise.allSettled(empOps), 15000).then(results => {
             if (results.some(r => r.status === 'rejected')) {
               anyOfflineOrError = true;
-              enqueueOfflineAction('employee_batch', { emps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
+              enqueueOfflineAction('employee_batch', { changedEmps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
             }
+          }).catch(() => {
+            anyOfflineOrError = true;
+            enqueueOfflineAction('employee_batch', { changedEmps: validEmps, deletedIds: deletedEmpIds }, `Restauración de colaboradores (${validEmps.length})`);
           })
         );
       }
@@ -845,22 +1082,26 @@ const App: React.FC = () => {
     if (Array.isArray(backup.payments)) {
       const validPayments = backup.payments.filter(p => p && typeof p.id === 'string' && p.id.trim().length > 0);
       const nextIds = new Set(validPayments.map(p => p.id));
-      const deletedPayIds = payments.filter(p => !nextIds.has(p.id)).map(p => p.id);
+      const deletedPayIds = paymentsRef.current.filter(p => !nextIds.has(p.id)).map(p => p.id);
+      paymentsRef.current = validPayments;
       setPayments(validPayments);
       localStorage.setItem('cache_payments', JSON.stringify(validPayments));
       if (!navigator.onLine) {
-        enqueueOfflineAction('payment_batch', { payments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
+        enqueueOfflineAction('payment_batch', { changedPayments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
       } else {
         const payOps = [
           ...deletedPayIds.map(id => deleteDoc(doc(db, "payments", id))),
           ...validPayments.map(p => setDoc(doc(db, "payments", p.id), { payload: compressData(p) })),
         ];
         syncTasks.push(
-          Promise.allSettled(payOps).then(results => {
+          withWriteTimeout(Promise.allSettled(payOps), 15000).then(results => {
             if (results.some(r => r.status === 'rejected')) {
               anyOfflineOrError = true;
-              enqueueOfflineAction('payment_batch', { payments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
+              enqueueOfflineAction('payment_batch', { changedPayments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
             }
+          }).catch(() => {
+            anyOfflineOrError = true;
+            enqueueOfflineAction('payment_batch', { changedPayments: validPayments, deletedIds: deletedPayIds }, `Restauración de pagos (${validPayments.length})`);
           })
         );
       }
@@ -869,7 +1110,8 @@ const App: React.FC = () => {
     if (Array.isArray(backup.attendance)) {
       const validAtt = backup.attendance.filter(a => a && typeof a.id === 'string' && a.id.trim().length > 0);
       const nextIds = new Set(validAtt.map(a => a.id));
-      const deletedAttIds = attendance.filter(a => !nextIds.has(a.id)).map(a => a.id);
+      const deletedAttIds = attendanceRef.current.filter(a => !nextIds.has(a.id)).map(a => a.id);
+      attendanceRef.current = validAtt;
       setAttendance(validAtt);
       localStorage.setItem('cache_attendance', JSON.stringify(validAtt));
       if (!navigator.onLine) {
@@ -882,10 +1124,10 @@ const App: React.FC = () => {
       } else {
         const attOps = [
           ...deletedAttIds.map(id => deleteDoc(doc(db, "attendance", id))),
-          ...validAtt.map(a => setDoc(doc(db, "attendance", a.id), { payload: compressData(a), timestamp: a.timestamp })),
+          ...validAtt.map(a => setDoc(doc(db, "attendance", a.id), { payload: compressData(a), timestamp: a.timestamp || new Date().toISOString() })),
         ];
         syncTasks.push(
-          Promise.allSettled(attOps).then(results => {
+          withWriteTimeout(Promise.allSettled(attOps), 15000).then(results => {
             if (results.some(r => r.status === 'rejected')) {
               anyOfflineOrError = true;
               if (deletedAttIds.length > 0) {
@@ -895,6 +1137,14 @@ const App: React.FC = () => {
                 enqueueOfflineAction('attendance_batch', validAtt, `Restauración de asistencias (${validAtt.length})`);
               }
             }
+          }).catch(() => {
+            anyOfflineOrError = true;
+            if (deletedAttIds.length > 0) {
+              enqueueOfflineAction('attendance_delete', deletedAttIds, `Limpieza de asistencia por respaldo (${deletedAttIds.length})`);
+            }
+            if (validAtt.length > 0) {
+              enqueueOfflineAction('attendance_batch', validAtt, `Restauración de asistencias (${validAtt.length})`);
+            }
           })
         );
       }
@@ -903,22 +1153,26 @@ const App: React.FC = () => {
     if (Array.isArray(backup.savedReports)) {
       const validReps = backup.savedReports.filter(r => r && typeof r.id === 'string' && r.id.trim().length > 0);
       const nextIds = new Set(validReps.map(r => r.id));
-      const deletedRepIds = savedReports.filter(r => !nextIds.has(r.id)).map(r => r.id);
+      const deletedRepIds = savedReportsRef.current.filter(r => !nextIds.has(r.id)).map(r => r.id);
+      savedReportsRef.current = validReps;
       setSavedReports(validReps);
       localStorage.setItem('cache_saved_reports', JSON.stringify(validReps));
       if (!navigator.onLine) {
-        enqueueOfflineAction('saved_reports_batch', validReps, `Restauración de reportes (${validReps.length})`);
+        enqueueOfflineAction('saved_reports_batch', { changedReports: validReps, deletedIds: deletedRepIds }, `Restauración de reportes (${validReps.length})`);
       } else {
         const repOps = [
           ...deletedRepIds.map(id => deleteDoc(doc(db, "saved_reports", id))),
           ...validReps.map(r => setDoc(doc(db, "saved_reports", r.id), { payload: compressData(r) })),
         ];
         syncTasks.push(
-          Promise.allSettled(repOps).then(results => {
+          withWriteTimeout(Promise.allSettled(repOps), 15000).then(results => {
             if (results.some(r => r.status === 'rejected')) {
               anyOfflineOrError = true;
-              enqueueOfflineAction('saved_reports_batch', validReps, `Restauración de reportes (${validReps.length})`);
+              enqueueOfflineAction('saved_reports_batch', { changedReports: validReps, deletedIds: deletedRepIds }, `Restauración de reportes (${validReps.length})`);
             }
+          }).catch(() => {
+            anyOfflineOrError = true;
+            enqueueOfflineAction('saved_reports_batch', { changedReports: validReps, deletedIds: deletedRepIds }, `Restauración de reportes (${validReps.length})`);
           })
         );
       }

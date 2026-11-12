@@ -18,6 +18,7 @@ export interface OfflineAction {
   payload: any;
   timestamp: number;
   description: string;
+  retries?: number;
 }
 
 const STORAGE_KEY = 'asistup_offline_sync_queue';
@@ -51,7 +52,8 @@ export const enqueueOfflineAction = (
     type,
     payload,
     timestamp: Date.now(),
-    description
+    description,
+    retries: 0
   };
 
   // Optimización de colas: si es una configuración (company o settings), reemplazar la previa para evitar envíos redundantes
@@ -81,6 +83,114 @@ export const getPendingSyncCount = (): number => {
   return getOfflineQueue().length;
 };
 
+export const hasPendingOfflineForTypes = (types: OfflineActionType[]): boolean => {
+  const typeSet = new Set(types);
+  return getOfflineQueue().some(item => typeSet.has(item.type));
+};
+
+/**
+ * Reconcilia los datos recibidos del servidor con cambios locales aún pendientes en la cola offline,
+ * evitando que una actualización remota oculte registros locales todavía no sincronizados.
+ */
+export const mergePendingEntityQueue = <T extends { id: string }>(
+  serverItems: T[],
+  batchTypes: OfflineActionType[],
+  singleAddType?: OfflineActionType,
+  singleDeleteType?: OfflineActionType
+): T[] => {
+  const queue = getOfflineQueue();
+  const relevant = queue.filter(
+    item =>
+      batchTypes.includes(item.type) ||
+      (singleAddType && item.type === singleAddType) ||
+      (singleDeleteType && item.type === singleDeleteType)
+  );
+  if (relevant.length === 0) return serverItems;
+
+  const map = new Map<string, T>(serverItems.map(item => [item.id, item]));
+
+  for (const action of relevant) {
+    if (action.type === 'attendance_record' && action.payload?.id) {
+      map.set(action.payload.id, action.payload as T);
+    } else if (action.type === 'attendance_batch' && Array.isArray(action.payload)) {
+      for (const r of action.payload) {
+        if (r && r.id) map.set(r.id, r as T);
+      }
+    } else if (action.type === 'attendance_delete' && Array.isArray(action.payload)) {
+      for (const delId of action.payload) {
+        map.delete(delId);
+      }
+    } else if (action.type === 'employee_single' && action.payload?.id) {
+      map.set(action.payload.id, action.payload as T);
+    } else if (action.type === 'employee_delete' && typeof action.payload === 'string') {
+      map.delete(action.payload);
+    } else if (action.type === 'employee_batch' && action.payload) {
+      const deletedIds: string[] = action.payload.deletedIds || [];
+      const changed: T[] = action.payload.changedEmps || action.payload.emps || [];
+      for (const delId of deletedIds) map.delete(delId);
+      for (const emp of changed) {
+        if (emp && emp.id) map.set(emp.id, emp);
+      }
+    } else if (action.type === 'payment_batch' && action.payload) {
+      const deletedIds: string[] = action.payload.deletedIds || [];
+      const changed: T[] = action.payload.changedPayments || action.payload.payments || [];
+      for (const delId of deletedIds) map.delete(delId);
+      for (const pay of changed) {
+        if (pay && pay.id) map.set(pay.id, pay);
+      }
+    } else if (action.type === 'saved_reports_batch' && action.payload) {
+      if (Array.isArray(action.payload)) {
+        for (const rep of action.payload) {
+          if (rep && rep.id) map.set(rep.id, rep as T);
+        }
+      } else {
+        const deletedIds: string[] = action.payload.deletedIds || [];
+        const changed: T[] = action.payload.changedReports || action.payload.reports || [];
+        for (const delId of deletedIds) map.delete(delId);
+        for (const rep of changed) {
+          if (rep && rep.id) map.set(rep.id, rep);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
+};
+
+const runWithTimeout = <T>(promise: Promise<T>, ms = 10000): Promise<T> => {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('FIRESTORE_SYNC_TIMEOUT')), ms);
+    promise
+      .then(res => {
+        window.clearTimeout(timer);
+        resolve(res);
+      })
+      .catch(err => {
+        window.clearTimeout(timer);
+        reject(err);
+      });
+  });
+};
+
+const isTransientSyncError = (err: any): boolean => {
+  const code = String(err?.code || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
+  if (
+    code.includes('unavailable') ||
+    code.includes('deadline-exceeded') ||
+    code.includes('aborted') ||
+    code.includes('internal') ||
+    code.includes('resource-exhausted') ||
+    msg.includes('timeout') ||
+    msg.includes('network') ||
+    msg.includes('offline') ||
+    msg.includes('failed to fetch')
+  ) {
+    return true;
+  }
+  return false;
+};
+
 /**
  * Procesa la cola de sincronización offline contra Firestore.
  * Cada elemento procesado exitosamente se retira de la cola.
@@ -100,10 +210,15 @@ export const processOfflineSync = async (
         case 'attendance_record': {
           const rec = item.payload;
           if (rec && rec.id) {
-            await setDoc(doc(db, "attendance", rec.id), {
-              payload: compressData(rec),
-              timestamp: rec.timestamp
-            });
+            const payload = compressData(rec);
+            if (payload) {
+              await runWithTimeout(
+                setDoc(doc(db, "attendance", rec.id), {
+                  payload,
+                  timestamp: rec.timestamp || new Date().toISOString()
+                })
+              );
+            }
           }
           break;
         }
@@ -112,10 +227,15 @@ export const processOfflineSync = async (
           const recs = item.payload;
           if (Array.isArray(recs)) {
             for (const r of recs) {
-              await setDoc(doc(db, "attendance", r.id), {
-                payload: compressData(r),
-                timestamp: r.timestamp
-              });
+              if (!r || !r.id) continue;
+              const payload = compressData(r);
+              if (!payload) continue;
+              await runWithTimeout(
+                setDoc(doc(db, "attendance", r.id), {
+                  payload,
+                  timestamp: r.timestamp || new Date().toISOString()
+                })
+              );
             }
           }
           break;
@@ -125,7 +245,8 @@ export const processOfflineSync = async (
           const ids = item.payload;
           if (Array.isArray(ids)) {
             for (const delId of ids) {
-              await deleteDoc(doc(db, "attendance", delId)).catch(() => {});
+              if (!delId) continue;
+              await runWithTimeout(deleteDoc(doc(db, "attendance", delId)));
             }
           }
           break;
@@ -134,9 +255,10 @@ export const processOfflineSync = async (
         case 'employee_single': {
           const emp = item.payload;
           if (emp && emp.id) {
-            await setDoc(doc(db, "employees", emp.id), {
-              payload: compressData(emp)
-            });
+            const payload = compressData(emp);
+            if (payload) {
+              await runWithTimeout(setDoc(doc(db, "employees", emp.id), { payload }));
+            }
           }
           break;
         }
@@ -144,40 +266,46 @@ export const processOfflineSync = async (
         case 'employee_delete': {
           const empId = item.payload;
           if (empId) {
-            await deleteDoc(doc(db, "employees", empId));
+            await runWithTimeout(deleteDoc(doc(db, "employees", empId)));
           }
           break;
         }
 
         case 'employee_batch': {
-          const { emps, deletedIds } = item.payload;
+          const deletedIds = item.payload?.deletedIds || [];
+          const empList = item.payload?.changedEmps || item.payload?.emps || [];
           if (Array.isArray(deletedIds)) {
             for (const delId of deletedIds) {
-              await deleteDoc(doc(db, "employees", delId)).catch(() => {});
+              if (!delId) continue;
+              await runWithTimeout(deleteDoc(doc(db, "employees", delId)));
             }
           }
-          if (Array.isArray(emps)) {
-            for (const e of emps) {
-              await setDoc(doc(db, "employees", e.id), {
-                payload: compressData(e)
-              });
+          if (Array.isArray(empList)) {
+            for (const e of empList) {
+              if (!e || !e.id) continue;
+              const payload = compressData(e);
+              if (!payload) continue;
+              await runWithTimeout(setDoc(doc(db, "employees", e.id), { payload }));
             }
           }
           break;
         }
 
         case 'payment_batch': {
-          const { payments, deletedIds } = item.payload;
+          const deletedIds = item.payload?.deletedIds || [];
+          const payList = item.payload?.changedPayments || item.payload?.payments || [];
           if (Array.isArray(deletedIds)) {
             for (const delId of deletedIds) {
-              await deleteDoc(doc(db, "payments", delId)).catch(() => {});
+              if (!delId) continue;
+              await runWithTimeout(deleteDoc(doc(db, "payments", delId)));
             }
           }
-          if (Array.isArray(payments)) {
-            for (const p of payments) {
-              await setDoc(doc(db, "payments", p.id), {
-                payload: compressData(p)
-              });
+          if (Array.isArray(payList)) {
+            for (const p of payList) {
+              if (!p || !p.id) continue;
+              const payload = compressData(p);
+              if (!payload) continue;
+              await runWithTimeout(setDoc(doc(db, "payments", p.id), { payload }));
             }
           }
           break;
@@ -186,9 +314,10 @@ export const processOfflineSync = async (
         case 'company_config': {
           const comp = item.payload;
           if (comp) {
-            await setDoc(doc(db, "config", "company"), {
-              payload: compressData(comp)
-            });
+            const payload = compressData(comp);
+            if (payload) {
+              await runWithTimeout(setDoc(doc(db, "config", "company"), { payload }));
+            }
           }
           break;
         }
@@ -196,20 +325,33 @@ export const processOfflineSync = async (
         case 'settings_config': {
           const sett = item.payload;
           if (sett) {
-            await setDoc(doc(db, "config", "settings"), {
-              payload: compressData(sett)
-            });
+            const payload = compressData(sett);
+            if (payload) {
+              await runWithTimeout(setDoc(doc(db, "config", "settings"), { payload }));
+            }
           }
           break;
         }
 
         case 'saved_reports_batch': {
-          const reps = item.payload;
+          const rawPayload = item.payload;
+          const deletedIds = !Array.isArray(rawPayload) ? (rawPayload?.deletedIds || []) : [];
+          const reps = Array.isArray(rawPayload)
+            ? rawPayload
+            : (rawPayload?.changedReports || rawPayload?.reports || []);
+
+          if (Array.isArray(deletedIds)) {
+            for (const delId of deletedIds) {
+              if (!delId) continue;
+              await runWithTimeout(deleteDoc(doc(db, "saved_reports", delId)));
+            }
+          }
           if (Array.isArray(reps)) {
             for (const r of reps) {
-              await setDoc(doc(db, "saved_reports", r.id), {
-                payload: compressData(r)
-              });
+              if (!r || !r.id) continue;
+              const payload = compressData(r);
+              if (!payload) continue;
+              await runWithTimeout(setDoc(doc(db, "saved_reports", r.id), { payload }));
             }
           }
           break;
@@ -222,11 +364,21 @@ export const processOfflineSync = async (
       // Al completar sin excepción, eliminar de la cola
       removeOfflineAction(item.id);
       syncedCount++;
-    } catch (err) {
+    } catch (err: any) {
       console.warn(`Error al sincronizar acción offline [${item.type}]:`, err);
       errors++;
-      // Si falló por conexión, interrumpir el bucle para evitar saturación y reintentar después
-      break;
+      if (isTransientSyncError(err)) {
+        // Error de red/conexión transitorio: detener este ciclo y reintentar después manteniendo orden
+        break;
+      }
+      // Para errores no transitorios (datos inválidos), contar reintentos para no bloquear indefinidamente la cola
+      const currentQueue = getOfflineQueue();
+      const retries = (item.retries || 0) + 1;
+      if (retries >= 5) {
+        saveOfflineQueue(currentQueue.filter(q => q.id !== item.id));
+      } else {
+        saveOfflineQueue(currentQueue.map(q => q.id === item.id ? { ...q, retries } : q));
+      }
     }
   }
 
