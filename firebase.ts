@@ -3,6 +3,7 @@ import {
   initializeFirestore, 
   persistentLocalCache, 
   persistentMultipleTabManager,
+  enableNetwork,
   collection, 
   doc, 
   onSnapshot, 
@@ -22,7 +23,7 @@ import LZString from "lz-string";
  */
 
 const firebaseConfig = {
-  apiKey: (process.env.API_KEY as string) || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: "asist-up-6ccd1.firebaseapp.com",
   projectId: "asist-up-6ccd1",
   storageBucket: "asist-up-6ccd1.firebasestorage.app",
@@ -71,4 +72,4 @@ export const decompressData = (compressed: any): any => {
   }
 };
 
-export { db, collection, doc, onSnapshot, setDoc, addDoc, updateDoc, deleteDoc };
+export { db, enableNetwork, collection, doc, onSnapshot, setDoc, addDoc, updateDoc, deleteDoc };

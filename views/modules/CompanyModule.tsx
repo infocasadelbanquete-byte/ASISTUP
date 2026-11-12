@@ -28,12 +28,12 @@ const CompanyModule: React.FC<CompanyModuleProps> = ({ company, onUpdate, role }
       setModalFeedback({ isOpen: true, title: "Acceso Denegado", message: "Solo el Super Administrador puede editar los datos de la empresa.", type: "error" });
       return;
     }
-    
+
     if (formData.ruc.length !== 13 || !formData.ruc.endsWith('001')) {
       setModalFeedback({ isOpen: true, title: "Dato Inválido", message: "El RUC debe tener estrictamente 13 dígitos y terminar en '001'.", type: "error" });
       return;
     }
-    
+
     const isMobile = formData.phone.startsWith('09');
     if (isMobile && formData.phone.length !== 10) {
       setModalFeedback({ isOpen: true, title: "Dato Inválido", message: "El celular debe tener estrictamente 10 dígitos.", type: "error" });

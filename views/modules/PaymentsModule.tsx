@@ -15,7 +15,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
   const [isPayOpen, setIsPayOpen] = useState(false);
   const [selectedPayForPrint, setSelectedPayForPrint] = useState<Payment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const [payForm, setPayForm] = useState<Partial<Payment>>({
     type: 'Salary',
     amount: 0,
@@ -55,22 +55,22 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         return;
     }
 
-    const newPay: Payment = { 
-      ...payForm, 
-      id: Math.random().toString(36).substr(2, 15), 
+    const newPay: Payment = {
+      ...payForm,
+      id: Math.random().toString(36).substr(2, 15),
       date: new Date(payForm.date!).toISOString(),
       voucherCode: generateSequentialCode(),
       checkDetails: payForm.method === 'Cheque' ? checkData : undefined,
       dualDetails: payForm.method === 'Dual' ? { ...dualData } : undefined,
-      status: 'paid' 
+      status: 'paid'
     } as Payment;
 
     onUpdate([newPay, ...payments]);
     setIsPayOpen(false);
     setFeedback({ isOpen: true, title: "Pago Sincronizado", message: `Voucher ${newPay.voucherCode} registrado en tesorería.`, type: "success" });
-    
+
     setPayForm({
-      type: 'Salary', amount: 0, method: 'Efectivo', concept: '', 
+      type: 'Salary', amount: 0, method: 'Efectivo', concept: '',
       date: new Date().toISOString().split('T')[0],
       month: 'FEBRERO', year: '2026', status: 'paid'
     });
@@ -122,11 +122,11 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         </div>
       </Modal>
 
-      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso">
+      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso" maxWidth="max-w-4xl">
         {selectedPayForPrint && (() => {
            const emp = employees.find(e => e.id === selectedPayForPrint.employeeId);
            return (
-             <div className="p-8 space-y-8 bg-white" id="payment-voucher-print">
+             <div className="a4-sheet p-8 space-y-8 bg-white border shadow-lg print:border-none print:shadow-none print:p-0" id="payment-voucher-print">
                 <div className="flex justify-between items-center border-b-4 border-black pb-8">
                    <div className="flex items-center gap-6">
                       <div className="w-20 h-20 border-2 border-black flex items-center justify-center overflow-hidden">
@@ -161,7 +161,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                    <p className="text-[9px] font-black text-slate-400 uppercase mb-2">POR CONCEPTO DE:</p>
                    <p className="text-[12px] text-slate-800 font-black italic">"{selectedPayForPrint.concept}"</p>
                 </div>
-                
+
                 <div className="bg-slate-900 p-8 rounded-2xl text-white flex justify-between items-center shadow-2xl">
                    <p className="text-[16px] font-[950] uppercase tracking-[0.4em]">VALOR PAGADO</p>
                    <p className="text-5xl font-[950] tracking-tighter">${selectedPayForPrint.amount.toFixed(2)}</p>

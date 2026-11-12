@@ -1,19 +1,34 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings, SavedReport } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
-import { db, collection, doc, onSnapshot, setDoc, addDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
+import { db, enableNetwork, collection, doc, onSnapshot, setDoc, deleteDoc, compressData, decompressData } from './firebase.ts';
+import { DEFAULT_SYSTEM_UPDATE } from './constants.tsx';
+import { enqueueOfflineAction, processOfflineSync, getPendingSyncCount } from './utils/offlineSync.ts';
 
 const App: React.FC = () => {
   const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
   const [view, setView] = useState<'selection' | 'admin' | 'attendance' | 'setup'>('selection');
-  const [isLoadingData, setIsLoadingData] = useState(true);
-  const [isDbConnected, setIsDbConnected] = useState(false);
+  const [isDbConnected, setIsDbConnected] = useState(() => navigator.onLine);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
-  
+
+  // Estado de conectividad y cola offline
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(() => getPendingSyncCount());
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const isSyncingRef = useRef<boolean>(false);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const [syncFeedbackBanner, setSyncFeedbackBanner] = useState<{ show: boolean; message: string; type: 'success' | 'info' | 'warning' } | null>(null);
+
+  // Inicialización directa para evitar pantallas en blanco si el dispositivo inicia sin internet
+  const [isLoadingData, setIsLoadingData] = useState(() => {
+    if (!navigator.onLine) return false;
+    const hasCache = localStorage.getItem('cache_employees') || localStorage.getItem('cache_company');
+    return !hasCache;
+  });
+
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryRuc, setRecoveryRuc] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
@@ -28,11 +43,47 @@ const App: React.FC = () => {
   const [modalAlert, setModalAlert] = useState<{isOpen: boolean, title: string, message: string, type: 'info' | 'success' | 'error'}>({
     isOpen: false, title: '', message: '', type: 'info'
   });
-  
-  const [company, setCompany] = useState<CompanyConfig | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
+
+  const [company, setCompany] = useState<CompanyConfig | null>(() => {
+    try {
+      const cached = localStorage.getItem('cache_company');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_employees');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_attendance');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [payments, setPayments] = useState<Payment[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_payments');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [savedReports, setSavedReports] = useState<SavedReport[]>(() => {
+    try {
+      const cached = localStorage.getItem('cache_saved_reports');
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   const defaultSettings: GlobalSettings = {
     sbu: 482.00,
@@ -44,10 +95,34 @@ const App: React.FC = () => {
       monFri: { in1: '08:30', out1: '13:00', in2: '15:00', out2: '18:00' },
       sat: { in: '08:30', out: '13:00' },
       halfDayOff: 'Miércoles tarde'
-    }
+    },
+    systemUpdate: DEFAULT_SYSTEM_UPDATE
   };
 
-  const [settings, setSettings] = useState<GlobalSettings>(defaultSettings);
+  const [settings, setSettings] = useState<GlobalSettings>(() => {
+    try {
+      const cached = localStorage.getItem('cache_settings');
+      return cached ? { ...defaultSettings, ...JSON.parse(cached) } : defaultSettings;
+    } catch (e) {
+      return defaultSettings;
+    }
+  });
+
+  useEffect(() => {
+    if (settings.systemUpdate && settings.systemUpdate.version) {
+      const currentInstalled = localStorage.getItem('asistup_device_version');
+      if (currentInstalled !== settings.systemUpdate.version) {
+        if ("Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(`ACTUALIZACIÓN OBLIGATORIA DISPONIBLE: ${settings.systemUpdate.version}`, {
+              body: `${settings.systemUpdate.title}. Actualización obligatoria requerida al abrir el terminal antes de marcar.`,
+              icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='none' stroke='%233b82f6' stroke-width='6'/%3E%3C/svg%3E"
+            });
+          } catch (e) {}
+        }
+      }
+    }
+  }, [settings.systemUpdate]);
 
   useEffect(() => {
     if (!appMode) {
@@ -70,6 +145,242 @@ const App: React.FC = () => {
     unsubscribesRef.current = [];
   };
 
+  const attachListeners = useCallback(() => {
+    cleanListeners();
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    const scheduleReconnect = () => {
+      if (!navigator.onLine || reconnectTimerRef.current) return;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (navigator.onLine) {
+          enableNetwork(db).catch(() => {});
+          attachListeners();
+        }
+      }, 5000);
+    };
+
+    const handleFirestoreError = (module: string, error: any) => {
+      console.warn(`Firestore Error [${module}]:`, error?.message || error);
+      setIsDbConnected(false);
+
+      const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          if (module === 'Company') setCompany(data);
+          if (module === 'Settings') setSettings(data);
+          if (module === 'Employees') setEmployees(data);
+          if (module === 'Attendance') setAttendance(data);
+          if (module === 'Payments') setPayments(data);
+          if (module === 'SavedReports') setSavedReports(data);
+        } catch (e) {
+          console.error("Error al restaurar caché:", e);
+        }
+      }
+      setIsLoadingData(false);
+      scheduleReconnect();
+    };
+
+    try {
+      const unsubCompany = onSnapshot(doc(db, "config", "company"), { includeMetadataChanges: true }, (docSnap) => {
+        if (!docSnap.metadata.fromCache && navigator.onLine) {
+          setIsDbConnected(true);
+        } else if (navigator.onLine && docSnap.exists()) {
+          setIsDbConnected(true);
+        }
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const decompressed = data.payload ? decompressData(data.payload as string) : data as any;
+          if (decompressed) {
+            setCompany(decompressed);
+            localStorage.setItem('cache_company', JSON.stringify(decompressed));
+          }
+        } else {
+          const cached = localStorage.getItem('cache_company');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              setCompany(parsed);
+              setDoc(doc(db, "config", "company"), { payload: compressData(parsed) }).catch(() => {});
+            } catch (e) {}
+          }
+        }
+        setIsLoadingData(false);
+      }, (err) => handleFirestoreError('Company', err));
+      unsubscribesRef.current.push(unsubCompany);
+
+      const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
+        if (!docSnap.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
+          if (dbSettings) {
+            const dbVersion = dbSettings.systemUpdate?.version;
+            const isCodebaseNewer = !dbVersion || dbVersion !== DEFAULT_SYSTEM_UPDATE.version;
+
+            const effectiveUpdate = isCodebaseNewer
+              ? DEFAULT_SYSTEM_UPDATE
+              : (dbSettings.systemUpdate || DEFAULT_SYSTEM_UPDATE);
+
+            const mergedSettings = {
+              ...defaultSettings,
+              ...dbSettings,
+              systemUpdate: effectiveUpdate,
+              schedule: {
+                ...defaultSettings.schedule,
+                ...(dbSettings.schedule || {}),
+                monFri: {
+                  ...defaultSettings.schedule.monFri,
+                  ...(dbSettings.schedule?.monFri || {})
+                },
+                sat: {
+                  ...defaultSettings.schedule.sat,
+                  ...(dbSettings.schedule?.sat || {})
+                }
+              }
+            };
+            setSettings(mergedSettings);
+            localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
+
+            if (isCodebaseNewer) {
+              setDoc(doc(db, "config", "settings"), { payload: compressData(mergedSettings) }).catch(() => {});
+            }
+          }
+        } else {
+          const cached = localStorage.getItem('cache_settings');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              const withLatestUpdate = { ...defaultSettings, ...parsed, systemUpdate: DEFAULT_SYSTEM_UPDATE };
+              setSettings(withLatestUpdate);
+              setDoc(doc(db, "config", "settings"), { payload: compressData(withLatestUpdate) }).catch(() => {});
+            } catch (e) {
+              setSettings(defaultSettings);
+              setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
+            }
+          } else {
+            setSettings(defaultSettings);
+            setDoc(doc(db, "config", "settings"), { payload: compressData(defaultSettings) }).catch(() => {});
+          }
+        }
+      }, (err) => handleFirestoreError('Settings', err));
+      unsubscribesRef.current.push(unsubSettings);
+
+      const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
+        }).filter(Boolean) as Employee[];
+
+        if (data.length > 0) {
+          setEmployees(data);
+          localStorage.setItem('cache_employees', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_employees');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setEmployees(parsed);
+                parsed.forEach(e => {
+                  setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
+      }, (err) => handleFirestoreError('Employees', err));
+      unsubscribesRef.current.push(unsubEmployees);
+
+      const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
+        }).filter(Boolean) as AttendanceRecord[];
+
+        if (data.length > 0) {
+          setAttendance(data);
+          localStorage.setItem('cache_attendance', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_attendance');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setAttendance(parsed);
+                parsed.forEach(r => {
+                  setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
+      }, (err) => handleFirestoreError('Attendance', err));
+      unsubscribesRef.current.push(unsubAttendance);
+
+      const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
+        }).filter(Boolean) as Payment[];
+
+        if (data.length > 0) {
+          setPayments(data);
+          localStorage.setItem('cache_payments', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_payments');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setPayments(parsed);
+                parsed.forEach(p => {
+                  setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(() => {});
+                });
+              }
+            } catch (e) {}
+          }
+        }
+      }, (err) => handleFirestoreError('Payments', err));
+      unsubscribesRef.current.push(unsubPayments);
+
+      const unsubSavedReports = onSnapshot(collection(db, "saved_reports"), (snapshot) => {
+        if (!snapshot.metadata.fromCache && navigator.onLine) setIsDbConnected(true);
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
+        }).filter(Boolean) as SavedReport[];
+
+        if (data.length > 0) {
+          setSavedReports(data);
+          localStorage.setItem('cache_saved_reports', JSON.stringify(data));
+        } else {
+          const cached = localStorage.getItem('cache_saved_reports');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setSavedReports(parsed);
+              }
+            } catch (e) {}
+          }
+        }
+      }, (err) => handleFirestoreError('SavedReports', err));
+      unsubscribesRef.current.push(unsubSavedReports);
+
+    } catch (e) {
+      console.error("Initial load failed:", e);
+      setIsLoadingData(false);
+    }
+  }, []);
+
   useEffect(() => {
     if ("Notification" in window) {
       Notification.requestPermission();
@@ -83,104 +394,24 @@ const App: React.FC = () => {
       }
     };
     window.addEventListener('keydown', handleEsc);
-    
-    cleanListeners();
 
-    const handleFirestoreError = (module: string, error: any) => {
-      console.warn(`Firestore Error [${module}]:`, error.message || error);
-      setIsDbConnected(false);
-      
-      const cached = localStorage.getItem(`cache_${module.toLowerCase()}`);
-      if (cached) {
-        const data = JSON.parse(cached);
-        if (module === 'Company') setCompany(data);
-        if (module === 'Settings') setSettings(data);
-        if (module === 'Employees') setEmployees(data);
-        if (module === 'Attendance') setAttendance(data);
-        if (module === 'Payments') setPayments(data);
-      }
+    // Temporizador de seguridad para garantizar que la pantalla inicial nunca se quede en blanco
+    const safetyTimer = setTimeout(() => {
       setIsLoadingData(false);
-    };
+    }, 1500);
 
-    try {
-      const unsubCompany = onSnapshot(doc(db, "config", "company"), (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const decompressed = data.payload ? decompressData(data.payload as string) : data as any;
-          setCompany(decompressed);
-          localStorage.setItem('cache_company', JSON.stringify(decompressed));
-        }
-        setIsDbConnected(true);
-        setIsLoadingData(false);
-      }, (err) => handleFirestoreError('Company', err));
-      unsubscribesRef.current.push(unsubCompany);
-
-      const unsubSettings = onSnapshot(doc(db, "config", "settings"), (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const dbSettings = data.payload ? decompressData(data.payload as string) : data as any;
-          const mergedSettings = {
-            ...defaultSettings,
-            ...dbSettings,
-            schedule: {
-              ...defaultSettings.schedule,
-              ...(dbSettings.schedule || {}),
-              monFri: {
-                ...defaultSettings.schedule.monFri,
-                ...(dbSettings.schedule?.monFri || {})
-              },
-              sat: {
-                ...defaultSettings.schedule.sat,
-                ...(dbSettings.schedule?.sat || {})
-              }
-            }
-          };
-          setSettings(mergedSettings);
-          localStorage.setItem('cache_settings', JSON.stringify(mergedSettings));
-        }
-      }, (err) => handleFirestoreError('Settings', err));
-      unsubscribesRef.current.push(unsubSettings);
-
-      const unsubEmployees = onSnapshot(collection(db, "employees"), (snapshot) => {
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Employee[];
-        setEmployees(data);
-        localStorage.setItem('cache_employees', JSON.stringify(data));
-      }, (err) => handleFirestoreError('Employees', err));
-      unsubscribesRef.current.push(unsubEmployees);
-
-      const unsubAttendance = onSnapshot(collection(db, "attendance"), (snapshot) => {
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as AttendanceRecord[];
-        setAttendance(data);
-        localStorage.setItem('cache_attendance', JSON.stringify(data));
-      }, (err) => handleFirestoreError('Attendance', err));
-      unsubscribesRef.current.push(unsubAttendance);
-
-      const unsubPayments = onSnapshot(collection(db, "payments"), (snapshot) => {
-        const data = snapshot.docs.map(d => {
-          const raw = d.data();
-          return raw.payload ? { ...decompressData(raw.payload as string), id: d.id } : { ...raw, id: d.id };
-        }) as Payment[];
-        setPayments(data);
-        localStorage.setItem('cache_payments', JSON.stringify(data));
-      }, (err) => handleFirestoreError('Payments', err));
-      unsubscribesRef.current.push(unsubPayments);
-
-    } catch (e) {
-      console.error("Initial load failed:", e);
-      setIsLoadingData(false);
-    }
+    attachListeners();
 
     return () => {
+      clearTimeout(safetyTimer);
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       window.removeEventListener('keydown', handleEsc);
       cleanListeners();
     };
-  }, []);
+  }, [attachListeners]);
 
   const handleAdminLogin = () => {
     let role: Role | null = null;
@@ -232,54 +463,325 @@ const App: React.FC = () => {
     }
   }, [showLogoutFeedback]);
 
+  // Sincronización manual y automática contra Firestore sin intermitencias
+  const triggerSync = useCallback(async () => {
+    if (isSyncingRef.current || !navigator.onLine) return;
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      await enableNetwork(db).catch(() => {});
+      const { syncedCount, errors } = await processOfflineSync(db);
+      const remaining = getPendingSyncCount();
+      setPendingSyncCount(remaining);
+      if (errors === 0) {
+        setIsDbConnected(true);
+      }
+      if (syncedCount > 0) {
+        setSyncFeedbackBanner({
+          show: true,
+          message: `✓ Sincronización Exitosa: ${syncedCount} registro(s) sincronizado(s) con el servidor central.`,
+          type: 'success'
+        });
+        setTimeout(() => setSyncFeedbackBanner(null), 4000);
+      }
+    } catch (e) {
+      console.warn("Fallo durante sincronización offline:", e);
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      enableNetwork(db).then(() => {
+        setIsDbConnected(true);
+        attachListeners();
+      }).catch(() => {});
+      triggerSync();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setIsDbConnected(false);
+      setSyncFeedbackBanner({
+        show: true,
+        message: 'Modo Offline Activado: El sistema seguirá operando normalmente y sincronizará los cambios al volver la conexión.',
+        type: 'info'
+      });
+      setTimeout(() => setSyncFeedbackBanner(null), 5000);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Sincronización periódica y verificación de salud de conexión automática
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        if (getPendingSyncCount() > 0 && !isSyncingRef.current) {
+          triggerSync();
+        }
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, [triggerSync, attachListeners]);
+
+  const handleUpdateCompany = async (c: CompanyConfig) => {
+    setCompany(c);
+    localStorage.setItem('cache_company', JSON.stringify(c));
+    if (!navigator.onLine) {
+      enqueueOfflineAction('company_config', c, `Actualización empresa: ${c.name}`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+    try {
+      await setDoc(doc(db, "config", "company"), { payload: compressData(c) });
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update company in Firestore failed, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('company_config', c, `Actualización empresa: ${c.name}`);
+      setPendingSyncCount(getPendingSyncCount());
+    }
+  };
+
+  const handleUpdateSettings = async (s: GlobalSettings) => {
+    setSettings(s);
+    localStorage.setItem('cache_settings', JSON.stringify(s));
+    if (!navigator.onLine) {
+      enqueueOfflineAction('settings_config', s, 'Actualización de configuración general');
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+    try {
+      await setDoc(doc(db, "config", "settings"), { payload: compressData(s) });
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update settings in Firestore failed, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('settings_config', s, 'Actualización de configuración general');
+      setPendingSyncCount(getPendingSyncCount());
+    }
+  };
+
   const handleUpdateEmployees = async (emps: Employee[]) => {
     const currentIds = new Set<string>(emps.map(e => e.id));
     const previousIds = new Set<string>(employees.map(e => e.id));
+    const deletedIds: string[] = [];
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "employees", id)).catch(e => console.warn("Delete employee failed:", e));
+        deletedIds.push(id);
       }
     }
-    for (const e of emps) {
-      await setDoc(doc(db, "employees", e.id), { payload: compressData(e) }).catch(e => console.warn("Save employee failed:", e));
+
+    // Actualización inmediata en memoria y caché local
+    setEmployees(emps);
+    localStorage.setItem('cache_employees', JSON.stringify(emps));
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('employee_batch', { emps, deletedIds }, `Gestión de personal (${emps.length} colaboradores)`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    try {
+      const deletePromises = deletedIds.map(id => deleteDoc(doc(db, "employees", id)));
+      const savePromises = emps.map(e => setDoc(doc(db, "employees", e.id), { payload: compressData(e) }));
+      const results = await Promise.allSettled([...deletePromises, ...savePromises]);
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error('Partial employee sync failure');
+      }
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update employees Firestore sync error, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('employee_batch', { emps, deletedIds }, `Gestión de personal (${emps.length} colaboradores)`);
+      setPendingSyncCount(getPendingSyncCount());
     }
   };
 
   const handleUpdatePayments = async (pys: Payment[]) => {
     const currentIds = new Set<string>(pys.map(p => p.id));
     const previousIds = new Set<string>(payments.map(p => p.id));
+    const deletedIds: string[] = [];
     for (const id of previousIds) {
       if (!currentIds.has(id)) {
-        await deleteDoc(doc(db, "payments", id)).catch(e => console.warn("Delete payment failed:", e));
+        deletedIds.push(id);
       }
     }
-    for (const p of pys) {
-      if (p.id.length > 15) {
-        await addDoc(collection(db, "payments"), { payload: compressData(p) }).catch(e => console.warn("Add payment failed:", e));
-      } else {
-        await setDoc(doc(db, "payments", p.id), { payload: compressData(p) }).catch(e => console.warn("Update payment failed:", e));
+
+    setPayments(pys);
+    localStorage.setItem('cache_payments', JSON.stringify(pys));
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('payment_batch', { payments: pys, deletedIds }, `Registro de nómina y pagos (${pys.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    try {
+      const deletePromises = deletedIds.map(id => deleteDoc(doc(db, "payments", id)));
+      const savePromises = pys.map(p => setDoc(doc(db, "payments", p.id), { payload: compressData(p) }));
+      const results = await Promise.allSettled([...deletePromises, ...savePromises]);
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error('Partial payment sync failure');
       }
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update payments Firestore sync error, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('payment_batch', { payments: pys, deletedIds }, `Registro de nómina y pagos (${pys.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
     }
   };
 
   const handleUpdateAttendance = async (recs: AttendanceRecord[]) => {
-    for (const r of recs) {
-       await setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e));
+    setAttendance(prev => {
+      const recMap = new Map(recs.map(r => [r.id, r]));
+      const updated = prev.map(item => recMap.has(item.id) ? recMap.get(item.id)! : item);
+      for (const r of recs) {
+        if (!prev.some(item => item.id === r.id)) {
+          updated.push(r);
+        }
+      }
+      localStorage.setItem('cache_attendance', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('attendance_batch', recs, `Lote de asistencia (${recs.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    try {
+      const savePromises = recs.map(r =>
+        setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp })
+      );
+      const results = await Promise.allSettled(savePromises);
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error('Partial attendance sync failure');
+      }
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update attendance Firestore sync error, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('attendance_batch', recs, `Lote de asistencia (${recs.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
+    }
+  };
+
+  const handleRegisterAttendance = (r: AttendanceRecord) => {
+    setAttendance(prev => {
+      const updated = [r, ...prev.filter(item => item.id !== r.id)];
+      localStorage.setItem('cache_attendance', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('attendance_record', r, `Marcación de asistencia (${r.type})`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp })
+      .then(() => {
+        setIsDbConnected(true);
+      })
+      .catch(e => {
+        console.warn("Marcación encolada para sincronización offline:", e);
+        setIsDbConnected(false);
+        enqueueOfflineAction('attendance_record', r, `Marcación de asistencia (${r.type})`);
+        setPendingSyncCount(getPendingSyncCount());
+      });
+  };
+
+  const handleDeleteAttendance = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+
+    setAttendance(prev => {
+      const updated = prev.filter(item => !idSet.has(item.id));
+      localStorage.setItem('cache_attendance', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('attendance_delete', ids, `Anulación/reemplazo de asistencia (${ids.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    try {
+      const deletePromises = ids.map(id => deleteDoc(doc(db, "attendance", id)));
+      const results = await Promise.allSettled(deletePromises);
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error('Partial delete attendance sync failure');
+      }
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Delete attendance Firestore sync error, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('attendance_delete', ids, `Anulación/reemplazo de asistencia (${ids.length} registros)`);
+      setPendingSyncCount(getPendingSyncCount());
+    }
+  };
+
+  const handleUpdateSavedReports = async (reps: SavedReport[]) => {
+    setSavedReports(reps);
+    localStorage.setItem('cache_saved_reports', JSON.stringify(reps));
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction('saved_reports_batch', reps, `Guardado de reportes (${reps.length})`);
+      setPendingSyncCount(getPendingSyncCount());
+      return;
+    }
+
+    try {
+      const savePromises = reps.map(r => setDoc(doc(db, "saved_reports", r.id), { payload: compressData(r) }));
+      const results = await Promise.allSettled(savePromises);
+      if (results.some(r => r.status === 'rejected')) {
+        throw new Error('Partial saved reports sync failure');
+      }
+      setIsDbConnected(true);
+    } catch (e) {
+      console.warn("Update saved reports Firestore sync error, enqueuing offline:", e);
+      setIsDbConnected(false);
+      enqueueOfflineAction('saved_reports_batch', reps, `Guardado de reportes (${reps.length})`);
+      setPendingSyncCount(getPendingSyncCount());
     }
   };
 
   if (isLoadingData) return null;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
+    <div className="min-h-screen bg-[#f8fafc] relative">
+      {/* Toast informativo de conectividad / sincronización */}
+      {syncFeedbackBanner && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-2xl shadow-2xl border text-[11px] font-black uppercase tracking-wider flex items-center gap-2.5 animate-in slide-in-from-top-4 duration-300 max-w-lg ${
+          syncFeedbackBanner.type === 'success'
+            ? 'bg-emerald-600 text-white border-emerald-400'
+            : 'bg-slate-900 text-white border-slate-700'
+        }`}>
+          <span>{syncFeedbackBanner.type === 'success' ? '✓' : 'ℹ️'}</span>
+          <span>{syncFeedbackBanner.message}</span>
+        </div>
+      )}
+
       {view === 'setup' && (
         <div className="min-h-screen gradient-blue flex flex-col items-center justify-center p-6">
           <div className="w-full max-w-lg bg-white/95 backdrop-blur-3xl p-10 md:p-16 rounded-[4rem] shadow-2xl text-center border border-white/20 fade-in">
             <h2 className="text-3xl font-[950] text-slate-900 mb-2 tracking-tighter uppercase leading-none">CONFIGURACIÓN INICIAL</h2>
             <p className="text-blue-600 font-black uppercase tracking-[0.4em] text-[9px] mb-12">Defina el tipo de instalación para este equipo</p>
-            
+
             <div className="space-y-4">
-              <button 
+              <button
                 onClick={() => handleSetDeviceMode('full')}
                 className="w-full group p-6 border-2 border-slate-100 hover:border-blue-600 rounded-[2.5rem] bg-slate-50 transition-all text-left flex items-center gap-5 active:scale-95"
               >
@@ -290,7 +792,7 @@ const App: React.FC = () => {
                 </div>
               </button>
 
-              <button 
+              <button
                 onClick={() => handleSetDeviceMode('attendance')}
                 className="w-full group p-6 border-2 border-slate-100 hover:border-emerald-600 rounded-[2.5rem] bg-slate-50 transition-all text-left flex items-center gap-5 active:scale-95"
               >
@@ -301,7 +803,7 @@ const App: React.FC = () => {
                 </div>
               </button>
             </div>
-            
+
             <p className="text-[8px] text-slate-300 font-black uppercase mt-12 tracking-widest italic">Esta configuración podrá ser reseteada por un Super Administrador.</p>
           </div>
         </div>
@@ -312,10 +814,10 @@ const App: React.FC = () => {
           <div className="w-full max-w-lg bg-white/95 backdrop-blur-3xl p-10 md:p-16 rounded-[4.5rem] shadow-2xl text-center border border-white/20">
             <h1 className="text-4xl md:text-5xl font-[950] text-slate-900 mb-2 tracking-tighter uppercase leading-none">ASIST UP</h1>
             <p className="text-blue-600 font-black uppercase tracking-[0.6em] text-[10px] mb-14">Management Suite</p>
-            
+
             <div className="space-y-4">
               <button onClick={() => setView('attendance')} className="w-full py-6 bg-blue-700 text-white font-black rounded-[2.5rem] shadow-2xl hover:bg-blue-800 transition-all uppercase text-[11px] tracking-widest active:scale-95">Panel de Asistencia</button>
-              
+
               {appMode === 'full' && (
                 <button onClick={() => setIsAdminLoginModalOpen(true)} className="w-full py-5 text-slate-400 font-black hover:text-slate-900 transition-all uppercase text-[10px] tracking-widest">Consola Administrativa</button>
               )}
@@ -325,8 +827,8 @@ const App: React.FC = () => {
           <Modal isOpen={isAdminLoginModalOpen} onClose={() => { setIsAdminLoginModalOpen(false); setIsRecoveryMode(false); }} title={isRecoveryMode ? "Acceso de Emergencia" : "Autorización"} maxWidth="max-w-[320px]">
             {!isRecoveryMode ? (
               <div className="space-y-6 p-2 text-center relative">
-                <button 
-                  onClick={() => setIsRecoveryMode(true)} 
+                <button
+                  onClick={() => setIsRecoveryMode(true)}
                   className="absolute -top-4 -right-4 w-10 h-10 flex items-center justify-center text-slate-50 hover:text-red-200 transition-colors opacity-10 hover:opacity-100 z-10"
                   aria-label="Acceso Crítico"
                 >
@@ -334,14 +836,14 @@ const App: React.FC = () => {
                 </button>
 
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña o PIN</p>
-                <input 
+                <input
                   type="password"
-                  value={adminPassInput} 
-                  onChange={e => setAdminPassInput(e.target.value)} 
-                  onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} 
-                  className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none bg-slate-50" 
-                  placeholder="••••••" 
-                  autoFocus 
+                  value={adminPassInput}
+                  onChange={e => setAdminPassInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
+                  className="w-full border-2 border-slate-100 rounded-2xl p-4 text-center text-2xl font-black focus:border-blue-600 outline-none bg-slate-50"
+                  placeholder="••••••"
+                  autoFocus
                 />
                 <button onClick={handleAdminLogin} className="w-full py-4 bg-blue-700 text-white font-black rounded-xl uppercase text-[11px] tracking-widest shadow-2xl active:scale-95 transition-all">Ingresar</button>
               </div>
@@ -349,16 +851,16 @@ const App: React.FC = () => {
               <div className="space-y-5 p-2 text-center">
                 <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Protocolo de Emergencia</p>
                 <div className="space-y-3">
-                  <input 
-                    type="text" 
-                    placeholder="RUC INSTITUCIONAL" 
+                  <input
+                    type="text"
+                    placeholder="RUC INSTITUCIONAL"
                     className="w-full p-4 border-2 rounded-xl text-[11px] font-black uppercase text-center focus:border-red-600 outline-none"
                     value={recoveryRuc}
                     onChange={e => setRecoveryRuc(e.target.value)}
                   />
-                  <input 
-                    type="password" 
-                    placeholder="LLAVE MAESTRA DE SEGURIDAD" 
+                  <input
+                    type="password"
+                    placeholder="LLAVE MAESTRA DE SEGURIDAD"
                     className="w-full p-4 border-2 rounded-xl text-[11px] font-black uppercase text-center focus:border-red-600 outline-none"
                     value={recoveryKey}
                     onChange={e => setRecoveryKey(e.target.value)}
@@ -376,36 +878,44 @@ const App: React.FC = () => {
       )}
 
       {view === 'attendance' && (
-        <AttendanceSystem 
-          employees={employees} 
-          attendance={attendance} 
-          onBack={() => setView('selection')} 
-          settings={settings} 
-          onRegister={(r) => { 
-            // Sincronización offline optimizada: Encolar sin esperar conexión.
-            // addDoc de Firebase devolverá la promesa pero nosotros no esperamos en la UI principal.
-            addDoc(collection(db, "attendance"), { payload: compressData(r), timestamp: r.timestamp })
-              .catch(e => console.warn("Marcación encolada (offline):", e)); 
-          }} 
-          onUpdateEmployees={handleUpdateEmployees} 
+        <AttendanceSystem
+          employees={employees}
+          attendance={attendance}
+          onBack={() => setView('selection')}
+          settings={settings}
+          onRegister={handleRegisterAttendance}
+          onUpdateAttendance={handleUpdateAttendance}
+          onDeleteAttendance={handleDeleteAttendance}
+          onUpdateEmployees={handleUpdateEmployees}
+          isOnline={isOnline}
+          pendingSyncCount={pendingSyncCount}
+          onSyncNow={triggerSync}
+          isSyncing={isSyncing}
         />
       )}
 
       {view === 'admin' && currentUserRole && appMode === 'full' && (
-        <AdminDashboard 
-          role={currentUserRole} 
+        <AdminDashboard
+          role={currentUserRole}
           isDbConnected={isDbConnected}
-          onLogout={() => setShowLogoutFeedback(true)} 
+          isOnline={isOnline}
+          pendingSyncCount={pendingSyncCount}
+          onSyncNow={triggerSync}
+          isSyncing={isSyncing}
+          onLogout={() => setShowLogoutFeedback(true)}
           company={company}
-          onUpdateCompany={async (c) => await setDoc(doc(db, "config", "company"), { payload: compressData(c) }).catch(e => console.warn("Update company failed:", e))}
+          onUpdateCompany={handleUpdateCompany}
           employees={employees}
           onUpdateEmployees={handleUpdateEmployees}
           attendance={attendance}
           onUpdateAttendance={handleUpdateAttendance}
+          onDeleteAttendance={handleDeleteAttendance}
           payments={payments}
           onUpdatePayments={handleUpdatePayments}
+          savedReports={savedReports}
+          onUpdateSavedReports={handleUpdateSavedReports}
           settings={settings}
-          onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) }).catch(e => console.warn("Update settings failed:", e))}
+          onUpdateSettings={handleUpdateSettings}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}
           appMode={appMode}
         />
