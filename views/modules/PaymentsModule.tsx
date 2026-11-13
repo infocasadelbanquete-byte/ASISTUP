@@ -122,11 +122,11 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         </div>
       </Modal>
 
-      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso">
+      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso" maxWidth="max-w-4xl">
         {selectedPayForPrint && (() => {
            const emp = employees.find(e => e.id === selectedPayForPrint.employeeId);
            return (
-             <div className="p-8 space-y-8 bg-white" id="payment-voucher-print">
+             <div className="a4-sheet p-8 space-y-8 bg-white border shadow-lg print:border-none print:shadow-none print:p-0" id="payment-voucher-print">
                 <div className="flex justify-between items-center border-b-4 border-black pb-8">
                    <div className="flex items-center gap-6">
                       <div className="w-20 h-20 border-2 border-black flex items-center justify-center overflow-hidden">
