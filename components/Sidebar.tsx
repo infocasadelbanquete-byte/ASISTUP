@@ -23,6 +23,8 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
     }
   }, []);
 
+  const [showInstallHelpModal, setShowInstallHelpModal] = useState(false);
+
   const triggerPWAInstall = async () => {
     const deferredPrompt = (window as any).deferredPrompt;
     if (deferredPrompt) {
@@ -32,7 +34,7 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
         (window as any).deferredPrompt = null;
       }
     } else {
-      alert("Para instalar:\n1. Use Chrome/Edge en Android o PC.\n2. En iOS use Safari: 'Compartir' -> 'Añadir a pantalla de inicio'.");
+      setShowInstallHelpModal(true);
     }
     setShowModeSelection(false);
   };
@@ -148,6 +150,28 @@ const Sidebar: React.FC<SidebarProps> = ({ role, activeTab, setActiveTab, onLogo
                <button onClick={() => handleInstallProcess('attendance')} className="w-full py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[9px] tracking-widest active:scale-95">Marcación Kiosco</button>
             </div>
          </div>
+      </Modal>
+
+      <Modal isOpen={showInstallHelpModal} onClose={() => setShowInstallHelpModal(false)} title="Guía de Instalación" maxWidth="max-w-md">
+        <div className="p-4 space-y-4 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mx-auto">
+            📲
+          </div>
+          <div className="space-y-2 text-left bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <p className="text-xs font-black text-slate-800 uppercase">Instrucciones por dispositivo:</p>
+            <ul className="space-y-2 text-[10px] font-bold text-slate-600 uppercase list-disc list-inside leading-relaxed">
+              <li><strong className="text-slate-900">Chrome / Edge en Android o PC:</strong> Haz clic en el ícono de instalar en la barra de direcciones o menú del navegador.</li>
+              <li><strong className="text-slate-900">Safari en iPhone / iPad:</strong> Presiona el botón "Compartir" y selecciona "Añadir a pantalla de inicio".</li>
+            </ul>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setShowInstallHelpModal(false)}
+            className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-black rounded-xl uppercase text-[10px] tracking-widest cursor-pointer"
+          >
+            Entendido
+          </button>
+        </div>
       </Modal>
 
       {isOpen && <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-30 md:hidden" onClick={() => setIsOpen(false)}></div>}

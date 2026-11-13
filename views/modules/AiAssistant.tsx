@@ -21,8 +21,9 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ employees, attendance, paymen
     setResponse('');
 
     try {
-      // Fix: Initialize GoogleGenAI with named parameter apiKey as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Use environment variable for API key
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const ai = new GoogleGenAI({ apiKey });
       const activeEmps = employees.filter(e => e.status === 'active').length;
       const totalPayments = payments.reduce((acc, p) => acc + (p.status === 'paid' ? p.amount : 0), 0);
       
