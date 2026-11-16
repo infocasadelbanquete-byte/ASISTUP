@@ -24,11 +24,68 @@ export enum BloodType {
 
 export enum TerminationReason {
   VOLUNTARY = 'Renuncia Voluntaria',
-  LAYOFF = 'Despido',
-  UNILATERAL = 'Terminación unilateral',
-  BILATERAL = 'Terminación bilateral',
+  LAYOFF = 'Despido Intempestivo',
+  MUTUAL_AGREEMENT = 'Mutuo Acuerdo',
+  UNILATERAL = 'Terminación Unilateral',
+  BILATERAL = 'Terminación Bilateral',
   VISTO_BUENO = 'Visto Bueno',
+  TRIAL_PERIOD = 'Fin Período de Prueba',
   OTHER = 'Otro'
+}
+
+export interface SettlementRubrics {
+  workedDaysInMonth: number;
+  proportionalSalary: number;
+  thirteenthSalary: number;
+  thirteenthDays: number;
+  fourteenthSalary: number;
+  fourteenthDays: number;
+  fourteenthRegion: 'sierra' | 'costa';
+  vacationAmount: number;
+  vacationPendingDays: number;
+  vacationAccruedDays?: number;
+  vacationEnjoyedDays?: number;
+  desahucioAmount: number;
+  yearsOfService: number;
+  completedYears: number;
+  layoffIndemnity: number; // Art. 188 Código de Trabajo
+  reserveFunds: number;
+  otherBonuses: number;
+  otherBonusesReason: string;
+  // Deducciones
+  iessContribution: number;
+  advancesDiscount: number;
+  otherDiscounts: number;
+  otherDiscountsReason: string;
+  // Totales
+  totalEarnings: number;
+  totalDeductions: number;
+  netPayable: number;
+}
+
+export interface SettlementRecord {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeCedula: string;
+  employeeRole: string;
+  companyName: string;
+  companyRuc: string;
+  companyLegalRep: string;
+  companyAddress: string;
+  startDate: string;
+  terminationDate: string;
+  tenureYears: number;
+  tenureMonths: number;
+  tenureDays: number;
+  baseSalary: number;
+  reason: TerminationReason | string;
+  notes: string;
+  rubrics: SettlementRubrics;
+  status: 'draft' | 'confirmed';
+  confirmedAt?: string;
+  confirmedBy?: string;
+  voucherCode?: string;
 }
 
 export interface NotificationMessage {
@@ -50,16 +107,43 @@ export interface AbsenceRecord {
   documentUrl?: string;
 }
 
+export interface VacationRecord {
+  id: string;
+  startDate: string; // Fecha en la que inicia sus vacaciones
+  endDate: string;   // Fecha en la que termina las mismas
+  days: number;      // Días de vacaciones gozados
+  notes?: string;
+  registeredAt: string;
+}
+
+export type AttendanceShiftSlot =
+  | 'morning_in'
+  | 'morning_out'
+  | 'afternoon_in'
+  | 'afternoon_out'
+  | 'continuous_in'
+  | 'continuous_out'
+  | 'half_day';
+
 export interface AttendanceRecord {
   id: string;
   employeeId: string;
   timestamp: string;
   type: 'in' | 'out' | 'half_day';
   status: 'confirmed' | 'pending_approval' | 'rejected';
+  shiftSlot?: AttendanceShiftSlot;
   isForgotten?: boolean;
   isLate?: boolean;
+  isContinuousShift?: boolean;
+  freeBreakMinutes?: number;
   justification?: string;
   validatedAt?: string;
+  rectificationCount?: number;
+  rectifiedAt?: string;
+  rectifiedReason?: string;
+  isAdminCorrectionRequest?: boolean;
+  updatedAt?: string;
+  deviceId?: string;
 }
 
 export interface Payment {
@@ -91,6 +175,48 @@ export interface Payment {
   voidJustification?: string;
 }
 
+export interface EmployeeChild {
+  id: string;
+  fullName: string;
+  name?: string;
+  age: number;
+  identification?: string;
+  birthDate?: string;
+}
+
+export interface NovedadReason {
+  id: string;
+  name: string;
+  isPermission: boolean;
+  isCustom?: boolean;
+}
+
+export interface EmployeeObservation {
+  id?: string;
+  date: string;
+  text: string;
+  reason?: string;
+  permissionType?: 'entero' | 'media_am' | 'media_pm' | 'horas' | string;
+  permissionHours?: number;
+  isPaidLeave?: boolean;
+  observation?: string;
+}
+
+export interface PayrollMonthlyAdjustment {
+  periodKey: string; // `${year}-${month}`
+  workedDays?: number;
+  workedHours?: number;
+  valueAdjustment?: number;
+  hours50?: number;
+  hours100?: number;
+  otherIncomes?: number;
+  fines?: number;
+  advances?: number;
+  otherDiscounts?: number;
+  adjustmentNotes?: string;
+  updatedAt?: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -112,6 +238,9 @@ export interface Employee {
   isAffiliated: boolean;
   overSalaryType: 'accumulate' | 'monthly' | 'none'; // Para Décimos
   reserveFundType?: 'monthly' | 'accumulate' | 'none'; // Específico para Fondos de Reserva
+  hasChildren?: boolean;
+  childrenCount?: number;
+  children?: EmployeeChild[];
   bankInfo: { 
     ifi: string; 
     type: 'Ahorros' | 'Corriente'; 
@@ -126,9 +255,31 @@ export interface Employee {
   terminationDate?: string;
   terminationReason?: string;
   terminationDetails?: string;
-  observations: { date: string; text: string; }[];
+  observations: EmployeeObservation[];
   absences: AbsenceRecord[];
+  vacations?: VacationRecord[];
   totalHoursWorked: number;
+  settlement?: SettlementRecord;
+  payrollAdjustments?: Record<string, PayrollMonthlyAdjustment>;
+  rectifiedCases?: Record<string, number>;
+  updatedAt?: string;
+  regularizationApprovedNotice?: {
+    id: string;
+    approvedAt: string;
+    message: string;
+    count?: number;
+    seen: boolean;
+  };
+}
+
+export interface SavedReport {
+  id: string;
+  name: string;
+  date: string;
+  content: string;
+  type: 'payroll';
+  month?: string;
+  year?: string;
 }
 
 export interface CompanyConfig {
@@ -141,15 +292,69 @@ export interface CompanyConfig {
   logo: string;
 }
 
+export interface SystemUpdateConfig {
+  version: string;
+  releaseDate: string;
+  title: string;
+  description: string;
+  changelog: string[];
+  isMandatory: boolean;
+  minVersionRequired?: string;
+  publishedAt: string;
+}
+
+export interface YearlyLaborNormative {
+  year: number;
+  sbu: number;
+  sbuPrev: number;
+  iessRate: number;
+  reserveRate: number;
+  monthlyHoursBase: number;
+  monthlyDaysBase: number;
+  dailyHoursBase: number;
+  weeklyHoursBase: number;
+  supplementaryRate: number;
+  extraordinaryRate: number;
+  maxDailySuppHours: number;
+  maxWeeklySuppHours: number;
+  sourceNote?: string;
+  updatedAt?: string;
+}
+
 export interface GlobalSettings {
   sbu: number; 
   sbuPrev: number;
   iessRate: number;
   reserveRate: number;
+  activeFiscalYear?: number;
+  monthlyHoursBase?: number;
+  monthlyDaysBase?: number;
+  dailyHoursBase?: number;
+  weeklyHoursBase?: number;
+  supplementaryRate?: number;
+  extraordinaryRate?: number;
+  maxDailySuppHours?: number;
+  maxWeeklySuppHours?: number;
+  lastAutoRolloverYear?: number;
+  lastAutoRolloverAt?: string;
+  yearlyOverrides?: Record<string, YearlyLaborNormative>;
   holidays: string[];
   schedule: {
     monFri: { in1: string; out1: string; in2: string; out2: string };
     sat: { in: string; out: string };
     halfDayOff: string; 
   };
+  systemUpdate?: SystemUpdateConfig;
 }
+
+export interface SystemBackupData {
+  exportedAt?: string;
+  appVersion?: string;
+  company?: CompanyConfig | null;
+  employees?: Employee[];
+  attendance?: AttendanceRecord[];
+  payments?: Payment[];
+  settings?: GlobalSettings;
+  savedReports?: SavedReport[];
+}
+
