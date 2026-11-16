@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Source exports can contain embedded credentials.
+/asist-up---enterprise-hr-&-attendance.zip
