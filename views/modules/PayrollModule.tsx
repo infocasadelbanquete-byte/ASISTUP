@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Employee, Payment, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
+import { Employee, Payment, CompanyConfig, GlobalSettings, Role, SavedReport } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 
 interface PayrollModuleProps {
@@ -12,9 +12,11 @@ interface PayrollModuleProps {
   company: CompanyConfig | null;
   settings: GlobalSettings;
   role: Role;
+  onSaveReport?: (report: SavedReport) => Promise<void>;
 }
 
-const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUpdatePayments, onUpdateEmployees, attendance = [], company, settings, role }) => {
+const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUpdatePayments, onUpdateEmployees, attendance = [], company, settings, role, onSaveReport }) => {
+  const [isSaving, setIsSaving] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState('FEBRERO');
   const [individualPayroll, setIndividualPayroll] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,17 +61,13 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     const monthlyPayments = payments.filter(p => p.employeeId === emp.id && p.month === selectedMonth && p.status === 'paid');
     
     // Suplementarias (50%)
-    const hours50 = gridEdits[emp.id]?.hours50 !== undefined 
-      ? gridEdits[emp.id].hours50 
-      : 0; // En este flujo priorizamos la entrada manual de horas para el rol mensual
-    
+    const hours50 = gridEdits[emp.id]?.hours50 ?? 0;
+
     const amount50 = hours50 * rate50;
 
     // Extraordinarias (100%)
-    const hours100 = gridEdits[emp.id]?.hours100 !== undefined 
-      ? gridEdits[emp.id].hours100 
-      : 0;
-    
+    const hours100 = gridEdits[emp.id]?.hours100 ?? 0;
+
     const amount100 = hours100 * rate100;
 
     // 4. Sueldo Base Proporcional
@@ -139,72 +137,107 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
     }));
   };
 
-  const saveAllChanges = () => {
-    const newPayments = [...payments];
-    const now = new Date().toISOString();
+  const saveAllChanges = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const newPayments = [...payments];
+      const now = new Date().toISOString();
 
-    // Fix: Explicitly cast Object.entries to ensure 'edits' is not inferred as 'unknown'
-    (Object.entries(gridEdits) as [string, any][]).forEach(([empId, edits]) => {
-      const emp = employees.find(e => e.id === empId);
-      if (!emp) return;
+      // Fix: Explicitly cast Object.entries to ensure 'edits' is not inferred as 'unknown'
+      (Object.entries(gridEdits) as [string, any][]).forEach(([empId, edits]) => {
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
 
-      const d = calculatePayrollData(emp);
+        const d = calculatePayrollData(emp);
 
-      // Si hay monto calculado para horas suplementarias, guardamos como registro de pago
-      if (d.amount50 > 0) {
-        newPayments.push({
-          id: Math.random().toString(36).substr(2, 9),
-          employeeId: empId,
-          amount: d.amount50,
-          date: now,
-          month: selectedMonth,
-          year: '2026',
-          type: 'ExtraHours',
-          method: 'Efectivo',
-          concept: `H. SUPLEMENTARIAS 50% (${d.hours50} Horas) - ${selectedMonth}`,
-          status: 'paid',
-          voucherCode: `ADJ-S50-${Date.now().toString().slice(-5)}`
-        });
-      }
+        // Si hay monto calculado para horas suplementarias, guardamos como registro de pago
+        if (d.amount50 > 0) {
+          newPayments.push({
+            id: Math.random().toString(36).substr(2, 9),
+            employeeId: empId,
+            amount: d.amount50,
+            date: now,
+            month: selectedMonth,
+            year: '2026',
+            type: 'ExtraHours',
+            method: 'Efectivo',
+            concept: `H. SUPLEMENTARIAS 50% (${d.hours50} Horas) - ${selectedMonth}`,
+            status: 'paid',
+            voucherCode: `ADJ-S50-${Date.now().toString().slice(-5)}`
+          });
+        }
       
-      // Si hay monto calculado para horas extraordinarias
-      if (d.amount100 > 0) {
-        newPayments.push({
-          id: Math.random().toString(36).substr(2, 9),
-          employeeId: empId,
-          amount: d.amount100,
+        // Si hay monto calculado para horas extraordinarias
+        if (d.amount100 > 0) {
+          newPayments.push({
+            id: Math.random().toString(36).substr(2, 9),
+            employeeId: empId,
+            amount: d.amount100,
+            date: now,
+            month: selectedMonth,
+            year: '2026',
+            type: 'ExtraHours',
+            method: 'Efectivo',
+            concept: `H. EXTRAORDINARIAS 100% (${d.hours100} Horas) - ${selectedMonth}`,
+            status: 'paid',
+            voucherCode: `ADJ-E100-${Date.now().toString().slice(-5)}`
+          });
+        }
+
+        // Fix: 'edits' is now typed through the assertion in Object.entries
+        if (edits.otherIncomes && edits.otherIncomes > 0) {
+          newPayments.push({
+            id: Math.random().toString(36).substr(2, 9),
+            employeeId: empId,
+            amount: edits.otherIncomes,
+            date: now,
+            month: selectedMonth,
+            year: '2026',
+            type: 'Bonus',
+            method: 'Efectivo',
+            concept: `AJUSTE BONO/OTROS - ${selectedMonth}`,
+            status: 'paid',
+            voucherCode: `ADJ-BON-${Date.now().toString().slice(-5)}`
+          });
+        }
+      });
+
+
+
+      // Generar archivo de texto para Excel (delimitado por columnas)
+      let csv = "\uFEFFColaborador,Identificación,Días,Sueldo Base,Cant. H. 50%,Monto H. 50%,Cant. H. 100%,Monto H. 100%,F. Reserva,13ero,14to,Otros Ing.,IESS,Multas,Anticipos,Otros Desc.,Neto\n";
+      employees.filter(e => e.status === 'active').forEach((emp) => {
+        const d = calculatePayrollData(emp);
+        csv += `"${emp.surname} ${emp.name}","${emp.identification}","${d.workedDays}","${d.baseSalary.toFixed(2)}","${d.hours50}","${d.amount50.toFixed(2)}","${d.hours100}","${d.amount100.toFixed(2)}","${d.reserveFund.toFixed(2)}","${d.monthly13th.toFixed(2)}","${d.monthly14th.toFixed(2)}","${d.otherIncomes.toFixed(2)}","${d.iessContribution.toFixed(2)}","${d.fines.toFixed(2)}","${d.advances.toFixed(2)}","${d.otherDiscounts.toFixed(2)}","${d.netToReceive.toFixed(2)}"\n`;
+      });
+
+      if (onSaveReport) {
+        const report: SavedReport = {
+          id: crypto.randomUUID(),
+          name: `NOMINA_${selectedMonth}_${new Date().getFullYear()}_${new Date().toISOString().split('T')[0]}`,
           date: now,
+          content: csv,
+          type: 'payroll',
           month: selectedMonth,
-          year: '2026',
-          type: 'ExtraHours',
-          method: 'Efectivo',
-          concept: `H. EXTRAORDINARIAS 100% (${d.hours100} Horas) - ${selectedMonth}`,
-          status: 'paid',
-          voucherCode: `ADJ-E100-${Date.now().toString().slice(-5)}`
-        });
+          year: new Date().getFullYear().toString()
+        };
+        await onSaveReport(report);
       }
 
-      // Fix: 'edits' is now typed through the assertion in Object.entries
-      if (edits.otherIncomes && edits.otherIncomes > 0) {
-        newPayments.push({
-          id: Math.random().toString(36).substr(2, 9),
-          employeeId: empId,
-          amount: edits.otherIncomes,
-          date: now,
-          month: selectedMonth,
-          year: '2026',
-          type: 'Bonus',
-          method: 'Efectivo',
-          concept: `AJUSTE BONO/OTROS - ${selectedMonth}`,
-          status: 'paid',
-          voucherCode: `ADJ-BON-${Date.now().toString().slice(-5)}`
-        });
-      }
-    });
-
-    onUpdatePayments(newPayments);
-    setGridEdits({});
-    setFeedback({ isOpen: true, title: "Nómina Procesada", message: "Los cálculos de horas y ajustes han sido sincronizados.", type: "success" });
+      onUpdatePayments(newPayments);
+      setGridEdits({});
+      setFeedback({
+        isOpen: true,
+        title: "Éxito al guardar",
+        message: `Los ajustes han sido guardados correctamente. El archivo de nómina ha sido generado y guardado en el módulo de reportes (Ubicación: Reportes > Nóminas Guardadas).`,
+        type: "success"
+      });
+    } catch (error) {
+      setFeedback({ isOpen: true, title: 'No se pudo guardar', message: 'No se guardó el reporte. Los ajustes siguen disponibles para reintentar.', type: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const exportGeneralExcel = () => {
@@ -238,7 +271,7 @@ const PayrollModule: React.FC<PayrollModuleProps> = ({ employees, payments, onUp
              </select>
              <input type="text" placeholder="Filtrar por nombre..." className="flex-1 p-3 border rounded-xl text-[11px] font-bold uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
              <div className="flex gap-2">
-               <button onClick={saveAllChanges} className="px-6 py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] active:scale-95 shadow-lg">Guardar Ajustes</button>
+               <button onClick={saveAllChanges} disabled={isSaving} className="px-6 py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] active:scale-95 shadow-lg">{isSaving ? 'Guardando...' : 'Guardar Ajustes'}</button>
                <button onClick={exportGeneralExcel} className="px-6 py-4 bg-emerald-600 text-white font-black rounded-xl uppercase text-[10px] active:scale-95 shadow-lg">Excel</button>
              </div>
         </div>

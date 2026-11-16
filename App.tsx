@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings } from './types.ts';
+import { CompanyConfig, Employee, Role, AttendanceRecord, Payment, GlobalSettings, SavedReport } from './types.ts';
 import AdminDashboard from './views/AdminDashboard.tsx';
 import AttendanceSystem from './views/AttendanceSystem.tsx';
 import Modal from './components/Modal.tsx';
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
 
   const defaultSettings: GlobalSettings = {
     sbu: 482.00,
@@ -171,6 +172,7 @@ const App: React.FC = () => {
       }, (err) => handleFirestoreError('Payments', err));
       unsubscribesRef.current.push(unsubPayments);
 
+
     } catch (e) {
       console.error("Initial load failed:", e);
       setIsLoadingData(false);
@@ -266,6 +268,32 @@ const App: React.FC = () => {
     for (const r of recs) {
        await setDoc(doc(db, "attendance", r.id), { payload: compressData(r), timestamp: r.timestamp }).catch(e => console.warn("Update attendance failed:", e));
     }
+  };
+
+  useEffect(() => {
+    if (view !== 'admin' || !currentUserRole) return;
+    const controller = new AbortController();
+    fetch('/api/saved-reports', { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error('No se pudieron cargar las nóminas guardadas.');
+        return response.json();
+      })
+      .then(setSavedReports)
+      .catch(error => {
+        if (error.name !== 'AbortError') alert('No se pudieron cargar las nóminas guardadas. Intente ingresar nuevamente.');
+      });
+    return () => controller.abort();
+  }, [view, currentUserRole]);
+
+  const handleSaveReport = async (report: SavedReport) => {
+    const response = await fetch('/api/saved-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report)
+    });
+    if (!response.ok) throw new Error('No se pudo guardar la nómina. Intente nuevamente.');
+    const saved = await response.json();
+    setSavedReports(previous => [saved, ...previous.filter(item => item.id !== saved.id)]);
   };
 
   if (isLoadingData) return null;
@@ -404,6 +432,8 @@ const App: React.FC = () => {
           onUpdateAttendance={handleUpdateAttendance}
           payments={payments}
           onUpdatePayments={handleUpdatePayments}
+          savedReports={savedReports}
+          onSaveReport={handleSaveReport}
           settings={settings}
           onUpdateSettings={async (s) => await setDoc(doc(db, "config", "settings"), { payload: compressData(s) }).catch(e => console.warn("Update settings failed:", e))}
           onUpdateAppMode={(mode) => { setAppMode(mode); localStorage.setItem('app_mode', mode); }}

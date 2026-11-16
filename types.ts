@@ -131,6 +131,16 @@ export interface Employee {
   totalHoursWorked: number;
 }
 
+export interface SavedReport {
+  id: string;
+  name: string;
+  date: string;
+  content: string;
+  type: 'payroll';
+  month?: string;
+  year?: string;
+}
+
 export interface CompanyConfig {
   name: string;
   legalRep: string;
