@@ -1,5 +1,7 @@
 [build.environment]
   NODE_VERSION = "24"
+  # Firebase browser configuration is public; keep scanning other environment keys.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY"
 
 [server]
   path = "/api/*"
