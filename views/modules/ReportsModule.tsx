@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role } from '../../types.ts';
+import { Employee, Payment, AttendanceRecord, CompanyConfig, GlobalSettings, Role, SavedReport } from '../../types.ts';
 import Modal from '../../components/Modal.tsx';
 import JSZip from 'jszip';
 
@@ -11,13 +11,16 @@ interface ReportsModuleProps {
   company: CompanyConfig | null;
   settings: GlobalSettings;
   role: Role;
+  savedReports?: SavedReport[];
 }
 
-const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role }) => {
-  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master' | 'employees' | 'payroll' | 'novedades' | 'bajas'>('attendance');
+const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [], attendance = [], company, settings, role, savedReports = [] }) => {
+  const [reportType, setReportType] = useState<'attendance' | 'payments' | 'history' | 'master' | 'employees' | 'payroll' | 'novedades' | 'bajas' | 'saved_payroll'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear().toString());
   const [isZipping, setIsZipping] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [feedback, setFeedback] = useState({ isOpen: false, title: '', message: '', type: 'success' as any });
@@ -187,6 +190,39 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
 
   const renderTableRows = () => {
     switch (reportType) {
+      case 'saved_payroll':
+        return savedReports
+          .filter(r => {
+            const matchesSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesMonth = !filterMonth || r.month === filterMonth;
+            // Si el reporte no tiene año (reportes antiguos), lo mostramos si el filtro de año está vacío
+            const matchesYear = !filterYear || r.year === filterYear || (!r.year && filterYear === '');
+            return matchesSearch && matchesMonth && matchesYear;
+          })
+          .sort((a, b) => b.date.localeCompare(a.date)).map(r => (
+          <tr key={r.id}>
+            <td className="p-5">
+              <p className="text-slate-900 font-black">{r.name}</p>
+              <p className="text-[9px] text-slate-400">{new Date(r.date).toLocaleString()}</p>
+            </td>
+            <td className="p-5">Nómina Generada</td>
+            <td className="p-5 text-right">
+              <button
+                onClick={() => {
+                  const blob = new Blob([r.content], { type: 'text/csv;charset=utf-8;' });
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `${r.name}.csv`;
+                  link.click();
+                  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white text-[9px] font-black rounded-lg uppercase shadow-md active:scale-95"
+              >
+                Descargar
+              </button>
+            </td>
+          </tr>
+        ));
       case 'attendance':
         return attendanceToDisplay.map(a => (
           <tr key={a.id}>
@@ -238,6 +274,7 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
 
   const getReportHeaderTitle = () => {
     switch(reportType) {
+      case 'saved_payroll': return 'NÓMINAS GUARDADAS (HISTORIAL)';
       case 'employees': return 'CENSO DE PERSONAL MAESTRO';
       case 'payroll': return 'REGISTRO DE PAGOS DE NÓMINA';
       case 'novedades': return 'HISTORIAL DE NOVEDADES ADMINISTRATIVAS';
@@ -258,9 +295,9 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
         </div>
         <div className="flex flex-col gap-4 w-full md:w-auto">
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {['attendance', 'payments', 'history', 'master'].map(t => (
-              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm(''); setStartDate(''); setEndDate('');}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
-                {t === 'attendance' ? 'Asistencia' : t === 'payments' ? 'Pagos' : t === 'history' ? 'Historial' : 'Archivo Maestro'}
+            {['attendance', 'payments', 'history', 'saved_payroll', 'master'].map(t => (
+              <button key={t} onClick={() => {setReportType(t as any); setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString());}} className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${reportType === t ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-50 text-slate-400 border'}`}>
+                {t === 'attendance' ? 'Asistencia' : t === 'payments' ? 'Pagos' : t === 'history' ? 'Historial' : t === 'saved_payroll' ? 'Nóminas Guardadas' : 'Archivo Maestro'}
               </button>
             ))}
           </div>
@@ -268,20 +305,53 @@ const ReportsModule: React.FC<ReportsModuleProps> = ({ employees, payments = [],
           {reportType !== 'master' && (
             <div className="flex flex-col sm:flex-row gap-3">
               <input type="text" placeholder="Filtrar por nombre o CI..." className="flex-1 p-3 border-2 rounded-xl text-[11px] font-bold uppercase outline-none focus:border-blue-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-              <div className="flex gap-2">
-                 <div className="flex flex-col gap-1">
-                   <label className="text-[7px] font-black uppercase text-slate-400">Desde</label>
-                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                 </div>
-                 <div className="flex flex-col gap-1">
-                   <label className="text-[7px] font-black uppercase text-slate-400">Hasta</label>
-                   <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                 </div>
-                 <div className="flex gap-1 items-end">
+
+              {reportType === 'saved_payroll' && (
+                <div className="flex gap-2">
+                  <select
+                    className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500"
+                    value={filterMonth}
+                    onChange={e => setFilterMonth(e.target.value)}
+                  >
+                    <option value="">TODOS LOS MESES</option>
+                    {['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-500"
+                    value={filterYear}
+                    onChange={e => setFilterYear(e.target.value)}
+                  >
+                    <option value="">TODOS LOS AÑOS</option>
+                    {Array.from(new Set([new Date().getFullYear().toString(), ...savedReports.map(r => r.year).filter((year): year is string => Boolean(year))])).sort().reverse().map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {reportType !== 'saved_payroll' && (
+                <div className="flex gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[7px] font-black uppercase text-slate-400">Desde</label>
+                    <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[7px] font-black uppercase text-slate-400">Hasta</label>
+                    <input type="date" className="p-3 border-2 rounded-xl text-[10px] font-black uppercase outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1 items-end">
+                {reportType !== 'saved_payroll' && (
+                  <>
                     <button onClick={() => generateReportExcel(reportType)} title="Excel" className="p-3 bg-emerald-600 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">XLS</button>
                     <button onClick={() => generateReportPDF(reportType)} title="PDF" className="p-3 bg-blue-700 text-white rounded-xl shadow-md active:scale-95 transition-all text-[10px] font-black uppercase">PDF</button>
-                    <button onClick={() => {setStartDate(''); setEndDate(''); setSearchTerm(''); setReportType('master');}} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors">✕</button>
-                 </div>
+                  </>
+                )}
+                <button onClick={() => {setStartDate(''); setEndDate(''); setSearchTerm(''); setFilterMonth(''); setFilterYear(new Date().getFullYear().toString()); setReportType('master');}} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600 transition-colors">✕</button>
               </div>
             </div>
           )}

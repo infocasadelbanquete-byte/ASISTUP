@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage } from '../types.ts';
+import { Role, CompanyConfig, Employee, AttendanceRecord, Payment, GlobalSettings, NotificationMessage, SavedReport } from '../types.ts';
 import Sidebar from '../components/Sidebar.tsx';
 import CompanyModule from './modules/CompanyModule.tsx';
 import EmployeeModule from './modules/EmployeeModule.tsx';
@@ -25,6 +25,8 @@ interface AdminDashboardProps {
   onUpdateAttendance?: (records: AttendanceRecord[]) => void;
   payments: Payment[];
   onUpdatePayments: (payments: Payment[]) => void;
+  savedReports: SavedReport[];
+  onSaveReport: (report: SavedReport) => Promise<void>;
   settings: GlobalSettings;
   onUpdateSettings: (settings: GlobalSettings) => void;
   onUpdateAppMode: (mode: 'full' | 'attendance') => void;
@@ -32,7 +34,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
-  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, payments, onUpdatePayments, settings, onUpdateSettings, onUpdateAppMode, appMode 
+  role, isDbConnected, onLogout, company, onUpdateCompany, employees, onUpdateEmployees, attendance, onUpdateAttendance, payments, onUpdatePayments, savedReports, onSaveReport, settings, onUpdateSettings, onUpdateAppMode, appMode
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'company' | 'employees' | 'payroll' | 'payments' | 'settings' | 'reports' | 'ai' | 'notifications'>('dashboard');
   const [notifications, setNotifications] = useState<NotificationMessage[]>([]);
@@ -253,8 +255,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                    </div>
                    <div className="grid grid-cols-7 gap-2 text-center flex-1 items-center">
-                      {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map(d => (
-                        <div key={d} className="text-[11px] font-black text-slate-300 uppercase py-2">{d}</div>
+                      {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
+                        <div key={`${d}-${i}`} className="text-[11px] font-black text-slate-300 uppercase py-2">{d}</div>
                       ))}
                       {calendarDays.map((day, i) => {
                         const isHoliday = day && monthHolidays.some(h => h.day === day);
@@ -314,10 +316,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'notifications' && <NotificationsModule notifications={notifications} onToggleRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isRead: !n.isRead} : n))} onToggleProcessed={(id) => setNotifications(prev => prev.map(n => n.id === id ? {...n, isProcessed: !n.isProcessed} : n))} onClearAll={() => { setNotifications([]); }} />}
           {activeTab === 'company' && <CompanyModule company={company} onUpdate={onUpdateCompany} role={role} />}
           {activeTab === 'employees' && <EmployeeModule employees={employees} onUpdate={onUpdateEmployees} role={role} attendance={attendance} payments={payments} company={company} />}
-          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} onUpdatePayments={onUpdatePayments} onUpdateEmployees={onUpdateEmployees} attendance={attendance} company={company} settings={settings} role={role} />}
+          {activeTab === 'payroll' && <PayrollModule employees={employees} payments={payments} onUpdatePayments={onUpdatePayments} onUpdateEmployees={onUpdateEmployees} attendance={attendance} company={company} settings={settings} role={role} onSaveReport={onSaveReport} />}
           {activeTab === 'payments' && <PaymentsModule employees={employees} payments={payments} onUpdate={onUpdatePayments} role={role} company={company} />}
           {activeTab === 'settings' && <SettingsModule settings={settings} onUpdate={onUpdateSettings} role={role} onPurge={handlePurgeData} allData={{ company, employees, attendance, payments, settings }} />}
-          {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} />}
+          {activeTab === 'reports' && <ReportsModule employees={employees} payments={payments} attendance={attendance} company={company} settings={settings} role={role} savedReports={savedReports} />}
           {activeTab === 'ai' && <AiAssistant employees={employees} attendance={attendance} payments={payments} role={role} />}
         </div>
       </main>
