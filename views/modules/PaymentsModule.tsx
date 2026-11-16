@@ -100,9 +100,9 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
             {filteredPayments.map(p => (
               <tr key={p.id} className="hover:bg-slate-50 transition-all">
                 <td className="px-6 py-4 font-black text-blue-600">{p.voucherCode}</td>
-                <td className="px-6 py-4">{employees.find(e => e.id === p.employeeId)?.surname}</td>
+                <td className="px-6 py-4">{employees.find(e => e.id === p.employeeId)?.surname || ''}</td>
                 <td className="px-6 py-4">{p.type}</td>
-                <td className="px-6 py-4 font-black">${p.amount.toFixed(2)}</td>
+                <td className="px-6 py-4 font-black">${Number(p.amount || 0).toFixed(2)}</td>
                 <td className="px-6 py-4 text-right"><button onClick={() => setSelectedPayForPrint(p)} className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[8px] uppercase">Comprobante</button></td>
               </tr>
             ))}
@@ -122,11 +122,11 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
         </div>
       </Modal>
 
-      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso">
+      <Modal isOpen={!!selectedPayForPrint} onClose={() => setSelectedPayForPrint(null)} title="Comprobante de Egreso" maxWidth="max-w-4xl">
         {selectedPayForPrint && (() => {
            const emp = employees.find(e => e.id === selectedPayForPrint.employeeId);
            return (
-             <div className="p-8 space-y-8 bg-white" id="payment-voucher-print">
+             <div className="a4-sheet p-8 space-y-8 bg-white border shadow-lg print:border-none print:shadow-none print:p-0" id="payment-voucher-print">
                 <div className="flex justify-between items-center border-b-4 border-black pb-8">
                    <div className="flex items-center gap-6">
                       <div className="w-20 h-20 border-2 border-black flex items-center justify-center overflow-hidden">
@@ -164,7 +164,7 @@ const PaymentsModule: React.FC<PaymentsModuleProps> = ({ employees, payments, on
                 
                 <div className="bg-slate-900 p-8 rounded-2xl text-white flex justify-between items-center shadow-2xl">
                    <p className="text-[16px] font-[950] uppercase tracking-[0.4em]">VALOR PAGADO</p>
-                   <p className="text-5xl font-[950] tracking-tighter">${selectedPayForPrint.amount.toFixed(2)}</p>
+                   <p className="text-5xl font-[950] tracking-tighter">${Number(selectedPayForPrint.amount || 0).toFixed(2)}</p>
                 </div>
 
                 <div className="mt-24 grid grid-cols-2 gap-20 text-center">

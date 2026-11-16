@@ -60,6 +60,24 @@ export const ACTIVE_BREAKS = [
 
 export const APP_NAME = "ASIST UP";
 
+export const SYSTEM_VERSION = "v3.7.0";
+
+export const DEFAULT_SYSTEM_UPDATE = {
+  version: "v3.7.0",
+  releaseDate: "2026-11-16",
+  title: "Actualización v3.7.0: Nómina Fijos/Extras, Normativa Laboral por Año, Ajustes Maestros Protegidos y Caché Netlify",
+  description: "Actualización obligatoria para todas las terminales y navegadores. Incorpora nómina separada de Empleados Fijos y Extras (Temporales) sin redondeo y con guardado persistente, impresión A4 limpia del rol individual, cálculos regidos por Ajustes del Sistema Maestro con transición anual automática y autorización por clave administrativa, y renovación automática de caché PWA en Netlify.",
+  changelog: [
+    "Separación integral de Nómina Empleados Fijos y Nómina Empleados Extras (Temporales) con guardado persistente de ajustes.",
+    "Cálculo exacto sin redondeo de días trabajados, horas en decimal y tasas según normativa laboral vigente de Ecuador por año.",
+    "Impresión individual optimizada en formato A4 limpio sin imágenes ni recortes.",
+    "Ajustes del Sistema Maestro con cambio automático al iniciar cada año fiscal y autorización obligatoria mediante contraseña de administrador.",
+    "Renovación automática de Service Worker y cabeceras sin caché en Netlify para garantizar visualización inmediata de cada actualización."
+  ],
+  isMandatory: true,
+  publishedAt: "2026-11-16T16:45:00.000Z"
+};
+
 export const ECUADOR_HOLIDAYS = [
   { name: "Año Nuevo", month: 0, day: 1, duration: 7 },
   { name: "San Valentín", month: 1, day: 14 },
